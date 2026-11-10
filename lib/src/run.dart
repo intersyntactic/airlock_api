@@ -278,6 +278,10 @@ final class JourneyPath<R> {
   /// one was started from, granted or not, or the record would mix two
   /// journey paths' entries: an [ArgumentError] when it has. Ids from before
   /// a restart are the host's to keep apart.
+  ///
+  /// A narrowing whose record throws has still used up [id]: whether its
+  /// entry was kept is unknown, so a retry takes a new id rather than risk
+  /// two entries under one.
   Future<JourneyPath<R>?> narrowed(R fewer, {required JourneyPathId id}) async {
     if (!_issued.add(id)) {
       throw ArgumentError.value(id, 'id', 'names a journey path already');
