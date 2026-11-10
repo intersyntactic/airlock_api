@@ -26,7 +26,7 @@ final writeAndFormat = ToolSpec<FileText, ExecResult>(
 
 // The host, which holds the drivers:
 final journeyPath = JourneyPath.start(
-  id: const JourneyPathId('fix-login/agent-1'),
+  id: JourneyPathId.parse('fix-login/agent-1')!,
   drivers: [files, programs],
   airlock: airlock,
   rules: rules,
@@ -78,9 +78,11 @@ is on, acting as the journey's user.
   this way. Recorded either way, as a `Narrowed` entry, before the new one
   exists: the record's tree of journey paths is these entries, and a refusal
   is an attempt to widen.
-- `JourneyPathId`: given by whoever starts or narrows a journey path, and
-  carried by every entry it records, so a record that outlives the objects
-  still says which journey path each run was on.
+- `JourneyPathId.parse(raw)`: given by whoever starts or narrows a journey
+  path, and carried by every entry it records, so a record that outlives the
+  objects still says which journey path each run was on. A blank one parses
+  to null; `narrowed` refuses an id already asked for under the same started
+  journey path. Ids from before a restart are the host's to keep apart.
 - `run.next(journeyPath)`, the only way to carry out a run: the airlock
   decides it; the airlock records the decision (`Decided`) and only then is
   a driver reached; the airlock records what became of it (`Settled`) and

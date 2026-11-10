@@ -242,6 +242,7 @@ final class JourneyPath<R> {
     this._airlock,
     this._drivers,
     this._parent,
+    this._issued,
   );
 
   /// A journey path named [id], on [drivers], decided and recorded by
@@ -251,7 +252,7 @@ final class JourneyPath<R> {
     required Iterable<Driver> drivers,
     required Airlock<R> airlock,
     required R rules,
-  }) : this._(id, rules, airlock, List.unmodifiable(drivers), null);
+  }) : this._(id, rules, airlock, List.unmodifiable(drivers), null, {id});
 
   /// Names this journey path in every entry it records.
   final JourneyPathId id;
@@ -259,6 +260,10 @@ final class JourneyPath<R> {
   final Airlock<R> _airlock;
   final List<Driver> _drivers;
   final JourneyPath<R>? _parent;
+
+  /// Every id asked for under the journey path this one was started from,
+  /// shared by all of them.
+  final Set<JourneyPathId> _issued;
   final _entries = StreamController<Entry>.broadcast(sync: true);
   bool _stopped = false;
 
@@ -268,10 +273,20 @@ final class JourneyPath<R> {
   ///
   /// Recorded either way, as a [Narrowed] entry of this journey path, before
   /// the new one exists; a refusal is an attempt to widen, and is kept.
+  ///
+  /// [id] must not have been asked for before under the journey path this
+  /// one was started from, granted or not, or the record would mix two
+  /// journey paths' entries: an [ArgumentError] when it has. Ids from before
+  /// a restart are the host's to keep apart.
   Future<JourneyPath<R>?> narrowed(R fewer, {required JourneyPathId id}) async {
+    if (!_issued.add(id)) {
+      throw ArgumentError.value(id, 'id', 'names a journey path already');
+    }
     final granted = _airlock.narrows(fewer, rules);
     await _record(Narrowed(this.id, id, fewer, granted: granted));
-    return granted ? JourneyPath._(id, fewer, _airlock, _drivers, this) : null;
+    return granted
+        ? JourneyPath._(id, fewer, _airlock, _drivers, this, _issued)
+        : null;
   }
 
   /// Refuses every run not yet carried out, on this journey path and every
@@ -351,10 +366,14 @@ final class Deny extends Decision {
 /// those of every other journey path in the journey, after a restart too.
 ///
 /// Given by whoever starts or narrows the journey path, which is the code
-/// that knows what it is naming; keeping it unique within the journey is
-/// theirs.
+/// that knows what it is naming. [JourneyPath.narrowed] refuses one already
+/// asked for under the same started journey path.
 final class JourneyPathId {
-  const JourneyPathId(this.value);
+  const JourneyPathId._(this.value);
+
+  /// [raw] as an id, or null when it is blank, which names nothing apart.
+  static JourneyPathId? parse(String raw) =>
+      raw.trim().isEmpty ? null : JourneyPathId._(raw);
 
   final String value;
 
