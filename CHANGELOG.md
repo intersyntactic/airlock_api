@@ -4,25 +4,23 @@
 
 Breaking.
 
-- What leaves the home: `SendRequest` (`Program.send`), its `Request` and
-  `Response`, the `Sends` reach and `NetworkDriver`. A `Destination` names
-  what is on the other end (`ProviderApi` under a named `SignIn`,
-  `SelfRunModel`, `Web`), as rules written by direction name it; a sign-in's
-  secret is the driver's. `Args.leavesTo` says where a started program will
+- The vocabulary of effects and the driver interfaces move to `is_effects`:
+  `PathInRepo`, `FileText`, `Args`, `ReadResult`, `Wrote`, `ExecResult`,
+  `Outcome`, and `FileDriver` and `ProgramDriver`. A driver depends on
+  `is_effects` alone and sees no run, journey path or decision. This package
+  depends on `is_effects` and nothing else of ours.
+- `Tool`, `answeredBy`, `Reply` and `ExecResult.output` move to `is_tool`
+  (as `Answer`, `answeredBy`, `Reply` and `execResultOutput`), so a host can
+  take this up before its tools move to `is_tools_api` 0.2.
+- What leaves the home: `SendRequest` (`Program.send`) and the `Sends`
+  reach, over `is_effects`'s `Request`, `Destination` and `NetworkDriver`.
+  `Starts` carries `Args.leavesTo`, where a started program says it will
   send, and the airlock decides on it.
-- Depends on no package of ours: `Tool`, `answeredBy`, `Reply` and
-  `ExecResult.output` move to `is_tool` (as `Answer`, `answeredBy`, `Reply`
-  and `execResultOutput`), so a host can take this up before its tools move
-  to `is_tools_api` 0.2.
-- `Executable.parse` replaces `Executable(name)`: a blank name, or one with
-  whitespace, is null. Executables compare by name.
+- `Executable` wraps an `is_effects` `ProgramName`, compares by it, and has
+  `Executable.parse`; `Starts.program` is the `ProgramName`.
 - `Allow` and `Deny` take `by: DecidedBy.rules` or `DecidedBy.person`, so
   the record tells the rules' decision from the person's.
-- Drivers report while a run is underway (`Printed`, `Received`), on
-  `JourneyPath.underway`; `ProgramDriver.start` takes a `report`.
-- `Args.timeout` and `Args.silenceLimit`, per run.
-- `PathInRepo` says that what stays inside the repo is the text, not where a
-  symlink points.
+- Drivers report while a run is underway, on `JourneyPath.underway`.
 
 ## 0.1.0
 

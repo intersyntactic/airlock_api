@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'path_in_repo.dart';
-import 'values.dart';
+import 'package:is_effects/is_effects.dart';
 
 /// What a tool's code returns for a call: a run whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -176,32 +175,40 @@ final class WriteFile extends Program<FileText, Wrote> {
 /// A program started as a process, such as `git`: its input is plain
 /// arguments, and it reaches whatever the process can.
 final class Executable extends Program<Args, ExecResult> {
-  const Executable._(this.name);
+  const Executable(this.program);
 
-  /// [raw] as a program's name, or null when it is blank or holds
-  /// whitespace: `git status` is `git` with an argument.
-  static Executable? parse(String raw) =>
-      raw.isEmpty || raw.contains(RegExp(r'\s')) ? null : Executable._(raw);
+  /// [raw] as a program, or null when it is not a [ProgramName].
+  static Executable? parse(String raw) => switch (ProgramName.parse(raw)) {
+    final program? => Executable(program),
+    null => null,
+  };
 
-  @override
-  final String name;
-
-  @override
-  Reach _reach(Args args) => Starts(this, args);
-
-  /// By [name], so a rule naming a program matches every run of it.
-  @override
-  bool operator ==(Object other) => other is Executable && other.name == name;
+  final ProgramName program;
 
   @override
-  int get hashCode => name.hashCode;
+  String get name => program.value;
+
+  @override
+  Reach _reach(Args args) => Starts(program, args);
+
+  /// By [program], so a rule naming a program matches every run of it.
+  @override
+  bool operator ==(Object other) =>
+      other is Executable && other.program == program;
+
+  @override
+  int get hashCode => program.hashCode;
 
   @override
   Future<Outcome<ExecResult>>? _on(
     JourneyPath<Object?> journeyPath,
     Args args,
     Report report,
-  ) => journeyPath._driver<ProgramDriver>()?.start(this, args, report: report);
+  ) => journeyPath._driver<ProgramDriver>()?.start(
+    program,
+    args,
+    report: report,
+  );
 }
 
 /// Sends a [Request] out of the home, and gives back its [Response].
@@ -244,7 +251,7 @@ final class Writes extends Reach {
 final class Starts extends Reach {
   const Starts(this.program, this.args);
 
-  final Executable program;
+  final ProgramName program;
   final Args args;
 }
 
@@ -253,31 +260,6 @@ final class Sends extends Reach {
   const Sends(this.request);
 
   final Request request;
-}
-
-/// Operates one part of the world, for the programs that need it. A machine
-/// loads the drivers it can run: a phone's loads no [ProgramDriver].
-abstract interface class Driver {}
-
-/// Reads and writes files in the journey's working tree.
-abstract interface class FileDriver implements Driver {
-  Future<Outcome<ReadResult>> read(PathInRepo path);
-  Future<Outcome<Wrote>> write(FileText file);
-}
-
-/// Starts programs as processes, reporting what they print as they print it.
-abstract interface class ProgramDriver implements Driver {
-  Future<Outcome<ExecResult>> start(
-    Executable program,
-    Args args, {
-    required Report report,
-  });
-}
-
-/// Sends requests out of the home. Holds each provider's address and each
-/// sign-in's secret, and adds them; reports what arrives as it arrives.
-abstract interface class NetworkDriver implements Driver {
-  Future<Outcome<Response>> send(Request request, {required Report report});
 }
 
 /// One agent's own journey: the thread its runs are carried out on, with

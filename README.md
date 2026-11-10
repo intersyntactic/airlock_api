@@ -4,9 +4,9 @@ The airlock's contract. Tools describe effects; the airlock decides and
 records each one; drivers operate the world. A tool touches nothing: for
 each call it returns a `Result`, which is followed on a journey path.
 
-It depends on no package of ours. Joining an `is_tools_api` definition to
-what a tool does, and following a call to what the model is told, is
-`is_tool`'s.
+What an effect takes and gives back, and the drivers that carry it out, are
+`is_effects`'s, so a driver never sees this package. Joining an
+`is_tools_api` definition to what a tool does is `is_tool`'s.
 
 ```dart
 final dart = Executable.parse('dart')!;
@@ -42,47 +42,21 @@ while (result is Run<ExecResult>) {
 ## A run
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
-  (`Program.write`), `Executable.parse('git')` with plain `Args`, and
+  (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`), and
   `SendRequest` (`Program.send`). Programs reach drivers, so they belong with
   the drivers and the airlock to what is trusted; a new kind of effect is a
-  new driver and program here.
+  new driver and program.
 - `Run<A>`: a program, its input and the continuation, all private. Made only
   by its program, so its input is the program's own type. Outside, a run
-  shows only its `Reach` (`Reads`, `Writes`, `Starts`, `Sends`), for the
-  airlock.
-- `PathInRepo`: a path inside the repo, made only by `parse`. Reads, writes
-  and a program's folder take one. What stays inside is the text: a symlink
-  in the tree can still point out, and only a driver can refuse that.
-- `Outcome<O>`: `Ran(output)` or `Refused(why)`.
-
-## What leaves the home
+  shows only its `Reach`, for the airlock: `Reads(path)`, `Writes(file)`,
+  `Starts(program, args)` (with where it says it will send, in
+  `args.leavesTo`), or `Sends(request)`.
 
 A journey path's rules are written by direction: what may leave the home, to
-where, and through which sign-in. So a `Destination` names what is on the
-other end, not a bare address:
-
-- `ProviderApi(provider, signIn)`: a provider's API under one of the
-  person's sign-ins, by name. The secret is the network driver's, and never
-  reaches a tool or the record.
-- `SelfRunModel.parse(address)`: a model the person runs, with no secret.
-- `Web.parse(site)`: anywhere else, as a site alone (`https://example.com`);
-  the path and query are the request's, so a rule naming a site covers
-  every request to it by `==`.
-
-Destinations, providers, sign-ins and programs (`Executable`, by name) all
-compare by value, so a rule matches a run with `==`. A `Decision` says who
-made it, `DecidedBy.rules` or `DecidedBy.person`, so the record tells "the
-rules let it through" from "the person said yes"; a stopped journey path's
-refusal is the person's.
-
-`Program.send` sends a `Request` (destination, method, path, headers, body)
-and gives back a `Response`. Its body is in the record, since it is what
-left. A request whose headers name a credential is an `ArgumentError`.
-
-A started program can say where it will send, in `Args.leavesTo`, such as a
-model's CLI sending to its provider; the airlock decides on that as it does
-on a send. Where a journey path requires containment, the journey's OS user
-is let reach only those.
+where, and through which sign-in. A `Sends` names its destination by what is
+on the other end, and its request's body is in the record, since it is what
+left. The airlock trusts a start's `leavesTo`; where a journey path requires
+containment, the journey's OS user is let reach only those.
 
 ## A journey path
 
@@ -109,18 +83,17 @@ is on, acting as the journey's user.
   a driver reached; the airlock records what became of it (`Settled`) and
   only then does the continuation see it. A record that cannot be written
   ends the call. A `Decided` with no `Settled` is a run cut short.
+- A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
+  `DecidedBy.rules` or `DecidedBy.person`; a stopped journey path's refusal
+  is the person's.
 - `stop()`: refuses every run not yet carried out, on this journey path and
   every one narrowed from it. A run whose driver has been reached is not
   interrupted.
 - `entries`: each entry once recorded. `underway`: what drivers report while
-  a run is underway (`Printed` for a program's output, `Received` for what
-  arrives from a send), for a live view, and not recorded. Both come from
-  this journey path and every one narrowed from it, each naming its journey
-  path.
+  a run is underway, for a live view, and not recorded. Both come from this
+  journey path and every one narrowed from it, each naming its journey path.
 - `Airlock<R>`: `decide`, `narrows` and `record`, implemented by
   intersyntactic's airlock.
-- `Args.timeout` and `Args.silenceLimit`: per run; null leaves the driver's
-  own.
 
 ## What the contract does not promise
 
@@ -130,5 +103,5 @@ outside it. So "every effect through these drivers is recorded" holds, and
 "every effect in the journey is recorded" is not this package's to promise;
 the journey's rules bound our journey paths, not anyone else's.
 
-The library imports `path` and nothing else outside the SDK; a test reads
-every directive's URI from Dart's parse tree and holds it to that.
+The library imports `is_effects` and nothing else outside the SDK; a test
+reads every directive's URI from Dart's parse tree and holds it to that.

@@ -9,7 +9,7 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
-  path: ^1.9.1
+  is_effects: ^0.1.0
 
 dev_dependencies:
   analyzer: ^14.7.0
