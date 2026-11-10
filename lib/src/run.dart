@@ -265,10 +265,14 @@ final class JourneyPath<R> {
   /// A journey path named [id], under [fewer] rules, on the same drivers and
   /// airlock, or null when the airlock finds [fewer] allows more than
   /// [rules]. Stopped when this one is.
-  JourneyPath<R>? narrowed(R fewer, {required JourneyPathId id}) =>
-      _airlock.narrows(fewer, rules)
-      ? JourneyPath._(id, fewer, _airlock, _drivers, this)
-      : null;
+  ///
+  /// Recorded either way, as a [Narrowed] entry of this journey path, before
+  /// the new one exists; a refusal is an attempt to widen, and is kept.
+  Future<JourneyPath<R>?> narrowed(R fewer, {required JourneyPathId id}) async {
+    final granted = _airlock.narrows(fewer, rules);
+    await _record(Narrowed(this.id, id, fewer, granted: granted));
+    return granted ? JourneyPath._(id, fewer, _airlock, _drivers, this) : null;
+  }
 
   /// Refuses every run not yet carried out, on this journey path and every
   /// one narrowed from it. A run whose driver has already been reached is
@@ -366,26 +370,43 @@ final class JourneyPathId {
 }
 
 /// One entry in a journey path's record: [Decided] before a run, [Settled]
-/// after it.
+/// after it, and [Narrowed] when it asks for a narrower journey path.
 sealed class Entry {
-  const Entry(this.journeyPathId, this.run);
+  const Entry(this.journeyPathId);
 
-  /// The journey path [run] was carried out on.
+  /// The journey path this entry is of.
   final JourneyPathId journeyPathId;
-  final Run<Object?> run;
 }
 
 /// [run] was decided, and no driver has been reached yet. Without a
 /// [Settled] entry after it, the record shows the run was cut short.
 final class Decided extends Entry {
-  const Decided(super.journeyPathId, super.run, this.decision);
+  const Decided(super.journeyPathId, this.run, this.decision);
 
+  final Run<Object?> run;
   final Decision decision;
 }
 
 /// What became of [run].
 final class Settled extends Entry {
-  const Settled(super.journeyPathId, super.run, this.outcome);
+  const Settled(super.journeyPathId, this.run, this.outcome);
 
+  final Run<Object?> run;
   final Outcome<Object?> outcome;
+}
+
+/// A journey path named [child] was asked for under [rules], and [granted]
+/// when the airlock found they allow no more than this one's. The record's
+/// tree of journey paths is these entries.
+final class Narrowed<R> extends Entry {
+  const Narrowed(
+    super.journeyPathId,
+    this.child,
+    this.rules, {
+    required this.granted,
+  });
+
+  final JourneyPathId child;
+  final R rules;
+  final bool granted;
 }

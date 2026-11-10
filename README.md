@@ -73,8 +73,11 @@ is on, acting as the journey's user.
 - `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the host. Holding
   the drivers is already the power to touch the world, so starting a journey
   path grants nothing new.
-- `narrowed(fewer, id:)`: a journey path under rules the airlock finds allow
-  no more; null otherwise. Everyone but the host gets journey paths this way.
+- `await narrowed(fewer, id:)`: a journey path under rules the airlock finds
+  allow no more; null otherwise. Everyone but the host gets journey paths
+  this way. Recorded either way, as a `Narrowed` entry, before the new one
+  exists: the record's tree of journey paths is these entries, and a refusal
+  is an attempt to widen.
 - `JourneyPathId`: given by whoever starts or narrows a journey path, and
   carried by every entry it records, so a record that outlives the objects
   still says which journey path each run was on.
