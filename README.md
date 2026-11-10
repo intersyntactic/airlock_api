@@ -65,7 +65,15 @@ other end, not a bare address:
   person's sign-ins, by name. The secret is the network driver's, and never
   reaches a tool or the record.
 - `SelfRunModel.parse(address)`: a model the person runs, with no secret.
-- `Web.parse(url)`: anywhere else.
+- `Web.parse(site)`: anywhere else, as a site alone (`https://example.com`);
+  the path and query are the request's, so a rule naming a site covers
+  every request to it by `==`.
+
+Destinations, providers, sign-ins and programs (`Executable`, by name) all
+compare by value, so a rule matches a run with `==`. A `Decision` says who
+made it, `DecidedBy.rules` or `DecidedBy.person`, so the record tells "the
+rules let it through" from "the person said yes"; a stopped journey path's
+refusal is the person's.
 
 `Program.send` sends a `Request` (destination, method, path, headers, body)
 and gives back a `Response`. Its body is in the record, since it is what

@@ -114,24 +114,29 @@ final class SelfRunModel extends Destination {
   int get hashCode => address.hashCode;
 }
 
-/// Anywhere else, at [url], under no sign-in.
+/// Anywhere else, at the site [origin], under no sign-in.
+///
+/// The site alone: what is asked of it, path and query, is the [Request]'s.
+/// So a rule naming a site covers every request to it by plain `==`.
 final class Web extends Destination {
-  const Web._(this.url);
+  const Web._(this.origin);
 
-  /// [raw] as an http(s) URL with a host, and no credentials or fragment, or
-  /// null when it is not one.
+  /// [raw] as an http(s) site, such as `https://graph.microsoft.com`, or
+  /// null when it is not one or carries credentials, a path, a query or a
+  /// fragment.
   static Web? parse(String raw) => switch (_http(raw)) {
-    final uri? => Web._(uri),
-    null => null,
+    final uri? when (uri.path.isEmpty || uri.path == '/') && !uri.hasQuery =>
+      Web._(Uri(scheme: uri.scheme, host: uri.host, port: uri.port)),
+    _ => null,
   };
 
-  final Uri url;
+  final Uri origin;
 
   @override
-  bool operator ==(Object other) => other is Web && other.url == url;
+  bool operator ==(Object other) => other is Web && other.origin == origin;
 
   @override
-  int get hashCode => url.hashCode;
+  int get hashCode => origin.hashCode;
 }
 
 Uri? _http(String raw) {

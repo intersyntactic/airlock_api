@@ -103,7 +103,7 @@ sealed class Program<I, O> {
   static const write = WriteFile();
   static const send = SendRequest();
 
-  /// For the model and the record; never compared.
+  /// For the model and the record; an [Executable] is compared by it.
   String get name;
 
   /// A run of this program on [input], continuing with [then].
@@ -188,6 +188,13 @@ final class Executable extends Program<Args, ExecResult> {
 
   @override
   Reach _reach(Args args) => Starts(this, args);
+
+  /// By [name], so a rule naming a program matches every run of it.
+  @override
+  bool operator ==(Object other) => other is Executable && other.name == name;
+
+  @override
+  int get hashCode => name.hashCode;
 
   @override
   Future<Outcome<ExecResult>>? _on(
@@ -362,10 +369,11 @@ final class JourneyPath<R> {
   D? _driver<D extends Driver>() => _drivers.whereType<D>().firstOrNull;
 
   Future<Outcome<O>> _carryOut<I, O>(_Run<I, O, Object?> run) async {
+    const stoppedByPerson = Deny('stopped', by: DecidedBy.person);
     var decision = stopped
-        ? const Deny('stopped')
+        ? stoppedByPerson
         : await _airlock.decide(run, rules);
-    if (stopped) decision = const Deny('stopped');
+    if (stopped) decision = stoppedByPerson;
     await _record(Decided(id, run, decision));
     final Outcome<O> outcome = switch (decision) {
       Deny(:final why) => Refused(why),
@@ -408,20 +416,32 @@ abstract interface class Airlock<R> {
   Future<void> record(Entry entry);
 }
 
-/// What the [Airlock] decided about one run.
+/// What the [Airlock] decided about one run, and [by] whom, so the record
+/// tells "the rules let it through" from "the person said yes".
 sealed class Decision {
-  const Decision();
+  const Decision({required this.by});
+
+  final DecidedBy by;
+}
+
+/// Who made a [Decision].
+enum DecidedBy {
+  /// The journey path's rules settled it.
+  rules,
+
+  /// The person was asked, or stopped the journey path.
+  person,
 }
 
 /// The run may be carried out.
 final class Allow extends Decision {
-  const Allow();
+  const Allow({required super.by});
 }
 
 /// The run is not carried out, because [why]; its continuation is handed
 /// [Refused] with that reason.
 final class Deny extends Decision {
-  const Deny(this.why);
+  const Deny(this.why, {required super.by});
 
   final String why;
 }

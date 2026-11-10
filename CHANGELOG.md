@@ -15,7 +15,9 @@ Breaking.
   and `execResultOutput`), so a host can take this up before its tools move
   to `is_tools_api` 0.2.
 - `Executable.parse` replaces `Executable(name)`: a blank name, or one with
-  whitespace, is null.
+  whitespace, is null. Executables compare by name.
+- `Allow` and `Deny` take `by: DecidedBy.rules` or `DecidedBy.person`, so
+  the record tells the rules' decision from the person's.
 - Drivers report while a run is underway (`Printed`, `Received`), on
   `JourneyPath.underway`; `ProgramDriver.start` takes a `report`.
 - `Args.timeout` and `Args.silenceLimit`, per run.
