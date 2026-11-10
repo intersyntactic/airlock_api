@@ -5,6 +5,9 @@ import 'package:path/path.dart' as p;
 ///
 /// A class, not an extension type, so no `String` can be cast to one: the
 /// only way to get one is [parse].
+///
+/// What stays inside is the text. A symlink inside the tree can still point
+/// outside it, and only a driver, which sees the disk, can refuse that.
 final class PathInRepo {
   const PathInRepo._(this.value);
 

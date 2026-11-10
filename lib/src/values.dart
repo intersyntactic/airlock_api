@@ -1,5 +1,3 @@
-import 'package:is_tools_api/is_tools_api.dart';
-
 import 'path_in_repo.dart';
 
 /// What became of a run.
@@ -34,7 +32,14 @@ final class FileText {
 
 /// What a started program is given.
 final class Args {
-  const Args(this.args, {this.stdin, this.inFolder = PathInRepo.root});
+  const Args(
+    this.args, {
+    this.stdin,
+    this.inFolder = PathInRepo.root,
+    this.timeout,
+    this.silenceLimit,
+    this.leavesTo = const [],
+  });
 
   final List<String> args;
 
@@ -44,7 +49,231 @@ final class Args {
 
   /// The folder it runs in.
   final PathInRepo inFolder;
+
+  /// How long it may run before it is killed; null for the driver's own.
+  final Duration? timeout;
+
+  /// How long it may print nothing before it is killed; null for the
+  /// driver's own.
+  final Duration? silenceLimit;
+
+  /// Where it says it will send things out of the home, such as a model's
+  /// CLI sending to its provider. The airlock decides on these as it does on
+  /// a [Request]'s destination. Where a journey path requires containment,
+  /// the journey's OS user is let reach these and no others; elsewhere it is
+  /// what the program says, not a limit.
+  final List<Destination> leavesTo;
 }
+
+/// Where a run sends something out of the home.
+///
+/// Named by what is on the other end, as a journey path's rules name it,
+/// not by a bare address: a provider's API under one of the person's
+/// sign-ins, a model the person runs, or the open web.
+sealed class Destination {
+  const Destination();
+}
+
+/// [provider]'s API, under the person's sign-in named [signIn]. The driver
+/// holds the provider's address and the sign-in's secret.
+final class ProviderApi extends Destination {
+  const ProviderApi(this.provider, this.signIn);
+
+  final Provider provider;
+  final SignIn signIn;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProviderApi &&
+      other.provider == provider &&
+      other.signIn == signIn;
+
+  @override
+  int get hashCode => Object.hash(provider, signIn);
+}
+
+/// A model the person runs themselves, reached at [address], with no
+/// secret.
+final class SelfRunModel extends Destination {
+  const SelfRunModel._(this.address);
+
+  /// [raw] as an http(s) address with a host, and no credentials, query or
+  /// fragment, or null when it is not one.
+  static SelfRunModel? parse(String raw) => switch (_http(raw)) {
+    final uri? when !uri.hasQuery => SelfRunModel._(uri),
+    _ => null,
+  };
+
+  final Uri address;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SelfRunModel && other.address == address;
+
+  @override
+  int get hashCode => address.hashCode;
+}
+
+/// Anywhere else, at [url], under no sign-in.
+final class Web extends Destination {
+  const Web._(this.url);
+
+  /// [raw] as an http(s) URL with a host, and no credentials or fragment, or
+  /// null when it is not one.
+  static Web? parse(String raw) => switch (_http(raw)) {
+    final uri? => Web._(uri),
+    null => null,
+  };
+
+  final Uri url;
+
+  @override
+  bool operator ==(Object other) => other is Web && other.url == url;
+
+  @override
+  int get hashCode => url.hashCode;
+}
+
+Uri? _http(String raw) {
+  final uri = Uri.tryParse(raw.trim());
+  if (uri == null ||
+      !(uri.scheme == 'http' || uri.scheme == 'https') ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasFragment) {
+    return null;
+  }
+  return uri;
+}
+
+/// A service whose API a run can send to, such as `anthropic`.
+final class Provider {
+  const Provider._(this.id);
+
+  /// [raw] as a provider, or null unless it is lowercase letters, digits,
+  /// `-` and `_`.
+  static Provider? parse(String raw) =>
+      _name.hasMatch(raw) ? Provider._(raw) : null;
+
+  final String id;
+
+  @override
+  bool operator ==(Object other) => other is Provider && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => id;
+}
+
+/// One of the person's sign-ins, by name, such as `team-claude-code`. Never
+/// the secret: the driver holds that, so it reaches neither a tool nor the
+/// record.
+final class SignIn {
+  const SignIn._(this.name);
+
+  /// [raw] as a sign-in's name, or null unless it is lowercase letters,
+  /// digits, `-` and `_`.
+  static SignIn? parse(String raw) =>
+      _name.hasMatch(raw) ? SignIn._(raw) : null;
+
+  final String name;
+
+  @override
+  bool operator ==(Object other) => other is SignIn && other.name == name;
+
+  @override
+  int get hashCode => name.hashCode;
+
+  @override
+  String toString() => name;
+}
+
+final _name = RegExp(r'^[a-z0-9][a-z0-9_-]*$');
+
+/// What a [Request] asks of its destination.
+enum Method { get, post, put, patch, delete }
+
+/// Something sent out of the home, to [to].
+///
+/// [path] is appended to the destination's address. [headers] never carry
+/// a credential: the sign-in's secret is the driver's to add, so a request
+/// naming `authorization`, `proxy-authorization`, `cookie` or `x-api-key`
+/// is an [ArgumentError].
+final class Request {
+  Request(
+    this.to, {
+    this.method = Method.get,
+    this.path = '',
+    Map<String, String> headers = const {},
+    this.body,
+  }) : headers = Map.unmodifiable(headers) {
+    for (final name in headers.keys) {
+      if (_credentialHeaders.contains(name.toLowerCase())) {
+        throw ArgumentError.value(
+          name,
+          'headers',
+          "carries a credential, which is the sign-in's",
+        );
+      }
+    }
+  }
+
+  final Destination to;
+  final Method method;
+  final String path;
+  final Map<String, String> headers;
+
+  /// What leaves the home, for the record as well as the destination.
+  final String? body;
+}
+
+const _credentialHeaders = {
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+  'x-api-key',
+};
+
+/// What came back from a [Request].
+final class Response {
+  const Response({
+    required this.status,
+    this.headers = const {},
+    required this.body,
+  });
+
+  final int status;
+  final Map<String, String> headers;
+  final String body;
+}
+
+/// What a driver reports while a run is underway, before its outcome.
+sealed class Progress {
+  const Progress();
+}
+
+/// A started program printed [text] on [channel].
+final class Printed extends Progress {
+  const Printed(this.channel, this.text);
+
+  final Channel channel;
+  final String text;
+}
+
+enum Channel { stdout, stderr }
+
+/// [text] arrived from a [Request]'s destination, such as a streamed model
+/// reply.
+final class Received extends Progress {
+  const Received(this.text);
+
+  final String text;
+}
+
+/// Where a driver reports [Progress] for the run it is carrying out.
+typedef Report = void Function(Progress progress);
 
 /// What a read found.
 sealed class ReadResult {
@@ -83,9 +312,6 @@ final class ExecResult {
     this.silentFor,
   });
 
-  /// [forModel], as a tool's definition renders an [ExecResult] answer.
-  static const output = Output<ExecResult>(_forModel);
-
   final int exitCode;
   final String stdout;
   final String stderr;
@@ -116,5 +342,3 @@ final class ExecResult {
     return b.toString();
   }
 }
-
-String _forModel(ExecResult result) => result.forModel;

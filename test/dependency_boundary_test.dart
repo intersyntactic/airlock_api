@@ -40,11 +40,7 @@ bool _allowed(String target) {
   final uri = Uri.parse(target);
   return switch (uri.scheme) {
     'dart' => _allowedSdk.contains(target),
-    'package' => const {
-      'checked_json',
-      'is_tools_api',
-      'path',
-    }.contains(uri.pathSegments.first),
+    'package' => uri.pathSegments.first == 'path',
     '' => !uri.isAbsolute && !uri.pathSegments.contains('..'),
     _ => false,
   };

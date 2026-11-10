@@ -21,8 +21,8 @@ sealed class Result<A> {
 
 /// Run a program on an input, then continue with what became of the run.
 ///
-/// The one effect a tool can describe. A read, a write and `git diff` are all
-/// runs, of one of three programs.
+/// The one effect a tool can describe. A read, a write, `git diff` and a
+/// model call are all runs, of one of four programs.
 ///
 /// The continuation travels with the run, not in the tool, so one tool can
 /// serve concurrent calls without keeping state for any of them. It is
@@ -92,14 +92,16 @@ final class Failed extends Result<Never> {
 /// A program a run may carry out: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile] and [Executable]. Programs reach
-/// drivers, so they are part of what is trusted, with the drivers and the
-/// airlock; a new kind of effect is a new driver and program here.
+/// A closed set: [ReadFile], [WriteFile], [Executable] and [SendRequest].
+/// Programs reach drivers, so they are part of what is trusted, with the
+/// drivers and the airlock; a new kind of effect is a new driver and program
+/// here.
 sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
   static const write = WriteFile();
+  static const send = SendRequest();
 
   /// For the model and the record; never compared.
   String get name;
@@ -126,9 +128,13 @@ sealed class Program<I, O> {
 
   Reach _reach(I input);
 
-  /// [input] performed by [journeyPath]'s driver for this program, or null
-  /// when it has none.
-  Future<Outcome<O>>? _on(JourneyPath<Object?> journeyPath, I input);
+  /// [input] performed by [journeyPath]'s driver for this program, reporting
+  /// to [report] while it runs, or null when it has none.
+  Future<Outcome<O>>? _on(
+    JourneyPath<Object?> journeyPath,
+    I input,
+    Report report,
+  );
 }
 
 /// Reads the file at a path in the repo.
@@ -145,6 +151,7 @@ final class ReadFile extends Program<PathInRepo, ReadResult> {
   Future<Outcome<ReadResult>>? _on(
     JourneyPath<Object?> journeyPath,
     PathInRepo path,
+    Report report,
   ) => journeyPath._driver<FileDriver>()?.read(path);
 }
 
@@ -162,13 +169,19 @@ final class WriteFile extends Program<FileText, Wrote> {
   Future<Outcome<Wrote>>? _on(
     JourneyPath<Object?> journeyPath,
     FileText file,
+    Report report,
   ) => journeyPath._driver<FileDriver>()?.write(file);
 }
 
 /// A program started as a process, such as `git`: its input is plain
 /// arguments, and it reaches whatever the process can.
 final class Executable extends Program<Args, ExecResult> {
-  const Executable(this.name);
+  const Executable._(this.name);
+
+  /// [raw] as a program's name, or null when it is blank or holds
+  /// whitespace: `git status` is `git` with an argument.
+  static Executable? parse(String raw) =>
+      raw.isEmpty || raw.contains(RegExp(r'\s')) ? null : Executable._(raw);
 
   @override
   final String name;
@@ -180,7 +193,26 @@ final class Executable extends Program<Args, ExecResult> {
   Future<Outcome<ExecResult>>? _on(
     JourneyPath<Object?> journeyPath,
     Args args,
-  ) => journeyPath._driver<ProgramDriver>()?.start(this, args);
+    Report report,
+  ) => journeyPath._driver<ProgramDriver>()?.start(this, args, report: report);
+}
+
+/// Sends a [Request] out of the home, and gives back its [Response].
+final class SendRequest extends Program<Request, Response> {
+  const SendRequest();
+
+  @override
+  String get name => 'send';
+
+  @override
+  Reach _reach(Request request) => Sends(request);
+
+  @override
+  Future<Outcome<Response>>? _on(
+    JourneyPath<Object?> journeyPath,
+    Request request,
+    Report report,
+  ) => journeyPath._driver<NetworkDriver>()?.send(request, report: report);
 }
 
 /// What a run would do to the world, typed, so the airlock can decide and
@@ -201,11 +233,19 @@ final class Writes extends Reach {
   final FileText file;
 }
 
+/// A process started; where it says it will send is [Args.leavesTo].
 final class Starts extends Reach {
   const Starts(this.program, this.args);
 
   final Executable program;
   final Args args;
+}
+
+/// [request] sent out of the home, to [Request.to].
+final class Sends extends Reach {
+  const Sends(this.request);
+
+  final Request request;
 }
 
 /// Operates one part of the world, for the programs that need it. A machine
@@ -218,9 +258,19 @@ abstract interface class FileDriver implements Driver {
   Future<Outcome<Wrote>> write(FileText file);
 }
 
-/// Starts programs as processes.
+/// Starts programs as processes, reporting what they print as they print it.
 abstract interface class ProgramDriver implements Driver {
-  Future<Outcome<ExecResult>> start(Executable program, Args args);
+  Future<Outcome<ExecResult>> start(
+    Executable program,
+    Args args, {
+    required Report report,
+  });
+}
+
+/// Sends requests out of the home. Holds each provider's address and each
+/// sign-in's secret, and adds them; reports what arrives as it arrives.
+abstract interface class NetworkDriver implements Driver {
+  Future<Outcome<Response>> send(Request request, {required Report report});
 }
 
 /// One agent's own journey: the thread its runs are carried out on, with
@@ -265,6 +315,7 @@ final class JourneyPath<R> {
   /// shared by all of them.
   final Set<JourneyPathId> _issued;
   final _entries = StreamController<Entry>.broadcast(sync: true);
+  final _underway = StreamController<Underway>.broadcast(sync: true);
   bool _stopped = false;
 
   /// A journey path named [id], under [fewer] rules, on the same drivers and
@@ -304,6 +355,10 @@ final class JourneyPath<R> {
   /// every one narrowed from it.
   Stream<Entry> get entries => _entries.stream;
 
+  /// What drivers report while runs are underway, from this journey path and
+  /// every one narrowed from it: for a live view, and not recorded.
+  Stream<Underway> get underway => _underway.stream;
+
   D? _driver<D extends Driver>() => _drivers.whereType<D>().firstOrNull;
 
   Future<Outcome<O>> _carryOut<I, O>(_Run<I, O, Object?> run) async {
@@ -315,7 +370,12 @@ final class JourneyPath<R> {
     final Outcome<O> outcome = switch (decision) {
       Deny(:final why) => Refused(why),
       Allow() =>
-        await run._program._on(this, run._input) ??
+        await run._program._on(this, run._input, (progress) {
+              final underway = Underway(id, run, progress);
+              for (JourneyPath<R>? p = this; p != null; p = p._parent) {
+                p._underway.add(underway);
+              }
+            }) ??
             Refused('this machine cannot run ${run._program.name}'),
     };
     await _record(Settled(id, run, outcome));
@@ -416,6 +476,16 @@ final class Settled extends Entry {
 
   final Run<Object?> run;
   final Outcome<Object?> outcome;
+}
+
+/// What a driver reported, [progress], while [run] was underway on the
+/// journey path named [journeyPathId].
+final class Underway {
+  const Underway(this.journeyPathId, this.run, this.progress);
+
+  final JourneyPathId journeyPathId;
+  final Run<Object?> run;
+  final Progress progress;
 }
 
 /// A journey path named [child] was asked for under [rules], and [granted]

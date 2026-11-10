@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0
+
+Breaking.
+
+- What leaves the home: `SendRequest` (`Program.send`), its `Request` and
+  `Response`, the `Sends` reach and `NetworkDriver`. A `Destination` names
+  what is on the other end (`ProviderApi` under a named `SignIn`,
+  `SelfRunModel`, `Web`), as rules written by direction name it; a sign-in's
+  secret is the driver's. `Args.leavesTo` says where a started program will
+  send, and the airlock decides on it.
+- Depends on no package of ours: `Tool`, `answeredBy`, `Reply` and
+  `ExecResult.output` move to `is_tool` (as `Answer`, `answeredBy`, `Reply`
+  and `execResultOutput`), so a host can take this up before its tools move
+  to `is_tools_api` 0.2.
+- `Executable.parse` replaces `Executable(name)`: a blank name, or one with
+  whitespace, is null.
+- Drivers report while a run is underway (`Printed`, `Received`), on
+  `JourneyPath.underway`; `ProgramDriver.start` takes a `report`.
+- `Args.timeout` and `Args.silenceLimit`, per run.
+- `PathInRepo` says that what stays inside the repo is the text, not where a
+  symlink points.
+
 ## 0.1.0
 
 - First release: `Result` (`Run`, `Done`, `Failed`), the closed set of
