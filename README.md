@@ -2,7 +2,7 @@
 
 The airlock's contract. Tools describe effects; the airlock decides and
 records each one; drivers operate the world. A tool's code touches nothing:
-for each call it returns a `Result` the airlock follows.
+for each call it returns a `Result`, which is followed on a journey path.
 
 ```dart
 const dart = Executable('dart');
@@ -13,47 +13,88 @@ final writeAndFormat = ToolSpec<FileText, ExecResult>(
   input: Input.fields2(
     Field('path', Schema.string()),
     Field('text', Schema.string()),
-    FileText.new,
+    (String path, String text) => FileText(PathInRepo.parse(path)!, text),
   ),
   output: ExecResult.output,
 ).answeredBy(
   (file) => Program.write.runOrRefusal(
     file,
     then: (wrote) =>
-        dart.runOrRefusal(Args(['format', file.path]), then: Done.new),
+        dart.runOrRefusal(Args(['format', file.path.value]), then: Done.new),
   ),
 );
+
+// The host, which holds the drivers:
+final journeyPath = JourneyPath.start(
+  drivers: [files, programs],
+  airlock: airlock,
+  rules: rules,
+);
+final reply = await writeAndFormat.reply(input, journeyPath);
+// reply.forModel, reply.isError: the call's tool result.
 ```
 
-- `Result<A>`: what a tool's code returns for a call, where `A` is the tool's
-  output type. `Run` (do this, then hand what happened to the continuation),
-  `Done(value)` (the answer, rendered for the model by the definition's
-  `Output`), or `Failed(why)` (it couldn't; the model is told `why` as an
-  error). `Failed` is a `Result<Never>`, so one `Failed` fits every tool.
+## A call
+
+- `Result<A>`: what a tool's code returns, where `A` is the tool's output
+  type. `Run` (do this, then hand what happened to the continuation),
+  `Done(value)` (the answer), or `Failed(why)` (it couldn't). `Failed` is a
+  `Result<Never>`, so one fits every tool.
 - `answeredBy`: attaches code to an `is_tools_api` `ToolSpec<I, O>`, giving a
   `Tool<I, O>`. The code must take the definition's `I` and answer with its
   `O`, or it does not compile.
-- `Run<A>`: a program, its input, and the continuation. Made only by its
-  program (`Program.run`, `Program.runOrRefusal`), so its input is the
-  program's own type; typed outside only by the answer it leads to, so a
-  switch over a `Result` covers every run with `case Run()`.
-- `Run.next(home, airlock)`: the only way to carry out a run. The `Airlock`
-  decides it (`Allow` or `Deny(why)`); an allowed run is handed to its
-  program with a `Cleared`, which only `next` can make; the airlock records
-  the outcome, a refusal included; then the continuation gets it. A `Home`'s
-  drivers are reached only through `Cleared`, so holding a home carries out
-  nothing.
-- `Airlock`: `decide` and `record`, implemented by intersyntactic's airlock.
-- `Program<I, O>`: open, so anyone may define one. Here are `ReadFile`
-  (`Program.read`), `WriteFile` (`Program.write`) and `Executable('git')`,
-  which takes plain `Args`.
-- `Outcome<O>`: `Ran(output)` or `Refused(why)`. `Refused` is an
-  `Outcome<Never>`, so a switch over the two is exhaustive.
-- `ExecResult`: what a started process did, and `ExecResult.output` to render
-  it. One that never started is `Refused`, not an `ExecResult`.
+- `Tool.reply(json, journeyPath)`: reads the input with the definition,
+  follows the runs on the journey path, and renders `Done` with the
+  definition's `Output`. An input the definition refuses, and a `Failed`, are
+  replies with `isError`.
 
-The loop that follows a call's result to its answer is the airlock's, not
-this package's.
+## A run
 
-The library imports `is_tools_api` and nothing else; a test reads every
-directive's URI from Dart's parse tree and holds it to that.
+- `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
+  (`Program.write`) and `Executable('git')` with plain `Args`. Programs reach
+  drivers, so they belong with the drivers and the airlock to what is
+  trusted; a new kind of effect is a new driver and program here.
+- `Run<A>`: a program, its input and the continuation, all private. Made only
+  by its program, so its input is the program's own type. Outside, a run
+  shows only its `Reach` (`Reads`, `Writes`, `Starts`), for the airlock.
+- `PathInRepo`: a path inside the repo, never leaving it, made only by
+  `parse`. Reads, writes and a program's folder take one, so a path out of
+  the repo never reaches a driver.
+- `Outcome<O>`: `Ran(output)` or `Refused(why)`.
+
+## A journey path
+
+One agent's own journey: its rules, and the drivers and airlock of the
+machine it is on (its apex), acting as the journey's user.
+
+- `JourneyPath.start(drivers:, airlock:, rules:)`: by the host. Holding the
+  drivers is already the power to touch the world, so starting a journey
+  path grants nothing new.
+- `narrowed(fewer)`: a journey path under rules the airlock finds allow no
+  more; null otherwise. Everyone but the host gets journey paths this way.
+- `run.next(journeyPath)`, the only way to carry out a run: the airlock
+  decides it; the airlock records the decision (`Decided`) and only then is
+  a driver reached; the airlock records what became of it (`Settled`) and
+  only then does the continuation see it. A record that cannot be written
+  ends the call, so no driver is reached without a recorded decision and no
+  outcome flows on unrecorded. A `Decided` with no `Settled` is a run cut
+  short.
+- `stop()`: refuses every run not yet carried out, on this journey path and
+  every one narrowed from it. A run whose driver has been reached is not
+  interrupted.
+- `entries`: each entry once recorded, from this journey path and every one
+  narrowed from it, for a live view.
+- `Airlock<R>`: `decide`, `narrows` and `record`, implemented by
+  intersyntactic's airlock.
+
+## What the contract does not promise
+
+An airlock guards the drivers it is started with, not the journey. An agent
+that joins a journey with its own drivers and its own airlock, or none, is
+outside it. So "every effect through these drivers is recorded" holds, and
+"every effect in the journey is recorded" is not this package's to promise;
+the journey's rules bound our journey paths, not anyone else's.
+
+The library imports `is_tools_api`, `checked_json` and `path`, and no
+runner, tool, client or effect; a test reads every directive's URI from
+Dart's parse tree and holds it to that.

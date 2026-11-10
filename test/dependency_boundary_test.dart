@@ -51,7 +51,7 @@ bool _allowed(String target) {
 }
 
 void main() {
-  test('the contract imports is_tools_api, and no runner, tool or effect', () {
+  test('the contract imports no runner, tool, client or effect', () {
     final violations = <String>[];
     for (final file in Directory(
       'lib',

@@ -1,14 +1,15 @@
-import 'package:is_tools_api/is_tools_api.dart';
+import 'dart:async';
 
 import 'path_in_repo.dart';
+import 'values.dart';
 
 /// What a tool's code returns for a call: a run whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
 /// type of the answer, the tool's output type.
 ///
-/// A tool holds no driver and touches nothing. The airlock follows its
-/// result: it decides each run, has it carried out, records it, and gives
-/// what became of it to the run's continuation. So a tool can describe
+/// A tool holds no driver and touches nothing. Its result is followed on a
+/// [JourneyPath], which has each run decided, recorded and carried out, and
+/// gives what became of it to the run's continuation. So a tool can describe
 /// nothing a run cannot express.
 ///
 /// Not an [Outcome], which is what happened to one run. A [Run] never reaches
@@ -18,11 +19,10 @@ sealed class Result<A> {
   const Result();
 }
 
-/// Run [program] on [input], then continue with what became of the run.
+/// Run a program on an input, then continue with what became of the run.
 ///
 /// The one effect a tool can describe. A read, a write and `git diff` are all
-/// runs, of different programs, so a new program is a new [Program] and this
-/// class does not change.
+/// runs, of one of three programs.
 ///
 /// The continuation travels with the run, not in the tool, so one tool can
 /// serve concurrent calls without keeping state for any of them. It is
@@ -37,17 +37,19 @@ sealed class Result<A> {
 abstract final class Run<A> extends Result<A> {
   const Run._();
 
-  /// For the airlock's decision and record.
-  Program<Object?, Object?> get program;
-  Object? get input;
+  /// What this run would do to the world, for the airlock's decision and
+  /// record.
+  Reach get reach;
 
-  /// This run decided by [airlock], carried out on [home] if it allowed it,
-  /// recorded by [airlock], and the result it leads to.
+  /// This run carried out on [journeyPath], and the result it leads to.
   ///
-  /// The only way to carry out a run: no decision, no driver, and every
-  /// outcome is recorded before the continuation sees it, a refusal
-  /// included.
-  Future<Result<A>> next(Home home, Airlock airlock);
+  /// The only way to carry out a run. The journey path's airlock decides it,
+  /// and records the decision before any driver is reached; an allowed run
+  /// is carried out by a driver of the journey path; the airlock records
+  /// what became of it before the continuation sees it. If either record
+  /// cannot be written, its error ends the call: no driver is reached
+  /// without a recorded decision, and no outcome flows on unrecorded.
+  Future<Result<A>> next(JourneyPath<Object?> journeyPath);
 }
 
 /// A [Run] of a [Program] taking [I] and giving [O].
@@ -57,25 +59,18 @@ abstract final class Run<A> extends Result<A> {
 /// by side, inference would widen [I] to fit both, and a [WriteFile] given a
 /// `String` would compile.
 final class _Run<I, O, A> extends Run<A> {
-  const _Run(this.program, this.input, this._then) : super._();
+  const _Run(this._program, this._input, this._then) : super._();
 
-  @override
-  final Program<I, O> program;
-  @override
-  final I input;
+  final Program<I, O> _program;
+  final I _input;
   final Result<A> Function(Outcome<O> outcome) _then;
 
   @override
-  Future<Result<A>> next(Home home, Airlock airlock) async {
-    final Outcome<O> outcome = switch (await airlock.decide(this)) {
-      Deny(:final why) => Refused(why),
-      Allow() =>
-        await program.on(Cleared._(home), input) ??
-            Refused('this home cannot run ${program.name}'),
-    };
-    await airlock.record(this, outcome);
-    return _then(outcome);
-  }
+  Reach get reach => _program._reach(_input);
+
+  @override
+  Future<Result<A>> next(JourneyPath<Object?> journeyPath) async =>
+      _then(await journeyPath._carryOut(this));
 }
 
 /// The tool's answer. [value] reaches the model as its definition's
@@ -94,65 +89,13 @@ final class Failed extends Result<Never> {
   final String why;
 }
 
-/// Decides each run before it is carried out, and records each one after.
+/// A program a run may carry out: what it takes, [I], and what it gives
+/// back, [O].
 ///
-/// What intersyntactic's airlock implements. [Run.next] asks it, so a run is
-/// carried out only once it has decided, and recorded whatever became of it.
-abstract interface class Airlock {
-  /// Whether [run] may be carried out: by asking the person, by a rule, or
-  /// both.
-  Future<Decision> decide(Run<Object?> run);
-
-  /// What became of [run]: its output, or why it was refused.
-  Future<void> record(Run<Object?> run, Outcome<Object?> outcome);
-}
-
-/// What the [Airlock] decided about one run.
-sealed class Decision {
-  const Decision();
-}
-
-/// The run may be carried out.
-final class Allow extends Decision {
-  const Allow();
-}
-
-/// The run is not carried out, because [why]; its continuation is handed
-/// [Refused] with that reason.
-final class Deny extends Decision {
-  const Deny(this.why);
-
-  final String why;
-}
-
-/// What became of a [Run].
-sealed class Outcome<O> {
-  const Outcome();
-}
-
-/// It ran, and gave [output].
-final class Ran<O> extends Outcome<O> {
-  const Ran(this.output);
-
-  final O output;
-}
-
-/// It did not run: the airlock denied it, its driver refused it (a path that
-/// leaves the tree), or the home has no driver for its program. An [Outcome]
-/// of every program, since [Never] is a subtype of every type.
-final class Refused extends Outcome<Never> {
-  const Refused(this.why);
-
-  final String why;
-}
-
-/// A program a home may run: what it takes, [I], and what it gives back, [O].
-///
-/// Some the home implements itself, with typed inputs ([ReadFile],
-/// [WriteFile]); others it only starts, with plain arguments ([Executable]).
-/// Anyone may define one. A program finds the driver it needs through
-/// [Cleared], and a home without that driver cannot run it.
-abstract class Program<I, O> {
+/// A closed set: [ReadFile], [WriteFile] and [Executable]. Programs reach
+/// drivers, so they are part of what is trusted, with the drivers and the
+/// airlock; a new kind of effect is a new driver and program here.
+sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
@@ -181,51 +124,11 @@ abstract class Program<I, O> {
     },
   );
 
-  /// [input] performed by the driver [cleared] finds for this program, or
-  /// null when the home has none.
-  ///
-  /// Called by [Run.next] alone, since only it makes a [Cleared].
-  Future<Outcome<O>>? on(Cleared cleared, I input);
-}
+  Reach _reach(I input);
 
-/// A run the airlock allowed, in the home it runs in: what a [Program] is
-/// given to carry out its input.
-///
-/// Made only by [Run.next], once the [Airlock] has allowed the run, so a
-/// program can be carried out only after a decision.
-final class Cleared {
-  Cleared._(this._home);
-
-  final Home _home;
-
-  /// The home's driver of kind [D], or null when it loaded none.
-  D? driver<D extends Driver>() => _home._drivers.whereType<D>().firstOrNull;
-}
-
-/// What a home can do: the drivers it loaded. A program it has no driver
-/// for is refused, so a home that loads no [ProgramDriver], such as a
-/// phone's, starts nothing.
-///
-/// Its drivers are reached only through [Cleared], so holding a home is not
-/// a way to carry out a run.
-final class Home {
-  Home(Iterable<Driver> drivers) : _drivers = List.unmodifiable(drivers);
-
-  final List<Driver> _drivers;
-}
-
-/// Operates one part of the world, for the programs that need it.
-abstract interface class Driver {}
-
-/// Reads and writes files in the home's tree.
-abstract interface class FileDriver implements Driver {
-  Future<Outcome<ReadResult>> read(PathInRepo path);
-  Future<Outcome<Wrote>> write(FileText file);
-}
-
-/// Starts programs as processes.
-abstract interface class ProgramDriver implements Driver {
-  Future<Outcome<ExecResult>> start(Executable program, Args args);
+  /// [input] performed by [journeyPath]'s driver for this program, or null
+  /// when it has none.
+  Future<Outcome<O>>? _on(JourneyPath<Object?> journeyPath, I input);
 }
 
 /// Reads the file at a path in the repo.
@@ -236,11 +139,16 @@ final class ReadFile extends Program<PathInRepo, ReadResult> {
   String get name => 'read';
 
   @override
-  Future<Outcome<ReadResult>>? on(Cleared cleared, PathInRepo path) =>
-      cleared.driver<FileDriver>()?.read(path);
+  Reach _reach(PathInRepo path) => Reads(path);
+
+  @override
+  Future<Outcome<ReadResult>>? _on(
+    JourneyPath<Object?> journeyPath,
+    PathInRepo path,
+  ) => journeyPath._driver<FileDriver>()?.read(path);
 }
 
-/// Writes a file, creating its directory.
+/// Writes a file, creating its folder.
 final class WriteFile extends Program<FileText, Wrote> {
   const WriteFile();
 
@@ -248,12 +156,17 @@ final class WriteFile extends Program<FileText, Wrote> {
   String get name => 'write';
 
   @override
-  Future<Outcome<Wrote>>? on(Cleared cleared, FileText file) =>
-      cleared.driver<FileDriver>()?.write(file);
+  Reach _reach(FileText file) => Writes(file);
+
+  @override
+  Future<Outcome<Wrote>>? _on(
+    JourneyPath<Object?> journeyPath,
+    FileText file,
+  ) => journeyPath._driver<FileDriver>()?.write(file);
 }
 
-/// A program the home starts as a process, such as `git`: its input is
-/// plain arguments, and it reaches whatever the process can.
+/// A program started as a process, such as `git`: its input is plain
+/// arguments, and it reaches whatever the process can.
 final class Executable extends Program<Args, ExecResult> {
   const Executable(this.name);
 
@@ -261,102 +174,183 @@ final class Executable extends Program<Args, ExecResult> {
   final String name;
 
   @override
-  Future<Outcome<ExecResult>>? on(Cleared cleared, Args args) =>
-      cleared.driver<ProgramDriver>()?.start(this, args);
+  Reach _reach(Args args) => Starts(this, args);
+
+  @override
+  Future<Outcome<ExecResult>>? _on(
+    JourneyPath<Object?> journeyPath,
+    Args args,
+  ) => journeyPath._driver<ProgramDriver>()?.start(this, args);
 }
 
-/// [text] for the file at [path]. The driver decides whether it may be
-/// written; that [path] stays inside the repo is already settled by its type.
-final class FileText {
-  const FileText(this.path, this.text);
+/// What a run would do to the world, typed, so the airlock can decide and
+/// record it without knowing the run's types: one per [Program].
+sealed class Reach {
+  const Reach();
+}
+
+final class Reads extends Reach {
+  const Reads(this.path);
 
   final PathInRepo path;
-  final String text;
 }
 
-/// What an [Executable] is given.
-final class Args {
-  const Args(this.args, {this.stdin, this.inFolder = PathInRepo.root});
+final class Writes extends Reach {
+  const Writes(this.file);
 
-  final List<String> args;
-
-  /// Written to the program's stdin, then closed. Null: stdin is closed at
-  /// once.
-  final String? stdin;
-
-  /// The folder it runs in.
-  final PathInRepo inFolder;
+  final FileText file;
 }
 
-/// What a [ReadFile] found.
-sealed class ReadResult {
-  const ReadResult();
+final class Starts extends Reach {
+  const Starts(this.program, this.args);
+
+  final Executable program;
+  final Args args;
 }
 
-final class ReadText extends ReadResult {
-  const ReadText(this.text);
+/// Operates one part of the world, for the programs that need it. A machine
+/// loads the drivers it can run: a phone's loads no [ProgramDriver].
+abstract interface class Driver {}
 
-  final String text;
+/// Reads and writes files in the journey's working tree.
+abstract interface class FileDriver implements Driver {
+  Future<Outcome<ReadResult>> read(PathInRepo path);
+  Future<Outcome<Wrote>> write(FileText file);
 }
 
-/// No file at the path.
-final class ReadMissing extends ReadResult {
-  const ReadMissing();
+/// Starts programs as processes.
+abstract interface class ProgramDriver implements Driver {
+  Future<Outcome<ExecResult>> start(Executable program, Args args);
 }
 
-/// Written; [replaced] when a file was there before.
-final class Wrote {
-  const Wrote({required this.replaced});
-
-  final bool replaced;
-}
-
-/// What an [Executable] did once it started.
+/// One agent's own journey: the thread its runs are carried out on, with
+/// rules [R] that say what it may do.
 ///
-/// One that never started is [Refused], with its own reason, so there is no
-/// refused flag here and [forModel] never has to guess why a command did not
-/// run.
-final class ExecResult {
-  const ExecResult({
-    required this.exitCode,
-    required this.stdout,
-    required this.stderr,
-    this.timedOut = false,
-    this.silentFor,
-  });
+/// Its apex, where its effects happen, is the machine its drivers are on,
+/// acting as the journey's user. Its drivers are reached only by a [Run]
+/// carried out on it, and every such run passes its airlock.
+///
+/// Started by whoever holds the drivers ([JourneyPath.start]), which is
+/// already the power to touch the world, so starting one grants nothing
+/// new. Everyone else gets journey paths by [narrowed], which gives no more
+/// than the journey path it came from.
+final class JourneyPath<R> {
+  JourneyPath._(this.rules, this._airlock, this._drivers, this._parent);
 
-  /// [forModel], as a tool's definition renders an [ExecResult] answer.
-  static const output = Output<ExecResult>(_forModel);
+  /// A journey path on [drivers], decided and recorded by [airlock], under
+  /// [rules].
+  JourneyPath.start({
+    required Iterable<Driver> drivers,
+    required Airlock<R> airlock,
+    required R rules,
+  }) : this._(rules, airlock, List.unmodifiable(drivers), null);
 
-  final int exitCode;
-  final String stdout;
-  final String stderr;
-  final bool timedOut;
+  final R rules;
+  final Airlock<R> _airlock;
+  final List<Driver> _drivers;
+  final JourneyPath<R>? _parent;
+  final _entries = StreamController<Entry>.broadcast(sync: true);
+  bool _stopped = false;
 
-  /// Set when the command was killed for printing nothing for this long;
-  /// null otherwise.
-  final Duration? silentFor;
+  /// A journey path under [fewer] rules, on the same drivers and airlock, or
+  /// null when the airlock finds [fewer] allows more than [rules]. Stopped
+  /// when this one is.
+  JourneyPath<R>? narrowed(R fewer) => _airlock.narrows(fewer, rules)
+      ? JourneyPath._(fewer, _airlock, _drivers, this)
+      : null;
 
-  /// What the model is told.
-  ///
-  /// stderr is INCLUDED even on success, and the exit code is always stated.
-  /// A command that printed a warning and succeeded, and one that printed the
-  /// same text and failed, are different events; a transcript that shows only
-  /// stdout makes them identical. Exit 0 is not a measurement.
-  String get forModel {
-    final b = StringBuffer(switch ((timedOut, silentFor)) {
-      (_, final quiet?) =>
-        'printed nothing for ${quiet.inSeconds}s and was killed; no exit code',
-      (true, null) => 'timed out and was killed; no exit code',
-      (false, null) => 'exit $exitCode',
-    });
-    final anyOut = stdout.trim().isNotEmpty;
-    final anyErr = stderr.trim().isNotEmpty;
-    if (anyOut) b.write('\n--- stdout ---\n${stdout.trimRight()}');
-    if (anyErr) b.write('\n--- stderr ---\n${stderr.trimRight()}');
-    if (!anyOut && !anyErr) b.write(' (no output)');
-    return b.toString();
+  /// Refuses every run not yet carried out, on this journey path and every
+  /// one narrowed from it. A run whose driver has already been reached is
+  /// not interrupted.
+  void stop() => _stopped = true;
+
+  bool get stopped => _stopped || (_parent?.stopped ?? false);
+
+  /// Each entry once the airlock has recorded it, from this journey path and
+  /// every one narrowed from it.
+  Stream<Entry> get entries => _entries.stream;
+
+  D? _driver<D extends Driver>() => _drivers.whereType<D>().firstOrNull;
+
+  Future<Outcome<O>> _carryOut<I, O>(_Run<I, O, Object?> run) async {
+    var decision = stopped
+        ? const Deny('stopped')
+        : await _airlock.decide(run, rules);
+    if (stopped) decision = const Deny('stopped');
+    await _record(Decided(run, decision));
+    final Outcome<O> outcome = switch (decision) {
+      Deny(:final why) => Refused(why),
+      Allow() =>
+        await run._program._on(this, run._input) ??
+            Refused('this machine cannot run ${run._program.name}'),
+    };
+    await _record(Settled(run, outcome));
+    return outcome;
+  }
+
+  Future<void> _record(Entry entry) async {
+    await _airlock.record(entry);
+    for (JourneyPath<R>? p = this; p != null; p = p._parent) {
+      p._entries.add(entry);
+    }
   }
 }
 
-String _forModel(ExecResult result) => result.forModel;
+/// Decides each run on a journey path, and records it.
+///
+/// What intersyntactic's airlock implements. It guards the drivers it is
+/// started with, not the journey: an agent that joins a journey with its own
+/// drivers is decided, or not, by its own.
+abstract interface class Airlock<R> {
+  /// Whether [run] may be carried out under [rules].
+  Future<Decision> decide(Run<Object?> run, R rules);
+
+  /// Whether [fewer] allows nothing that [rules] does not.
+  bool narrows(R fewer, R rules);
+
+  /// Keeps [entry]. A run's driver is reached only once its [Decided] entry
+  /// is kept, and its outcome flows on only once its [Settled] entry is; an
+  /// error thrown here ends the call.
+  Future<void> record(Entry entry);
+}
+
+/// What the [Airlock] decided about one run.
+sealed class Decision {
+  const Decision();
+}
+
+/// The run may be carried out.
+final class Allow extends Decision {
+  const Allow();
+}
+
+/// The run is not carried out, because [why]; its continuation is handed
+/// [Refused] with that reason.
+final class Deny extends Decision {
+  const Deny(this.why);
+
+  final String why;
+}
+
+/// One entry in a journey path's record: [Decided] before a run, [Settled]
+/// after it.
+sealed class Entry {
+  const Entry(this.run);
+
+  final Run<Object?> run;
+}
+
+/// [run] was decided, and no driver has been reached yet. Without a
+/// [Settled] entry after it, the record shows the run was cut short.
+final class Decided extends Entry {
+  const Decided(super.run, this.decision);
+
+  final Decision decision;
+}
+
+/// What became of [run].
+final class Settled extends Entry {
+  const Settled(super.run, this.outcome);
+
+  final Outcome<Object?> outcome;
+}

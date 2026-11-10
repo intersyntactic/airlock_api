@@ -1,3 +1,4 @@
+import 'package:checked_json/checked_json.dart';
 import 'package:is_tools_api/is_tools_api.dart';
 
 import 'run.dart';
@@ -13,8 +14,43 @@ final class Tool<I, O> {
   final ToolSpec<I, O> spec;
   final Result<O> Function(I input) _answer;
 
-  /// What this tool's code returns for a call taking [input].
-  Result<O> call(I input) => _answer(input);
+  /// A call taking [input], followed on [journeyPath] to what the model is
+  /// told.
+  ///
+  /// Here, where [I] and [O] are known, so whoever holds a tool of unknown
+  /// types never handles its input or output. An input the definition does
+  /// not accept is an error naming the field; nothing is run for it.
+  Future<Reply> reply(
+    JsonObject input,
+    JourneyPath<Object?> journeyPath,
+  ) async {
+    final I read;
+    try {
+      read = spec.input.read(input);
+    } on JsonFieldException catch (e) {
+      return Reply._(e.message, isError: true);
+    }
+    var result = _answer(read);
+    while (true) {
+      switch (result) {
+        case Done(:final value):
+          return Reply._(spec.output.forModel(value), isError: false);
+        case Failed(:final why):
+          return Reply._(why, isError: true);
+        case Run():
+          result = await result.next(journeyPath);
+      }
+    }
+  }
+}
+
+/// What the model is told of a call: [forModel], as its tool result, marked
+/// [isError] when the call failed.
+final class Reply {
+  const Reply._(this.forModel, {required this.isError});
+
+  final String forModel;
+  final bool isError;
 }
 
 extension AnsweredBy<I, O> on ToolSpec<I, O> {
