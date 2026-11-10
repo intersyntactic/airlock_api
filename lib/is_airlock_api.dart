@@ -6,5 +6,6 @@
 /// holds only the types it and the tools agree on.
 library;
 
+export 'src/path_in_repo.dart';
 export 'src/run.dart';
 export 'src/tool.dart';

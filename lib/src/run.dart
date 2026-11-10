@@ -1,5 +1,7 @@
 import 'package:is_tools_api/is_tools_api.dart';
 
+import 'path_in_repo.dart';
+
 /// What a tool's code returns for a call: a run whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
 /// type of the answer, the tool's output type.
@@ -217,7 +219,7 @@ abstract interface class Driver {}
 
 /// Reads and writes files in the home's tree.
 abstract interface class FileDriver implements Driver {
-  Future<Outcome<ReadResult>> read(String path);
+  Future<Outcome<ReadResult>> read(PathInRepo path);
   Future<Outcome<Wrote>> write(FileText file);
 }
 
@@ -226,15 +228,15 @@ abstract interface class ProgramDriver implements Driver {
   Future<Outcome<ExecResult>> start(Executable program, Args args);
 }
 
-/// Reads the file at a path, relative to the tree's root.
-final class ReadFile extends Program<String, ReadResult> {
+/// Reads the file at a path in the repo.
+final class ReadFile extends Program<PathInRepo, ReadResult> {
   const ReadFile();
 
   @override
   String get name => 'read';
 
   @override
-  Future<Outcome<ReadResult>>? on(Cleared cleared, String path) =>
+  Future<Outcome<ReadResult>>? on(Cleared cleared, PathInRepo path) =>
       cleared.driver<FileDriver>()?.read(path);
 }
 
@@ -263,18 +265,18 @@ final class Executable extends Program<Args, ExecResult> {
       cleared.driver<ProgramDriver>()?.start(this, args);
 }
 
-/// [text] for the file at [path], relative to the tree's root. [path] is as
-/// the tool was given it; the driver decides whether it may be written.
+/// [text] for the file at [path]. The driver decides whether it may be
+/// written; that [path] stays inside the repo is already settled by its type.
 final class FileText {
   const FileText(this.path, this.text);
 
-  final String path;
+  final PathInRepo path;
   final String text;
 }
 
 /// What an [Executable] is given.
 final class Args {
-  const Args(this.args, {this.stdin, this.inSubdir});
+  const Args(this.args, {this.stdin, this.inFolder = PathInRepo.root});
 
   final List<String> args;
 
@@ -282,8 +284,8 @@ final class Args {
   /// once.
   final String? stdin;
 
-  /// Where it runs, relative to the tree's root; null for the root.
-  final String? inSubdir;
+  /// The folder it runs in.
+  final PathInRepo inFolder;
 }
 
 /// What a [ReadFile] found.
