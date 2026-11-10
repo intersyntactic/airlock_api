@@ -26,6 +26,7 @@ final writeAndFormat = ToolSpec<FileText, ExecResult>(
 
 // The host, which holds the drivers:
 final journeyPath = JourneyPath.start(
+  id: const JourneyPathId('fix-login/agent-1'),
   drivers: [files, programs],
   airlock: airlock,
   rules: rules,
@@ -64,14 +65,19 @@ final reply = await writeAndFormat.reply(input, journeyPath);
 
 ## A journey path
 
-One agent's own journey: its rules, and the drivers and airlock of the
-machine it is on (its apex), acting as the journey's user.
+One agent's own journey: its id, its rules, and its airlock and drivers.
+Its apex is its growing tip, where its next effect happens; two agents on
+one machine have two apexes. Its drivers are those of the machine its apex
+is on, acting as the journey's user.
 
-- `JourneyPath.start(drivers:, airlock:, rules:)`: by the host. Holding the
-  drivers is already the power to touch the world, so starting a journey
+- `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the host. Holding
+  the drivers is already the power to touch the world, so starting a journey
   path grants nothing new.
-- `narrowed(fewer)`: a journey path under rules the airlock finds allow no
-  more; null otherwise. Everyone but the host gets journey paths this way.
+- `narrowed(fewer, id:)`: a journey path under rules the airlock finds allow
+  no more; null otherwise. Everyone but the host gets journey paths this way.
+- `JourneyPathId`: given by whoever starts or narrows a journey path, and
+  carried by every entry it records, so a record that outlives the objects
+  still says which journey path each run was on.
 - `run.next(journeyPath)`, the only way to carry out a run: the airlock
   decides it; the airlock records the decision (`Decided`) and only then is
   a driver reached; the airlock records what became of it (`Settled`) and

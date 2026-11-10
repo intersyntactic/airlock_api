@@ -226,25 +226,35 @@ abstract interface class ProgramDriver implements Driver {
 /// One agent's own journey: the thread its runs are carried out on, with
 /// rules [R] that say what it may do.
 ///
-/// Its apex, where its effects happen, is the machine its drivers are on,
-/// acting as the journey's user. Its drivers are reached only by a [Run]
-/// carried out on it, and every such run passes its airlock.
+/// Its apex is its growing tip, where its next effect happens; two agents on
+/// one machine have two apexes. Its drivers are those of the machine its apex
+/// is on, acting as the journey's user, and are reached only by a [Run]
+/// carried out on it, so every such run passes its airlock.
 ///
 /// Started by whoever holds the drivers ([JourneyPath.start]), which is
 /// already the power to touch the world, so starting one grants nothing
 /// new. Everyone else gets journey paths by [narrowed], which gives no more
 /// than the journey path it came from.
 final class JourneyPath<R> {
-  JourneyPath._(this.rules, this._airlock, this._drivers, this._parent);
+  JourneyPath._(
+    this.id,
+    this.rules,
+    this._airlock,
+    this._drivers,
+    this._parent,
+  );
 
-  /// A journey path on [drivers], decided and recorded by [airlock], under
-  /// [rules].
+  /// A journey path named [id], on [drivers], decided and recorded by
+  /// [airlock], under [rules].
   JourneyPath.start({
+    required JourneyPathId id,
     required Iterable<Driver> drivers,
     required Airlock<R> airlock,
     required R rules,
-  }) : this._(rules, airlock, List.unmodifiable(drivers), null);
+  }) : this._(id, rules, airlock, List.unmodifiable(drivers), null);
 
+  /// Names this journey path in every entry it records.
+  final JourneyPathId id;
   final R rules;
   final Airlock<R> _airlock;
   final List<Driver> _drivers;
@@ -252,11 +262,12 @@ final class JourneyPath<R> {
   final _entries = StreamController<Entry>.broadcast(sync: true);
   bool _stopped = false;
 
-  /// A journey path under [fewer] rules, on the same drivers and airlock, or
-  /// null when the airlock finds [fewer] allows more than [rules]. Stopped
-  /// when this one is.
-  JourneyPath<R>? narrowed(R fewer) => _airlock.narrows(fewer, rules)
-      ? JourneyPath._(fewer, _airlock, _drivers, this)
+  /// A journey path named [id], under [fewer] rules, on the same drivers and
+  /// airlock, or null when the airlock finds [fewer] allows more than
+  /// [rules]. Stopped when this one is.
+  JourneyPath<R>? narrowed(R fewer, {required JourneyPathId id}) =>
+      _airlock.narrows(fewer, rules)
+      ? JourneyPath._(id, fewer, _airlock, _drivers, this)
       : null;
 
   /// Refuses every run not yet carried out, on this journey path and every
@@ -277,14 +288,14 @@ final class JourneyPath<R> {
         ? const Deny('stopped')
         : await _airlock.decide(run, rules);
     if (stopped) decision = const Deny('stopped');
-    await _record(Decided(run, decision));
+    await _record(Decided(id, run, decision));
     final Outcome<O> outcome = switch (decision) {
       Deny(:final why) => Refused(why),
       Allow() =>
         await run._program._on(this, run._input) ??
             Refused('this machine cannot run ${run._program.name}'),
     };
-    await _record(Settled(run, outcome));
+    await _record(Settled(id, run, outcome));
     return outcome;
   }
 
@@ -332,25 +343,49 @@ final class Deny extends Decision {
   final String why;
 }
 
+/// What names a journey path in the record, so its entries can be told from
+/// those of every other journey path in the journey, after a restart too.
+///
+/// Given by whoever starts or narrows the journey path, which is the code
+/// that knows what it is naming; keeping it unique within the journey is
+/// theirs.
+final class JourneyPathId {
+  const JourneyPathId(this.value);
+
+  final String value;
+
+  @override
+  bool operator ==(Object other) =>
+      other is JourneyPathId && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
+
+  @override
+  String toString() => value;
+}
+
 /// One entry in a journey path's record: [Decided] before a run, [Settled]
 /// after it.
 sealed class Entry {
-  const Entry(this.run);
+  const Entry(this.journeyPathId, this.run);
 
+  /// The journey path [run] was carried out on.
+  final JourneyPathId journeyPathId;
   final Run<Object?> run;
 }
 
 /// [run] was decided, and no driver has been reached yet. Without a
 /// [Settled] entry after it, the record shows the run was cut short.
 final class Decided extends Entry {
-  const Decided(super.run, this.decision);
+  const Decided(super.journeyPathId, super.run, this.decision);
 
   final Decision decision;
 }
 
 /// What became of [run].
 final class Settled extends Entry {
-  const Settled(super.run, this.outcome);
+  const Settled(super.journeyPathId, super.run, this.outcome);
 
   final Outcome<Object?> outcome;
 }
