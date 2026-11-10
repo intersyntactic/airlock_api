@@ -1,0 +1,19 @@
+name: is_airlock_api
+description: >-
+  The airlock's contract: the runs a tool's code describes, the airlock that
+  decides and records each one, and the code attached to a tool's definition.
+version: 0.1.0
+repository: https://github.com/intersyntactic/airlock_api
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  checked_json: ^0.2.1
+  is_tools_api: ^0.2.0
+  path: ^1.9.1
+
+dev_dependencies:
+  analyzer: ^14.7.0
+  lints: ^6.1.0
+  test: ^1.25.0
