@@ -62,6 +62,10 @@ final class Args {
   /// a [Request]'s destination. Where a journey path requires containment,
   /// the journey's OS user is let reach these and no others; elsewhere it is
   /// what the program says, not a limit.
+  ///
+  /// The airlock trusts the declaration: a program that declares nothing is
+  /// decided on its start alone. What it then sends undeclared is stopped
+  /// only by containment.
   final List<Destination> leavesTo;
 }
 
