@@ -12,10 +12,6 @@ Breaking.
 - `Tool`, `answeredBy`, `Reply` and `ExecResult.output` move to `is_tool`
   (as `Answer`, `answeredBy`, `Reply` and `execResultOutput`), so a host can
   take this up before its tools move to `is_tools_api` 0.2.
-- What leaves the home: `SendRequest` (`Program.send`) and the `Sends`
-  reach, over `is_effects`'s `Request`, `Destination` and `NetworkDriver`.
-  `Starts` carries `Args.leavesTo`, where a started program says it will
-  send, and the airlock decides on it.
 - `Executable` wraps an `is_effects` `ProgramName`, compares by it, and has
   `Executable.parse`; `Starts.program` is the `ProgramName`.
 - `Allow` and `Deny` take `by: DecidedBy.rules` or `DecidedBy.person`, so

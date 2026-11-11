@@ -20,8 +20,8 @@ sealed class Result<A> {
 
 /// Run a program on an input, then continue with what became of the run.
 ///
-/// The one effect a tool can describe. A read, a write, `git diff` and a
-/// model call are all runs, of one of four programs.
+/// The one effect a tool can describe. A read, a write and `git diff` are all
+/// runs, of one of three programs.
 ///
 /// The continuation travels with the run, not in the tool, so one tool can
 /// serve concurrent calls without keeping state for any of them. It is
@@ -91,16 +91,17 @@ final class Failed extends Result<Never> {
 /// A program a run may carry out: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile], [Executable] and [SendRequest].
-/// Programs reach drivers, so they are part of what is trusted, with the
-/// drivers and the airlock; a new kind of effect is a new driver and program
-/// here.
+/// A closed set: [ReadFile], [WriteFile] and [Executable]. Programs reach
+/// drivers, so they are part of what is trusted, with the drivers and the
+/// airlock; a new kind of effect is a new driver and program here.
+///
+/// None sends out of the home: a journey path's model calls are made by its
+/// own loop, holding only the sign-ins its rules allow.
 sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
   static const write = WriteFile();
-  static const send = SendRequest();
 
   /// For the model and the record; an [Executable] is compared by it.
   String get name;
@@ -211,24 +212,6 @@ final class Executable extends Program<Args, ExecResult> {
   );
 }
 
-/// Sends a [Request] out of the home, and gives back its [Response].
-final class SendRequest extends Program<Request, Response> {
-  const SendRequest();
-
-  @override
-  String get name => 'send';
-
-  @override
-  Reach _reach(Request request) => Sends(request);
-
-  @override
-  Future<Outcome<Response>>? _on(
-    JourneyPath<Object?> journeyPath,
-    Request request,
-    Report report,
-  ) => journeyPath._driver<NetworkDriver>()?.send(request, report: report);
-}
-
 /// What a run would do to the world, typed, so the airlock can decide and
 /// record it without knowing the run's types: one per [Program].
 sealed class Reach {
@@ -247,19 +230,11 @@ final class Writes extends Reach {
   final FileText file;
 }
 
-/// A process started; where it says it will send is [Args.leavesTo].
 final class Starts extends Reach {
   const Starts(this.program, this.args);
 
   final ProgramName program;
   final Args args;
-}
-
-/// [request] sent out of the home, to [Request.to].
-final class Sends extends Reach {
-  const Sends(this.request);
-
-  final Request request;
 }
 
 /// One agent's own journey: the thread its runs are carried out on, with

@@ -42,21 +42,18 @@ while (result is Run<ExecResult>) {
 ## A run
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
-  (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`), and
-  `SendRequest` (`Program.send`). Programs reach drivers, so they belong with
-  the drivers and the airlock to what is trusted; a new kind of effect is a
-  new driver and program.
+  (`Program.write`) and `Executable` (a `ProgramName`, with plain `Args`).
+  Programs reach drivers, so they belong with the drivers and the airlock to
+  what is trusted; a new kind of effect is a new driver and program.
 - `Run<A>`: a program, its input and the continuation, all private. Made only
   by its program, so its input is the program's own type. Outside, a run
-  shows only its `Reach`, for the airlock: `Reads(path)`, `Writes(file)`,
-  `Starts(program, args)` (with where it says it will send, in
-  `args.leavesTo`), or `Sends(request)`.
+  shows only its `Reach`, for the airlock: `Reads(path)`, `Writes(file)` or
+  `Starts(program, args)`.
 
-A journey path's rules are written by direction: what may leave the home, to
-where, and through which sign-in. A `Sends` names its destination by what is
-on the other end, and its request's body is in the record, since it is what
-left. The airlock trusts a start's `leavesTo`; where a journey path requires
-containment, the journey's OS user is let reach only those.
+Nothing here sends out of the home. A journey path's rules say what may
+leave, to where, and through which sign-in; each journey path's own loop
+holds only the sign-ins its rules allow, so its model calls can go nowhere
+else.
 
 ## A journey path
 
