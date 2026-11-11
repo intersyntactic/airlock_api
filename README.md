@@ -80,9 +80,10 @@ is on, acting as the journey's user.
   before a restart are the host's to keep apart.
 - `run.next(journeyPath)`, the only way to carry out a run: the airlock
   decides it; the airlock records the decision (`Decided`) and only then is
-  a driver reached; the airlock records what became of it (`Settled`) and
-  only then does the continuation see it. A record that cannot be written
-  ends the call. A `Decided` with no `Settled` is a run cut short.
+  a driver reached; the run comes back and the airlock records it
+  (`Returned`), and only then does the continuation see it. A record that
+  cannot be written ends the call. A `Decided` with no `Returned` is a run
+  cut short.
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped journey path's refusal
   is the person's.

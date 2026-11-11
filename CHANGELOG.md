@@ -21,6 +21,8 @@ Breaking.
 - `Allow` and `Deny` take `by: DecidedBy.rules` or `DecidedBy.person`, so
   the record tells the rules' decision from the person's.
 - Drivers report while a run is underway, on `JourneyPath.underway`.
+- `Settled` is renamed `Returned`: a run goes out and comes back with its
+  outcome, so a run's entries are `Decided`, then `Returned`.
 
 ## 0.1.0
 

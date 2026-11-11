@@ -368,7 +368,7 @@ final class JourneyPath<R> {
             }) ??
             Refused('this machine cannot run ${run._program.name}'),
     };
-    await _record(Settled(id, run, outcome));
+    await _record(Returned(id, run, outcome));
     return outcome;
   }
 
@@ -393,7 +393,7 @@ abstract interface class Airlock<R> {
   bool narrows(R fewer, R rules);
 
   /// Keeps [entry]. A run's driver is reached only once its [Decided] entry
-  /// is kept, and its outcome flows on only once its [Settled] entry is; an
+  /// is kept, and its outcome flows on only once its [Returned] entry is; an
   /// error thrown here ends the call.
   Future<void> record(Entry entry);
 }
@@ -408,7 +408,7 @@ sealed class Decision {
 
 /// Who made a [Decision].
 enum DecidedBy {
-  /// The journey path's rules settled it.
+  /// The journey path's rules decided it.
   rules,
 
   /// The person was asked, or stopped the journey path.
@@ -454,8 +454,9 @@ final class JourneyPathId {
   String toString() => value;
 }
 
-/// One entry in a journey path's record: [Decided] before a run, [Settled]
-/// after it, and [Narrowed] when it asks for a narrower journey path.
+/// One entry in a journey path's record: [Decided] before a run goes out,
+/// [Returned] when it comes back, and [Narrowed] when the journey path asks
+/// for a narrower one.
 sealed class Entry {
   const Entry(this.journeyPathId);
 
@@ -464,7 +465,7 @@ sealed class Entry {
 }
 
 /// [run] was decided, and no driver has been reached yet. Without a
-/// [Settled] entry after it, the record shows the run was cut short.
+/// [Returned] entry after it, the record shows the run was cut short.
 final class Decided extends Entry {
   const Decided(super.journeyPathId, this.run, this.decision);
 
@@ -472,9 +473,9 @@ final class Decided extends Entry {
   final Decision decision;
 }
 
-/// What became of [run].
-final class Settled extends Entry {
-  const Settled(super.journeyPathId, this.run, this.outcome);
+/// [run] came back, with its [outcome], whether it ran or was refused.
+final class Returned extends Entry {
+  const Returned(super.journeyPathId, this.run, this.outcome);
 
   final Run<Object?> run;
   final Outcome<Object?> outcome;
