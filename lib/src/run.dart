@@ -230,7 +230,7 @@ final class WebRequest extends Program<Request, Sent> {
   String get name => 'web';
 
   @override
-  Reach _reach(Request request) => Sends(request);
+  Reach _reach(Request request) => Sends(request.origin, request.signIn);
 
   @override
   Future<Outcome<Sent>>? _on(
@@ -265,15 +265,21 @@ final class Starts extends Reach {
   final Args args;
 }
 
-/// Leaves the home: [request] goes to its origin, as its sign-in.
+/// Leaves the home: a request goes to [origin], as [signIn], or under no
+/// sign-in when null.
 ///
 /// A rule grants the origin and the sign-in together, never the origin
 /// alone: every bot of a kind posts to the same sites, so a grant by origin
 /// would let a journey path send as any sign-in the web driver holds.
+///
+/// Holds only what a rule compares, never the request's body: entries
+/// record a run's reach, and a send is recorded by reference, so what was
+/// said cannot reach the record through here.
 final class Sends extends Reach {
-  const Sends(this.request);
+  const Sends(this.origin, this.signIn);
 
-  final Request request;
+  final Origin origin;
+  final SignIn? signIn;
 }
 
 /// One agent's own journey: the thread its runs are carried out on, with

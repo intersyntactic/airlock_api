@@ -52,7 +52,9 @@ while (result is Run<ExecResult>) {
 - `Run<A>`: a program, its input and the continuation, all private. Made only
   by its program, so its input is the program's own type. Outside, a run
   shows only its `Reach`, for the airlock: `Reads(path)`, `Writes(file)`,
-  `Starts(program, args)` or `Sends(request)`.
+  `Starts(program, args)` or `Sends(origin, signIn)`. A rule grants a send
+  by origin and sign-in together; `Sends` never holds the body, so what
+  was said cannot reach the record through a reach.
 
 A `WebRequest` is an effect, decided like any other: what a tool posts to a
 chat or an API. A journey path's prompts are not: the model is the agent
