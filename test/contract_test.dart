@@ -459,6 +459,22 @@ void main() {
     ]);
   });
 
+  test('a send shows its sign-in, and null only when it has none', () {
+    Run<String> send(SignIn? signIn) => Program.web.run(
+      Request(teams, signIn: signIn),
+      then: (_) => const Done(''),
+    );
+    expect(
+      [hart, null].map(
+        (signIn) => switch (send(signIn).reach) {
+          Sends(:final origin, :final signIn) => (origin, signIn),
+          _ => null,
+        },
+      ),
+      [(teams, hart), (teams, null)],
+    );
+  });
+
   test('a machine with no web driver cannot send', () async {
     expect(
       await follow(

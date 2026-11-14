@@ -290,6 +290,11 @@ final class Starts extends Reach {
 /// Leaves the home: a request goes to [origin], as [signIn], or under no
 /// sign-in when null.
 ///
+/// Null means no sign-in, never any: it is null exactly when the request
+/// carries none. So a rule granting a site under no sign-in must not match
+/// a send that has one, or a grant to fetch a page anonymously would let a
+/// journey path post there as a bot.
+///
 /// A rule grants the origin and the sign-in together, never the origin
 /// alone: every bot of a kind posts to the same sites, so a grant by origin
 /// would let a journey path send as any sign-in the web driver holds.
