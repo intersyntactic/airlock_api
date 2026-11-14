@@ -40,6 +40,10 @@ while (result is Run<ExecResult>) {
   `Done(value)` (the answer), or `Failed(why)` (it couldn't). `Failed` is a
   `Result<Never>`, so one fits every tool. A tool may take several runs, with
   ordinary logic between them; each is decided on its own.
+- `result.map(f)`: the same result with its answer, once there is one, given
+  to `f`. It carries out nothing: a run's continuation is extended, so every
+  run is still decided and recorded at an apex. Turning a tool's answer into
+  what the model is told takes no journey path.
 
 ## A run
 

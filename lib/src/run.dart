@@ -16,12 +16,20 @@ import 'package:is_effects/is_effects.dart';
 /// [Failed]'s reason does, as an error.
 sealed class Result<A> {
   const Result();
+
+  /// This result with its answer, once there is one, given to [f].
+  ///
+  /// Carries out nothing: a run's continuation is extended, so [f] is applied
+  /// when a later [Run.next] reaches an answer, and every run on the way is
+  /// still decided and recorded. So whoever turns a tool's answer into what
+  /// the model is told can do it without following the runs.
+  Result<B> map<B>(B Function(A answer) f);
 }
 
 /// Run a program on an input, then continue with what became of the run.
 ///
-/// The one effect a tool can describe. A read, a write and `git diff` are all
-/// runs, of one of three programs.
+/// The one effect a tool can describe. A read, a write, `git diff` and a post
+/// to a chat are all runs, of one of four programs.
 ///
 /// The continuation travels with the run, not in the tool, so one tool can
 /// serve concurrent calls without keeping state for any of them. It is
@@ -50,6 +58,9 @@ abstract final class Run<A> extends Result<A> {
   /// is reached without a recorded decision, and no outcome flows on
   /// unrecorded.
   Future<Result<A>> next(Apex apex);
+
+  @override
+  Run<B> map<B>(B Function(A answer) f);
 }
 
 /// A [Run] of a [Program] taking [I] and giving [O].
@@ -71,6 +82,10 @@ final class _Run<I, O, A> extends Run<A> {
   @override
   Future<Result<A>> next(Apex apex) async =>
       _then(await apex._journeyPath._carryOut(this, apex._place));
+
+  @override
+  Run<B> map<B>(B Function(A answer) f) =>
+      _Run(_program, _input, (outcome) => _then(outcome).map(f));
 }
 
 /// The tool's answer. [value] reaches the model as its definition's
@@ -79,6 +94,9 @@ final class Done<A> extends Result<A> {
   const Done(this.value);
 
   final A value;
+
+  @override
+  Done<B> map<B>(B Function(A answer) f) => Done(f(value));
 }
 
 /// The tool could not answer, because [why]. A [Result] of every tool, since
@@ -87,6 +105,10 @@ final class Failed extends Result<Never> {
   const Failed(this.why);
 
   final String why;
+
+  /// Itself: there is no answer to give [f].
+  @override
+  Failed map<B>(B Function(Never answer) f) => this;
 }
 
 /// A program a run may carry out: what it takes, [I], and what it gives
