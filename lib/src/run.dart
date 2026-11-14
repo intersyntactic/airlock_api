@@ -265,9 +265,11 @@ final class Starts extends Reach {
   final Args args;
 }
 
-/// Leaves the home: [request] goes to its origin, as its sign-in. A rule
-/// grants a whole site by comparing the origin, and names the sign-in it
-/// may go as.
+/// Leaves the home: [request] goes to its origin, as its sign-in.
+///
+/// A rule grants the origin and the sign-in together, never the origin
+/// alone: every bot of a kind posts to the same sites, so a grant by origin
+/// would let a journey path send as any sign-in the web driver holds.
 final class Sends extends Reach {
   const Sends(this.request);
 
