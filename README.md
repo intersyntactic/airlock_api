@@ -44,20 +44,22 @@ while (result is Run<ExecResult>) {
 ## A run
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
-  (`Program.write`) and `Executable` (a `ProgramName`, with plain `Args`).
-  Programs reach drivers, so they belong with the drivers and the airlock to
-  what is trusted; a new kind of effect is a new driver and program.
+  (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`) and
+  `WebRequest` (`Program.web`, a `Request` to an `Origin` through a named
+  `SignIn`). Programs reach drivers, so they belong with the drivers and the
+  airlock to what is trusted; a new kind of effect is a new driver and
+  program.
 - `Run<A>`: a program, its input and the continuation, all private. Made only
   by its program, so its input is the program's own type. Outside, a run
-  shows only its `Reach`, for the airlock: `Reads(path)`, `Writes(file)` or
-  `Starts(program, args)`.
+  shows only its `Reach`, for the airlock: `Reads(path)`, `Writes(file)`,
+  `Starts(program, args)` or `Sends(request)`.
 
-Nothing here sends out of the home. A journey path's rules say what may
-leave, to where, and through which sign-in; each journey path's own loop
-holds only the sign-ins its rules allow, so its prompts can go nowhere
-else. What its prompts send and what comes back is witnessed by the airlock,
-not decided, and has no tool in it, so it is the airlock's and not this
-contract's.
+A `WebRequest` is an effect, decided like any other: what a tool posts to a
+chat or an API. A journey path's prompts are not: the model is the agent
+planning, so each journey path's own loop sends them, holding only the
+sign-ins its rules allow. The airlock witnesses a prompt and what comes
+back without deciding either, and no tool is in it, so that is the
+airlock's and not this contract's.
 
 ## A journey path
 

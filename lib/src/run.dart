@@ -92,17 +92,20 @@ final class Failed extends Result<Never> {
 /// A program a run may carry out: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile] and [Executable]. Programs reach
-/// drivers, so they are part of what is trusted, with the drivers and the
-/// airlock; a new kind of effect is a new driver and program here.
+/// A closed set: [ReadFile], [WriteFile], [Executable] and [WebRequest].
+/// Programs reach drivers, so they are part of what is trusted, with the
+/// drivers and the airlock; a new kind of effect is a new driver and program
+/// here.
 ///
-/// None sends out of the home: a journey path's prompts are sent by its own
-/// loop, holding only the sign-ins its rules allow.
+/// A journey path's prompts are not programs: the model is the agent
+/// planning, so its own loop sends them, holding only the sign-ins its rules
+/// allow, and the airlock witnesses them without deciding.
 sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
   static const write = WriteFile();
+  static const web = WebRequest();
 
   /// For the model and the record; an [Executable] is compared by it.
   String get name;
@@ -138,20 +141,20 @@ sealed class Program<I, O> {
   );
 }
 
-/// Reads the file at a path in the repo.
-final class ReadFile extends Program<PathInRepo, ReadResult> {
+/// Reads the file at a path under the file driver's root.
+final class ReadFile extends Program<RelativePath, ReadResult> {
   const ReadFile();
 
   @override
   String get name => 'read';
 
   @override
-  Reach _reach(PathInRepo path) => Reads(path);
+  Reach _reach(RelativePath path) => Reads(path);
 
   @override
   Future<Outcome<ReadResult>>? _on(
     JourneyPath<Object?, Object?> journeyPath,
-    PathInRepo path,
+    RelativePath path,
     Report report,
   ) => journeyPath._driver<FileDriver>()?.read(path);
 }
@@ -213,6 +216,28 @@ final class Executable extends Program<Args, ExecResult> {
   );
 }
 
+/// Sends a request out of the home, through the sign-in it names, to a
+/// site.
+///
+/// An effect, decided like any other: what a tool posts to a chat, an issue
+/// tracker or an API. Not a prompt, which the journey path's own loop sends.
+final class WebRequest extends Program<Request, Sent> {
+  const WebRequest();
+
+  @override
+  String get name => 'web';
+
+  @override
+  Reach _reach(Request request) => Sends(request);
+
+  @override
+  Future<Outcome<Sent>>? _on(
+    JourneyPath<Object?, Object?> journeyPath,
+    Request request,
+    Report report,
+  ) => journeyPath._driver<WebDriver>()?.send(request);
+}
+
 /// What a run would do to the world, typed, so the airlock can decide and
 /// record it without knowing the run's types: one per [Program].
 sealed class Reach {
@@ -222,7 +247,7 @@ sealed class Reach {
 final class Reads extends Reach {
   const Reads(this.path);
 
-  final PathInRepo path;
+  final RelativePath path;
 }
 
 final class Writes extends Reach {
@@ -236,6 +261,15 @@ final class Starts extends Reach {
 
   final ProgramName program;
   final Args args;
+}
+
+/// Leaves the home: [request] goes to its origin, as its sign-in. A rule
+/// grants a whole site by comparing the origin, and names the sign-in it
+/// may go as.
+final class Sends extends Reach {
+  const Sends(this.request);
+
+  final Request request;
 }
 
 /// One agent's own journey: the thread its runs are carried out on, with
@@ -279,7 +313,7 @@ final class JourneyPath<R, P> {
   /// Every id asked for under the journey path this one was started from,
   /// shared by all of them.
   final Set<JourneyPathId> _issued;
-  final _entries = StreamController<Entry<P>>.broadcast(sync: true);
+  final _entries = StreamController<Entry<R, P>>.broadcast(sync: true);
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
 
@@ -329,7 +363,7 @@ final class JourneyPath<R, P> {
 
   /// Each entry once the airlock has recorded it, from this journey path and
   /// every one narrowed from it.
-  Stream<Entry<P>> get entries => _entries.stream;
+  Stream<Entry<R, P>> get entries => _entries.stream;
 
   /// What drivers report while runs are underway, from this journey path and
   /// every one narrowed from it: for a live view, and not recorded.
@@ -359,7 +393,7 @@ final class JourneyPath<R, P> {
     return outcome;
   }
 
-  Future<void> _record(Entry<P> entry) async {
+  Future<void> _record(Entry<R, P> entry) async {
     await _airlock.record(entry);
     for (JourneyPath<R, P>? p = this; p != null; p = p._parent) {
       p._entries.add(entry);
@@ -396,7 +430,7 @@ abstract interface class Airlock<R, P> {
   /// Keeps [entry]. A run's driver is reached only once its [Decided] entry
   /// is kept, and its outcome flows on only once its [Returned] entry is; an
   /// error thrown here ends the call.
-  Future<void> record(Entry<P> entry);
+  Future<void> record(Entry<R, P> entry);
 }
 
 /// What the [Airlock] decided about one run, and [by] whom, so the record
@@ -461,7 +495,12 @@ final class JourneyPathId {
 ///
 /// Each is at a [place] in a turn, of the host's type [P], which the host
 /// supplies and the airlock records; nothing here computes one.
-sealed class Entry<P> {
+///
+/// Every kind takes both the journey path's rules type [R] and [P], even
+/// one that holds no rules, so a switch over the kinds is exhaustive: a
+/// kind with a type parameter its parent does not have cannot be covered
+/// by a case.
+sealed class Entry<R, P> {
   const Entry(this.journeyPathId, this.place);
 
   /// The journey path this entry is of.
@@ -473,7 +512,7 @@ sealed class Entry<P> {
 
 /// [run] was decided, and no driver has been reached yet. Without a
 /// [Returned] entry after it, the record shows the run was cut short.
-final class Decided<P> extends Entry<P> {
+final class Decided<R, P> extends Entry<R, P> {
   const Decided(super.journeyPathId, super.place, this.run, this.decision);
 
   final Run<Object?> run;
@@ -481,7 +520,7 @@ final class Decided<P> extends Entry<P> {
 }
 
 /// [run] came back, with its [outcome], whether it ran or was refused.
-final class Returned<P> extends Entry<P> {
+final class Returned<R, P> extends Entry<R, P> {
   const Returned(super.journeyPathId, super.place, this.run, this.outcome);
 
   final Run<Object?> run;
@@ -502,7 +541,7 @@ final class Underway<P> {
 /// A journey path named [child] was asked for under [rules], and [granted]
 /// when the airlock found they allow no more than this one's. The record's
 /// tree of journey paths is these entries.
-final class Narrowed<R, P> extends Entry<P> {
+final class Narrowed<R, P> extends Entry<R, P> {
   const Narrowed(
     super.journeyPathId,
     super.place,
