@@ -62,9 +62,8 @@ while (result is Run<ExecResult>) {
 
 A `WebRequest` is an effect, decided like any other: what a tool posts to a
 chat or an API. A journey path's prompts are not: the model is the agent
-planning, so a prompt is not decided. The airlock sends it and records it
-and what comes back, and no tool is in it, so that is the airlock's and
-not this contract's.
+planning, so a prompt is not decided, and no tool is in it. How a prompt
+is sent and recorded is not this contract's.
 
 ## A journey path
 

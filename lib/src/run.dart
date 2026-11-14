@@ -120,9 +120,8 @@ final class Failed extends Result<Never> {
 /// here.
 ///
 /// A journey path's prompts are not programs: the model is the agent
-/// planning, so a prompt is not decided. The airlock sends it and records it
-/// and what comes back, and no tool is in it, so it is the airlock's, not
-/// this contract's.
+/// planning, so a prompt is not decided, and no tool is in it. How it is
+/// sent and recorded is not this contract's.
 sealed class Program<I, O> {
   const Program();
 
@@ -243,8 +242,8 @@ final class Executable extends Program<Args, ExecResult> {
 /// site.
 ///
 /// An effect, decided like any other: what a tool posts to a chat, an issue
-/// tracker or an API. Not a prompt, which is the agent planning and is
-/// recorded, not decided.
+/// tracker or an API. Not a prompt, which is the agent planning and is not
+/// decided.
 final class WebRequest extends Program<Request, Sent> {
   const WebRequest();
 
