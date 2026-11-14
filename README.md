@@ -21,13 +21,15 @@ Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrRefusal(
 // The host, which holds the drivers:
 final journeyPath = JourneyPath.start(
   id: JourneyPathId.parse('fix-login/agent-1')!,
-  drivers: [files, programs, network],
+  drivers: [files, programs],
   airlock: airlock,
   rules: rules,
 );
+// Its loop, for one tool call, at that call's place in the turn:
+final apex = journeyPath.at(place);
 var result = writeAndFormat(file);
 while (result is Run<ExecResult>) {
-  result = await result.next(journeyPath);
+  result = await result.next(apex);
 }
 ```
 
@@ -52,30 +54,37 @@ while (result is Run<ExecResult>) {
 
 Nothing here sends out of the home. A journey path's rules say what may
 leave, to where, and through which sign-in; each journey path's own loop
-holds only the sign-ins its rules allow, so its model calls can go nowhere
-else.
+holds only the sign-ins its rules allow, so its prompts can go nowhere
+else. What its prompts send and what comes back is witnessed by the airlock,
+not decided, and has no tool in it, so it is the airlock's and not this
+contract's.
 
 ## A journey path
 
-One agent's own journey: its id, its rules, and its airlock and drivers.
-Its apex is its growing tip, where its next effect happens; two agents on
-one machine have two apexes. Its drivers are those of the machine its apex
-is on, acting as the journey's user.
+One agent's own journey: its id, its rules `R`, and its airlock and
+drivers. Its drivers act as the journey's user, each wherever it runs.
+Every entry it records is at a place `P` in a turn, which the host supplies
+and the airlock records; nothing here computes one.
 
 - `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the host. Holding
   the drivers is already the power to touch the world, so starting a journey
   path grants nothing new.
-- `await narrowed(fewer, id:)`: a journey path under rules the airlock finds
-  allow no more; null otherwise. Everyone but the host gets journey paths
-  this way. Recorded either way, as a `Narrowed` entry, before the new one
-  exists: the record's tree of journey paths is these entries, and a refusal
-  is an attempt to widen.
+- `await narrowed(fewer, id:, at:)`: a journey path under rules the airlock
+  finds allow no more; null otherwise. Everyone but the host gets journey
+  paths this way. Recorded either way, at `at`, as a `Narrowed` entry,
+  before the new one exists: the record's tree of journey paths is these
+  entries, and a refusal is an attempt to widen.
+- `at(place)`: the journey path's apex at that place, its tip, where its
+  agent loop and airlock carry out the next run. The journey path checks
+  the place's type, so whatever follows a tool's result takes an `Apex` and
+  never handles `P`. Two agents on one machine have two apexes; one step's
+  two tool calls are two apexes of one journey path, at two places.
 - `JourneyPathId.parse(raw)`: given by whoever starts or narrows a journey
   path, and carried by every entry it records. A blank one parses to null;
   `narrowed` refuses an id already asked for under the same started journey
   path, and a narrowing whose record throws has used its id up. Ids from
   before a restart are the host's to keep apart.
-- `run.next(journeyPath)`, the only way to carry out a run: the airlock
+- `run.next(apex)`, the only way to carry out a run: the airlock
   decides it; the airlock records the decision (`Decided`) and only then is
   a driver reached; the run comes back and the airlock records it
   (`Returned`), and only then does the continuation see it. A record that
@@ -87,10 +96,11 @@ is on, acting as the journey's user.
 - `stop()`: refuses every run not yet carried out, on this journey path and
   every one narrowed from it. A run whose driver has been reached is not
   interrupted.
-- `entries`: each entry once recorded. `underway`: what drivers report while
-  a run is underway, for a live view, and not recorded. Both come from this
-  journey path and every one narrowed from it, each naming its journey path.
-- `Airlock<R>`: `decide`, `narrows` and `record`, implemented by
+- `entries`: each entry once recorded, at its place. `underway`: what
+  drivers report while a run is underway, for a live view, and not
+  recorded. Both come from this journey path and every one narrowed from
+  it, each naming its journey path and place.
+- `Airlock<R, P>`: `decide`, `narrows` and `record`, implemented by
   intersyntactic's airlock.
 
 ## What the contract does not promise
