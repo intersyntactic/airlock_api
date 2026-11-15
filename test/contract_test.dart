@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
@@ -84,11 +86,7 @@ final class LogAirlock implements Airlock<Set<String>, int> {
       : const Deny('not in the rules', by: DecidedBy.rules);
 
   @override
-  bool narrows(Set<String> fewer, Set<String> rules) =>
-      rules.containsAll(fewer);
-
-  @override
-  Future<void> record(Entry<Set<String>, int> entry) async {
+  Future<void> record(Entry<int> entry) async {
     if (entry.runtimeType == failOn) throw StateError('disk full');
     log.add(
       '${entry.place}: ${switch (entry) {
@@ -96,8 +94,6 @@ final class LogAirlock implements Airlock<Set<String>, int> {
         Decided(:final run, decision: Deny(:final why)) => 'deny ${reachOf(run)}: $why',
         Returned(:final run, outcome: Ran()) => 'ran ${reachOf(run)}',
         Returned(:final run, outcome: Refused(:final why)) => 'refused ${reachOf(run)}: $why',
-        Narrowed(:final journeyPathId, :final child, :final rules, :final granted) => '${granted ? 'narrowed' : 'refused to widen'} $journeyPathId to $child '
-            '${rules.toList()..sort()}',
       }}',
     );
   }
@@ -126,12 +122,17 @@ Future<String> follow(Result<String> result, Apex apex) async {
   };
 }
 
+/// The id of a journey path started by the entry [startedBy], as a host
+/// names it: by that entry's hash.
+JourneyPathId idOf(String startedBy) =>
+    JourneyPathId.of(utf8.encode(startedBy));
+
 JourneyPath<Set<String>, int> start(
   LogAirlock airlock,
   List<Driver> drivers, {
   Set<String> rules = const {'read', 'write', 'dart'},
 }) => JourneyPath.start(
-  id: JourneyPathId.parse('root')!,
+  id: idOf('started root'),
   drivers: drivers,
   airlock: airlock,
   rules: rules,
@@ -225,7 +226,7 @@ void main() {
     await expectLater(
       follow(
         writeAndFormat('lib/a.dart'),
-        start(LogAirlock(failOn: Decided<Set<String>, int>), [files]).at(1),
+        start(LogAirlock(failOn: Decided<int>), [files]).at(1),
       ),
       throwsStateError,
     );
@@ -238,10 +239,7 @@ void main() {
     await expectLater(
       follow(
         writeAndFormat('lib/a.dart'),
-        start(LogAirlock(failOn: Returned<Set<String>, int>), [
-          files,
-          programs,
-        ]).at(1),
+        start(LogAirlock(failOn: Returned<int>), [files, programs]).at(1),
       ),
       throwsStateError,
     );
@@ -251,90 +249,12 @@ void main() {
     expect(programs.started, isEmpty);
   });
 
-  test('a journey path narrows, never widens, and both are recorded', () async {
-    final airlock = LogAirlock();
-    final root = start(airlock, [MemoryFiles()], rules: {'read', 'write'});
-    final reader = await root.narrowed(
-      {'read'},
-      id: JourneyPathId.parse('reader')!,
-      at: 1,
-    );
-    expect(reader?.rules, {'read'});
-    expect(
-      await root.narrowed(
-        {'read', 'write', 'dart'},
-        id: JourneyPathId.parse('wide')!,
-        at: 2,
-      ),
-      isNull,
-    );
-    expect(
-      await reader!.narrowed(
-        {'write'},
-        id: JourneyPathId.parse('writer')!,
-        at: 3,
-      ),
-      isNull,
-    );
-    expect(airlock.log, [
-      '1: narrowed root to reader [read]',
-      '2: refused to widen root to wide [dart, read, write]',
-      '3: refused to widen reader to writer [write]',
-    ]);
-  });
-
-  test('an id names one journey path, and a blank one names none', () async {
-    expect(JourneyPathId.parse(''), isNull);
-    expect(JourneyPathId.parse('  '), isNull);
-    final root = start(LogAirlock(), [MemoryFiles()]);
-    final a = JourneyPathId.parse('a')!;
-    expect(await root.narrowed({'read'}, id: a, at: 1), isNotNull);
-    // Again from the root, from a child, after a refusal, and the root's own.
-    await expectLater(
-      root.narrowed({'read'}, id: a, at: 1),
-      throwsArgumentError,
-    );
-    final b = (await root.narrowed(
-      {'write'},
-      id: JourneyPathId.parse('b')!,
-      at: 1,
-    ))!;
-    await expectLater(b.narrowed({'write'}, id: a, at: 1), throwsArgumentError);
-    final wide = JourneyPathId.parse('wide')!;
-    expect(await b.narrowed({'read'}, id: wide, at: 1), isNull);
-    await expectLater(
-      b.narrowed({'write'}, id: wide, at: 1),
-      throwsArgumentError,
-    );
-    await expectLater(
-      b.narrowed({'write'}, id: JourneyPathId.parse('root')!, at: 1),
-      throwsArgumentError,
-    );
-  });
-
-  test('a narrowing that cannot be recorded makes no journey path', () async {
-    final root = start(LogAirlock(failOn: Narrowed<Set<String>, int>), [
-      MemoryFiles(),
-    ]);
-    await expectLater(
-      root.narrowed({'read'}, id: JourneyPathId.parse('child')!, at: 1),
-      throwsStateError,
-    );
-  });
-
-  test('stopping a journey path stops those narrowed from it', () async {
+  test('stopping a journey path refuses what it has not yet run', () async {
     final files = MemoryFiles();
     final airlock = LogAirlock();
-    final root = start(airlock, [files]);
-    final child = (await root.narrowed(
-      {'write'},
-      id: JourneyPathId.parse('child')!,
-      at: 1,
-    ))!;
-    airlock.log.clear();
-    root.stop();
+    final path = start(airlock, [files])..stop();
     expect(
-      await follow(writeAndFormat('lib/a.dart'), child.at(2)),
+      await follow(writeAndFormat('lib/a.dart'), path.at(2)),
       'failed: stopped',
     );
     expect(files.files, isEmpty);
@@ -358,64 +278,41 @@ void main() {
     expect(decided, ['Allow by rules', 'Allow by rules', 'Deny by person']);
   });
 
-  test(
-    'entries reach the journey path they came from and its parents',
-    () async {
-      final root = start(LogAirlock(), [MemoryFiles()], rules: {'write'});
-      final seenAtRoot = <String>[];
-      final seenAtChild = <String>[];
-      root.entries.listen(
-        (e) => seenAtRoot.add('${e.journeyPathId} ${e.runtimeType}'),
-      );
-      final child = (await root.narrowed(
-        {'write'},
-        id: JourneyPathId.parse('child')!,
-        at: 1,
-      ))!;
-      child.entries.listen(
-        (e) => seenAtChild.add('${e.journeyPathId} ${e.runtimeType}'),
-      );
-      Result<String> write(String path) => Program.write.runOrRefusal(
-        FileText(RelativePath(path), ''),
+  test('each entry reaches the journey path, naming it', () async {
+    final path = start(LogAirlock(), [MemoryFiles()], rules: {'write'});
+    final seen = <String>[];
+    path.entries.listen(
+      (e) => seen.add(
+        '${e.journeyPathId == path.id} ${e.runtimeType} at ${e.place}',
+      ),
+    );
+    await follow(
+      Program.write.runOrRefusal(
+        FileText(RelativePath('a'), ''),
         then: (_) => const Done('ok'),
-      );
-      await follow(write('a'), child.at(2));
-      await follow(write('b'), root.at(3));
-      expect(seenAtChild, [
-        'child Decided<Set<String>, int>',
-        'child Returned<Set<String>, int>',
-      ]);
-      expect(seenAtRoot, [
-        'root Narrowed<Set<String>, int>',
-        ...seenAtChild,
-        'root Decided<Set<String>, int>',
-        'root Returned<Set<String>, int>',
-      ]);
-    },
-  );
+      ),
+      path.at(2),
+    );
+    expect(seen, ['true Decided<int> at 2', 'true Returned<int> at 2']);
+  });
 
   test('what drivers report while running reaches the live view', () async {
-    final root = start(LogAirlock(), [RecordedPrograms()]);
-    final child = (await root.narrowed(
-      {'dart'},
-      id: JourneyPathId.parse('tests')!,
-      at: 1,
-    ))!;
+    final path = start(LogAirlock(), [RecordedPrograms()], rules: {'dart'});
     final seen = <String>[];
-    root.underway.listen(
+    path.underway.listen(
       (u) => seen.add(
-        '${u.journeyPathId} at ${u.place}: ${switch (u.progress) {
+        'at ${u.place}: ${switch (u.progress) {
           Printed(:final channel, :final text) => '${channel.name}: $text',
         }}',
       ),
     );
     Result<String> format() =>
         dart.runOrRefusal(const Args(['format']), then: (e) => Done(e.stdout));
-    await follow(format(), root.at(2));
-    await follow(format(), child.at(3));
+    await follow(format(), path.at(2));
+    await follow(format(), path.at(3));
     expect(seen, [
-      'root at 2: stdout: Formatted 1 file',
-      'tests at 3: stdout: Formatted 1 file',
+      'at 2: stdout: Formatted 1 file',
+      'at 3: stdout: Formatted 1 file',
     ]);
   });
 

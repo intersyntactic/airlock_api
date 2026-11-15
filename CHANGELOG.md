@@ -1,8 +1,45 @@
 # Changelog
 
+## 0.3.0
+
+Breaking.
+
+- `JourneyPathId` is `is_shapes`'s: a journey path is named by the hash of
+  the record entry that started it, which the host writes
+  (`JourneyPathId.of(entryBytes)`), the way a `JourneyId` names a journey.
+  This package's own `JourneyPathId`, whose `parse` took any non-blank
+  string, is gone, and it re-exports `is_shapes`'s.
+- Narrowing is removed: `JourneyPath.narrowed`, the `Narrowed` entry and
+  `Airlock.narrows`. A `Narrowed` entry went into the parent's record and
+  named the child, so the child's id had to exist before the entry that
+  would name it, and could not be its hash. Nothing narrowed. With it go
+  stopping a child when its parent stops, and entries and progress
+  reaching a parent's streams.
+- `Entry<R, P>` is `Entry<P>` again, with `Decided<P>` and `Returned<P>`:
+  only `Narrowed` held rules.
+- Depends on `is_shapes` as well as `is_effects`.
+
 ## 0.2.0
 
 Breaking.
+
+Added to this entry with 0.3.0: the 0.2.0 release also made these changes,
+which its own changelog left out.
+
+- Every entry is at a host-supplied place `P` in a turn:
+  `JourneyPath<R, P>`, `Airlock<R, P>`, and a `place` on each entry and on
+  `Underway`.
+- `journeyPath.at(place)` gives an `Apex`, and a run is carried out with
+  `run.next(apex)`.
+- `Entry<R, P>`, so a switch over the kinds of entry is exhaustive.
+- `WebRequest` (`Program.web`) sends an `is_effects` `Request` through a
+  `WebDriver`. Its reach is `Sends(origin, signIn)`, which a rule grants
+  together and which never holds the body; a null sign-in means none.
+- `Result.map`, which gives a result's answer to a function and carries out
+  nothing.
+- `PathInRepo` is `is_effects`'s `RelativePath`.
+
+The changes it did list:
 
 - The vocabulary of effects and the driver interfaces move to `is_effects`:
   `PathInRepo`, `FileText`, `Args`, `ReadResult`, `Wrote`, `ExecResult`,

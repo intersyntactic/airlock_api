@@ -8,4 +8,6 @@
 /// an `is_tools_api` definition to what a tool does is `is_tool`'s.
 library;
 
+export 'package:is_shapes/is_shapes.dart' show JourneyPathId;
+
 export 'src/run.dart';
