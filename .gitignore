@@ -9,3 +9,7 @@ build/
 # https://dart.dev/guides/libraries/private-files#pubspeclock.
 pubspec.lock
 pubspec_overrides.yaml
+
+# Command output written here, such as a publish's own log, which pub would
+# otherwise pack into the package (0.2.0 and 0.3.0 each carry a pub.log).
+*.log
