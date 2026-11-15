@@ -2,7 +2,7 @@ name: is_airlock_api
 description: >-
   The airlock's contract: the runs a tool describes, the journey paths they
   are carried out on, and the airlock that decides and records each one.
-version: 0.3.0
+version: 0.3.1
 repository: https://github.com/intersyntactic/airlock_api
 
 environment:
@@ -10,7 +10,7 @@ environment:
 
 dependencies:
   is_effects: ^0.1.0
-  is_shapes: ^0.4.2
+  is_shapes: ^0.4.3
 
 dev_dependencies:
   analyzer: ^14.7.0

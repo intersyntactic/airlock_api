@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1
+
+- `DecidedBy` is `is_shapes`'s, re-exported, so the airlock and the docking
+  port record who decided with one type. The values and their order are
+  unchanged (`rules`, `person`), and so is `Decision.by`. Code written
+  against 0.3.0 compiles as it was; code importing both packages now sees
+  one `DecidedBy`, not two that clash.
+- Depends on `is_shapes` ^0.4.3.
+
 ## 0.3.0
 
 Breaking.

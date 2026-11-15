@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:is_effects/is_effects.dart';
-import 'package:is_shapes/is_shapes.dart' show JourneyPathId;
+import 'package:is_shapes/is_shapes.dart' show DecidedBy, JourneyPathId;
 
 /// What a tool's code returns for a call: a run whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -425,15 +425,6 @@ sealed class Decision {
   const Decision({required this.by});
 
   final DecidedBy by;
-}
-
-/// Who made a [Decision].
-enum DecidedBy {
-  /// The journey path's rules decided it.
-  rules,
-
-  /// The person was asked, or stopped the journey path.
-  person,
 }
 
 /// The run may be carried out.
