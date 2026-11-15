@@ -20,7 +20,7 @@ Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrRefusal(
 
 // The host, which holds the drivers:
 final journeyPath = JourneyPath.start(
-  id: JourneyPathId.parse('fix-login/agent-1')!,
+  id: JourneyPathId.of(startEntry), // the hash of the entry that started it
   drivers: [files, programs],
   airlock: airlock,
   rules: rules,
@@ -75,21 +75,16 @@ and the airlock records; nothing here computes one.
 - `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the host. Holding
   the drivers is already the power to touch the world, so starting a journey
   path grants nothing new.
-- `await narrowed(fewer, id:, at:)`: a journey path under rules the airlock
-  finds allow no more; null otherwise. Everyone but the host gets journey
-  paths this way. Recorded either way, at `at`, as a `Narrowed` entry,
-  before the new one exists: the record's tree of journey paths is these
-  entries, and a refusal is an attempt to widen.
 - `at(place)`: the journey path's apex at that place, its tip, where its
   agent loop and airlock carry out the next run. The journey path checks
   the place's type, so whatever follows a tool's result takes an `Apex` and
   never handles `P`. Two agents on one machine have two apexes; one step's
   two tool calls are two apexes of one journey path, at two places.
-- `JourneyPathId.parse(raw)`: given by whoever starts or narrows a journey
-  path, and carried by every entry it records. A blank one parses to null;
-  `narrowed` refuses an id already asked for under the same started journey
-  path, and a narrowing whose record throws has used its id up. Ids from
-  before a restart are the host's to keep apart.
+- `JourneyPathId`, from `is_shapes`: a journey path is named by the hash of
+  the record entry that started it (`JourneyPathId.of(entryBytes)`), which
+  the host writes, the way a `JourneyId` names a journey. So no two journey
+  paths share an id, after a restart too, and nothing here mints one. Every
+  entry carries it.
 - `run.next(apex)`, the only way to carry out a run: the airlock
   decides it; the airlock records the decision (`Decided`) and only then is
   a driver reached; the run comes back and the airlock records it
@@ -99,15 +94,22 @@ and the airlock records; nothing here computes one.
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped journey path's refusal
   is the person's.
-- `stop()`: refuses every run not yet carried out, on this journey path and
-  every one narrowed from it. A run whose driver has been reached is not
-  interrupted.
+- `stop()`: refuses every run not yet carried out on this journey path. A
+  run whose driver has been reached is not interrupted.
 - `entries`: each entry once recorded, at its place. `underway`: what
   drivers report while a run is underway, for a live view, and not
-  recorded. Both come from this journey path and every one narrowed from
-  it, each naming its journey path and place.
-- `Airlock<R, P>`: `decide`, `narrows` and `record`, implemented by
-  intersyntactic's airlock.
+  recorded. Each names its journey path and place.
+- `Airlock<R, P>`: `decide` and `record`, implemented by intersyntactic's
+  airlock.
+
+A journey path is not narrowed from another. For one agent to do less than
+another in the same journey (a reviewer that reads while the crew writes,
+https://github.com/enspyrco/intersyntactic/issues/1049), the plan is that
+it would be started with fewer rules, its starting entry naming its parent
+and its rules, so the airlock could check they are no wider. It would still
+be named by that entry's hash: a child names its parent, the way a git
+commit does, never the other way round. None of that is built: today a
+host starts each journey path with whatever rules it gives it.
 
 ## What the contract does not promise
 
@@ -117,5 +119,6 @@ outside it. So "every effect through these drivers is recorded" holds, and
 "every effect in the journey is recorded" is not this package's to promise;
 the journey's rules bound our journey paths, not anyone else's.
 
-The library imports `is_effects` and nothing else outside the SDK; a test
-reads every directive's URI from Dart's parse tree and holds it to that.
+The library imports `is_effects` and `is_shapes` and nothing else outside
+the SDK; a test reads every directive's URI from Dart's parse tree and
+holds it to that.

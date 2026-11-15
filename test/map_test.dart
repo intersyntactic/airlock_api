@@ -1,20 +1,19 @@
+import 'dart:convert';
+
 import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
 /// Allows everything, and keeps each entry it is asked to record.
 final class _KeepingAirlock implements Airlock<String, int> {
-  final kept = <Entry<String, int>>[];
+  final kept = <Entry<int>>[];
 
   @override
   Future<Decision> decide(Run<Object?> run, String rules) async =>
       const Allow(by: DecidedBy.rules);
 
   @override
-  bool narrows(String fewer, String rules) => true;
-
-  @override
-  Future<void> record(Entry<String, int> entry) async => kept.add(entry);
+  Future<void> record(Entry<int> entry) async => kept.add(entry);
 }
 
 /// Writes nothing, and says it wrote.
@@ -39,7 +38,7 @@ void main() {
       final airlock = _KeepingAirlock();
       final files = _FileDriver();
       final apex = JourneyPath<String, int>.start(
-        id: JourneyPathId.parse('a')!,
+        id: JourneyPathId.of(utf8.encode('started a')),
         drivers: [files],
         airlock: airlock,
         rules: 'all',
@@ -68,8 +67,8 @@ void main() {
       expect(applied, 1);
       expect(files.written, [path]);
       expect(airlock.kept.map((e) => (e.runtimeType, e.place)), [
-        (Decided<String, int>, 7),
-        (Returned<String, int>, 7),
+        (Decided<int>, 7),
+        (Returned<int>, 7),
       ]);
     },
   );

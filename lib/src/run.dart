@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:is_effects/is_effects.dart';
+import 'package:is_shapes/is_shapes.dart' show JourneyPathId;
 
 /// What a tool's code returns for a call: a run whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -318,38 +319,26 @@ final class Sends extends Reach {
 ///
 /// Started by whoever holds the drivers ([JourneyPath.start]), which is
 /// already the power to touch the world, so starting one grants nothing
-/// new. Everyone else gets journey paths by [narrowed], which gives no more
-/// than the journey path it came from.
+/// new.
 final class JourneyPath<R, P> {
-  JourneyPath._(
-    this.id,
-    this.rules,
-    this._airlock,
-    this._drivers,
-    this._parent,
-    this._issued,
-  );
-
   /// A journey path named [id], on [drivers], decided and recorded by
   /// [airlock], under [rules].
+  ///
+  /// [id] is the hash of the record entry that started it, which the host
+  /// writes, so no two journey paths share one and nothing here mints one.
   JourneyPath.start({
-    required JourneyPathId id,
+    required this.id,
     required Iterable<Driver> drivers,
-    required Airlock<R, P> airlock,
-    required R rules,
-  }) : this._(id, rules, airlock, List.unmodifiable(drivers), null, {id});
+    required this._airlock,
+    required this.rules,
+  }) : _drivers = List.unmodifiable(drivers);
 
   /// Names this journey path in every entry it records.
   final JourneyPathId id;
   final R rules;
   final Airlock<R, P> _airlock;
   final List<Driver> _drivers;
-  final JourneyPath<R, P>? _parent;
-
-  /// Every id asked for under the journey path this one was started from,
-  /// shared by all of them.
-  final Set<JourneyPathId> _issued;
-  final _entries = StreamController<Entry<R, P>>.broadcast(sync: true);
+  final _entries = StreamController<Entry<P>>.broadcast(sync: true);
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
 
@@ -359,50 +348,17 @@ final class JourneyPath<R, P> {
   /// whoever is handed the apex never sees [P].
   Apex at(P place) => Apex._(this, place);
 
-  /// A journey path named [id], under [fewer] rules, on the same drivers and
-  /// airlock, or null when the airlock finds [fewer] allows more than
-  /// [rules]. Stopped when this one is.
-  ///
-  /// Recorded either way, at [at], as a [Narrowed] entry of this journey
-  /// path, before the new one exists; a refusal is an attempt to widen, and
-  /// is kept.
-  ///
-  /// [id] must not have been asked for before under the journey path this
-  /// one was started from, granted or not, or the record would mix two
-  /// journey paths' entries: an [ArgumentError] when it has. Ids from before
-  /// a restart are the host's to keep apart.
-  ///
-  /// A narrowing whose record throws has still used up [id]: whether its
-  /// entry was kept is unknown, so a retry takes a new id rather than risk
-  /// two entries under one.
-  Future<JourneyPath<R, P>?> narrowed(
-    R fewer, {
-    required JourneyPathId id,
-    required P at,
-  }) async {
-    if (!_issued.add(id)) {
-      throw ArgumentError.value(id, 'id', 'names a journey path already');
-    }
-    final granted = _airlock.narrows(fewer, rules);
-    await _record(Narrowed(this.id, at, id, fewer, granted: granted));
-    return granted
-        ? JourneyPath._(id, fewer, _airlock, _drivers, this, _issued)
-        : null;
-  }
-
-  /// Refuses every run not yet carried out, on this journey path and every
-  /// one narrowed from it. A run whose driver has already been reached is
-  /// not interrupted.
+  /// Refuses every run not yet carried out on this journey path. A run whose
+  /// driver has already been reached is not interrupted.
   void stop() => _stopped = true;
 
-  bool get stopped => _stopped || (_parent?.stopped ?? false);
+  bool get stopped => _stopped;
 
-  /// Each entry once the airlock has recorded it, from this journey path and
-  /// every one narrowed from it.
-  Stream<Entry<R, P>> get entries => _entries.stream;
+  /// Each entry once the airlock has recorded it.
+  Stream<Entry<P>> get entries => _entries.stream;
 
-  /// What drivers report while runs are underway, from this journey path and
-  /// every one narrowed from it: for a live view, and not recorded.
+  /// What drivers report while runs are underway: for a live view, and not
+  /// recorded.
   Stream<Underway<P>> get underway => _underway.stream;
 
   D? _driver<D extends Driver>() => _drivers.whereType<D>().firstOrNull;
@@ -417,23 +373,20 @@ final class JourneyPath<R, P> {
     final Outcome<O> outcome = switch (decision) {
       Deny(:final why) => Refused(why),
       Allow() =>
-        await run._program._on(this, run._input, (progress) {
-              final underway = Underway(id, place, run, progress);
-              for (JourneyPath<R, P>? p = this; p != null; p = p._parent) {
-                p._underway.add(underway);
-              }
-            }) ??
+        await run._program._on(
+              this,
+              run._input,
+              (progress) => _underway.add(Underway(id, place, run, progress)),
+            ) ??
             Refused('this machine cannot run ${run._program.name}'),
     };
     await _record(Returned(id, place, run, outcome));
     return outcome;
   }
 
-  Future<void> _record(Entry<R, P> entry) async {
+  Future<void> _record(Entry<P> entry) async {
     await _airlock.record(entry);
-    for (JourneyPath<R, P>? p = this; p != null; p = p._parent) {
-      p._entries.add(entry);
-    }
+    _entries.add(entry);
   }
 }
 
@@ -460,13 +413,10 @@ abstract interface class Airlock<R, P> {
   /// Whether [run] may be carried out under [rules].
   Future<Decision> decide(Run<Object?> run, R rules);
 
-  /// Whether [fewer] allows nothing that [rules] does not.
-  bool narrows(R fewer, R rules);
-
   /// Keeps [entry]. A run's driver is reached only once its [Decided] entry
   /// is kept, and its outcome flows on only once its [Returned] entry is; an
   /// error thrown here ends the call.
-  Future<void> record(Entry<R, P> entry);
+  Future<void> record(Entry<P> entry);
 }
 
 /// What the [Airlock] decided about one run, and [by] whom, so the record
@@ -499,44 +449,16 @@ final class Deny extends Decision {
   final String why;
 }
 
-/// What names a journey path in the record, so its entries can be told from
-/// those of every other journey path in the journey, after a restart too.
-///
-/// Given by whoever starts or narrows the journey path, which is the code
-/// that knows what it is naming. [JourneyPath.narrowed] refuses one already
-/// asked for under the same started journey path.
-final class JourneyPathId {
-  const JourneyPathId._(this.value);
-
-  /// [raw] as an id, or null when it is blank, which names nothing apart.
-  static JourneyPathId? parse(String raw) =>
-      raw.trim().isEmpty ? null : JourneyPathId._(raw);
-
-  final String value;
-
-  @override
-  bool operator ==(Object other) =>
-      other is JourneyPathId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
-}
-
 /// One entry in a journey path's record: [Decided] before a run goes out,
-/// [Returned] when it comes back, and [Narrowed] when the journey path asks
-/// for a narrower one.
+/// and [Returned] when it comes back.
 ///
 /// Each is at a [place] in a turn, of the host's type [P], which the host
 /// supplies and the airlock records; nothing here computes one.
 ///
-/// Every kind takes both the journey path's rules type [R] and [P], even
-/// one that holds no rules, so a switch over the kinds is exhaustive: a
-/// kind with a type parameter its parent does not have cannot be covered
-/// by a case.
-sealed class Entry<R, P> {
+/// Every kind takes [P] and nothing more, so a switch over the kinds is
+/// exhaustive: a kind with a type parameter its parent does not have cannot
+/// be covered by a case.
+sealed class Entry<P> {
   const Entry(this.journeyPathId, this.place);
 
   /// The journey path this entry is of.
@@ -548,7 +470,7 @@ sealed class Entry<R, P> {
 
 /// [run] was decided, and no driver has been reached yet. Without a
 /// [Returned] entry after it, the record shows the run was cut short.
-final class Decided<R, P> extends Entry<R, P> {
+final class Decided<P> extends Entry<P> {
   const Decided(super.journeyPathId, super.place, this.run, this.decision);
 
   final Run<Object?> run;
@@ -556,7 +478,7 @@ final class Decided<R, P> extends Entry<R, P> {
 }
 
 /// [run] came back, with its [outcome], whether it ran or was refused.
-final class Returned<R, P> extends Entry<R, P> {
+final class Returned<P> extends Entry<P> {
   const Returned(super.journeyPathId, super.place, this.run, this.outcome);
 
   final Run<Object?> run;
@@ -572,21 +494,4 @@ final class Underway<P> {
   final P place;
   final Run<Object?> run;
   final Progress progress;
-}
-
-/// A journey path named [child] was asked for under [rules], and [granted]
-/// when the airlock found they allow no more than this one's. The record's
-/// tree of journey paths is these entries.
-final class Narrowed<R, P> extends Entry<R, P> {
-  const Narrowed(
-    super.journeyPathId,
-    super.place,
-    this.child,
-    this.rules, {
-    required this.granted,
-  });
-
-  final JourneyPathId child;
-  final R rules;
-  final bool granted;
 }
