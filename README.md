@@ -72,8 +72,9 @@ renderer the record names exactly
   words are drawn from. It has no body, so a tool cannot put words in. The
   path and headers are checked as is_effects's `Request` checks them.
 - `Airlock.renderer(name)` resolves a name to a `Renderer`: its
-  `RendererId` (the hash of its `lib/` and of every package it imports)
-  and the `ObjectId` of the follower built with it. It is resolved before the decision, so
+  `RendererId` (the sha256 of the renderer's published pub archive, as
+  `pubspec.lock` records it) and the `ObjectId` of the follower built with
+  it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
   `Decided` holds the whole `Post` and the exact `Renderer`, never a body,
   which does not exist yet. A name that resolves to nothing is denied
   before the rules are asked.

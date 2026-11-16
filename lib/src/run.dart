@@ -427,11 +427,13 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// A renderer named exactly: [id], its source, and [executable], the
 /// follower built with it.
 ///
-/// [id] names the renderer proper, a package whose `lib/` is only the pure
-/// function from entries to a body, which a person can read and check: the
-/// `FileSetId` of its `lib/` and of every package it imports, each under
-/// its package name, so an imported package cannot change what it writes
-/// without changing [id] (https://github.com/intersyntactic/shapes/pull/19).
+/// [id] names the renderer proper, a published pub package whose `lib/` is
+/// only the pure function from entries to a body, which a person can read
+/// and check: the sha256 of its published archive, the value `pubspec.lock`
+/// records and pub.dev reports as `archive_sha256` (Nick, 16 Nov). The
+/// archive does not hold the packages it depends on, so [executable], built
+/// with every one of them, is what pins the whole of the code that wrote a
+/// post; the two are recorded together.
 /// [executable] names the follower built with it: the one shared program
 /// that follows the journal, reads the entries and writes [Rendered],
 /// compiled once per renderer with [id] as a define, which it reports in
@@ -715,9 +717,10 @@ abstract interface class Airlock<R, P> {
   /// names. A renderer that does not answer in time is the airlock's to
   /// refuse, and its [Returned] entry then follows [decided] instead.
   ///
-  /// The renderer reports the source it was built from, the `FileSetId` it
-  /// was given as a define at compile time (as is_journal's
-  /// `Journal.builtDefine` gives a journal its code hash), and an entry
+  /// The renderer's follower reports the renderer it was built with, the
+  /// archive hash its `pubspec.lock` records, given as a define at compile
+  /// time (as is_journal's `Journal.builtDefine` gives a journal its code
+  /// hash), and an entry
   /// whose renderer reports anything other than the id [decided] names is
   /// refused. That rules out a stale or mis-built renderer being taken for
   /// this one, not someone building one that lies.
