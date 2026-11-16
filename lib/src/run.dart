@@ -424,8 +424,8 @@ final class RendererName {
 
 final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 
-/// A renderer named exactly: [id], its source, and [executable], the
-/// follower built with it.
+/// A renderer named exactly: [id], its source, and [executable], the render
+/// runner built with it.
 ///
 /// [id] names the renderer proper, a published pub package whose `lib/` is
 /// only the pure function from entries to a body, which a person can read
@@ -438,12 +438,12 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// its own only for a renderer with no dependencies, which `teams-reply`
 /// holds itself to with a test.
 ///
-/// [executable] names the follower built with it: the one shared program
-/// that follows the journal, reads the entries and writes [Rendered],
-/// compiled once per renderer with [id] as a define, which it reports in
-/// [Rendered.renderer]. Since the define is compiled in, each renderer's
-/// follower has its own build, and that build is what the journal's writer
-/// approves. Both are recorded in the [Decided] entry, so an old send can be
+/// [executable] names the render runner built with it: the one shared
+/// program that runs a renderer and writes its [Rendered] entry, reading
+/// each send's entries from the journal, compiled once per renderer with
+/// [id] as a define, which it reports in [Rendered.renderer]. Since the
+/// define is compiled in, each renderer's render runner has its own build,
+/// and that build is what the journal's writer approves. Both are recorded in the [Decided] entry, so an old send can be
 /// rebuilt from the journal and checked
 /// (https://github.com/enspyrco/intersyntactic/issues/1147).
 final class Renderer {
@@ -451,7 +451,8 @@ final class Renderer {
 
   final RendererId id;
 
-  /// The journal object holding the follower's bytes, built with [id].
+  /// The journal object holding the render runner's bytes, built with
+  /// [id].
   final ObjectId executable;
 }
 
@@ -721,7 +722,7 @@ abstract interface class Airlock<R, P> {
   /// names. A renderer that does not answer in time is the airlock's to
   /// refuse, and its [Returned] entry then follows [decided] instead.
   ///
-  /// The renderer's follower reports the renderer it was built with, the
+  /// The render runner reports the renderer it was built with, the
   /// archive hash its `pubspec.lock` records, given as a define at compile
   /// time (as is_journal's `Journal.builtDefine` gives a journal its code
   /// hash), and an entry

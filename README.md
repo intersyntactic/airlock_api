@@ -73,8 +73,8 @@ renderer the record names exactly
   path and headers are checked as is_effects's `Request` checks them.
 - `Airlock.renderer(name)` resolves a name to a `Renderer`: its
   `RendererId` (the sha256 of the renderer's published pub archive, as
-  `pubspec.lock` records it) and the `ObjectId` of the follower built with
-  it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
+  `pubspec.lock` records it) and the `ObjectId` of the render runner built
+  with it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
   `Decided` holds the whole `Send` and the exact `Renderer`, never a body,
   which does not exist yet. A name that resolves to nothing is denied
   before the rules are asked.
