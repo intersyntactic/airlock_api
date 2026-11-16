@@ -131,7 +131,7 @@ void main() {
   test("one path's token is rejected on another", () async {
     final airlock = LogAirlock();
     final mine = start(airlock, [MemoryFiles()]);
-    final theirs = JourneyPath<Set<String>, int>.start(
+    final theirs = JourneyPath<Set<String>, int>(
       id: JourneyPathId.of(utf8.encode('started theirs')),
       drivers: [MemoryFiles()],
       airlock: airlock,

@@ -18,8 +18,9 @@ Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrRefusal(
       dart.runOrRefusal(Args(['format', file.path.value]), then: Done.new),
 );
 
-// The service that starts a journey path, which holds the drivers:
-final journeyPath = JourneyPath.start(
+// The airlock service's side of a journey path the docking port started;
+// the airlock service holds the drivers:
+final journeyPath = JourneyPath(
   id: JourneyPathId.of(startEntry), // the hash of the entry that started it
   drivers: [files, programs],
   airlock: airlock,
@@ -97,19 +98,22 @@ drivers. Its drivers act as the journey's user, each wherever it runs.
 Every entry it records is at a place `P` in a turn, which the agent loop
 supplies and the airlock records; nothing here computes one.
 
-- `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the service that
-  starts a journey path. Holding the drivers is already the power to touch
-  the world, so starting a journey path grants nothing new.
+- `JourneyPath(id:, drivers:, airlock:, rules:)`: the airlock service's
+  side of a journey path, set up when the docking port says the path has
+  started (`PathStarted`). The airlock starts nothing. Holding the drivers
+  is already the power to touch the world, so setting up a side grants
+  nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
-  agent loop proposes the next run and its airlock decides it. The journey path checks
-  the place's type, so whatever follows a tool's result takes an `Apex` and
-  never handles `P`. Two agents on one machine have two apexes; one step's
-  two tool calls are two apexes of one journey path, at two places.
+  agent loop proposes the next run and its airlock decides it. The journey
+  path checks the place's type, so whatever follows a tool's result takes
+  an `Apex` and never handles `P`. Two agents on one machine have two
+  apexes; one step's two tool calls are two apexes of one journey path, at
+  two places.
 - `JourneyPathId`, from `is_shapes`: a journey path is named by the hash of
   the record entry that started it (`JourneyPathId.of(entryBytes)`), which
-  whoever starts it writes, the way a `JourneyId` names a journey. So no two journey
-  paths share an id, after a restart too, and nothing here mints one. Every
-  entry names it.
+  the docking port writes, the way a `JourneyId` names a journey. So no two
+  journey paths share an id, after a restart too, and nothing here mints
+  one. Every entry names it.
 - `run.next(apex)`, the only way a run reaches the world: it is proposed at
   the apex, and the airlock decides it; the airlock records the decision (`Decided`) and only then is
   a driver reached; the run comes back and the airlock records it
@@ -142,18 +146,18 @@ carries an effect out (RULINGS: "the airlock operates nothing").
   in the agent loop, over an `AirlockLink`, the transport (a socket, say),
   which this package does not have. `run.next(apex)` is the same with
   either, so a tool does not change.
-- `StartPath(journeyPath, rules:, stopped:)`: what the service that starts
-  journey paths sends the airlock service, which holds the drivers and so
-  is where `JourneyPath.start` runs. The answer is `Started`, with the
-  token the starter gives the path's loop, or `Rejected`. The airlock
-  service takes a start only from that service's OS user. Sent again after
-  either service restarts: a path the airlock service no longer holds is
-  started anew under the same id, and one it holds gets a new token
-  (`JourneyPath.reissue`), after which the old one is rejected. `stopped`
-  keeps the person's stop across a restart, and a start never un-stops a
-  path. A live path keeps the rules it started under.
-- `PathToken`: minted by `JourneyPath.start` and handed by the airlock
-  service only to whoever started the path, for its loop to put in every
+- `PathStarted(journeyPath, rules:, stopped:)`: what the docking port,
+  which starts journey paths, tells the airlock service, which holds the
+  drivers and so sets up its own side of the path (`JourneyPath`). The
+  answer is `Ready`, with the token the docking port gives the path's
+  loop, or `Rejected`. The airlock service takes this only from the docking
+  port's OS user. Sent again after either service restarts: a path whose
+  side the airlock service no longer holds is set up anew under the same
+  id, and one it holds gets a new token (`JourneyPath.reissue`), after
+  which the old one is rejected. `stopped` keeps the person's stop across a
+  restart, and nothing un-stops a path. A live path keeps the rules it had.
+- `PathToken`: minted when the airlock service sets up its side of a path,
+  and handed only to the docking port, for the path's loop to put in every
   `Proposal`. The OS user on the socket cannot tell one journey path from
   another, since an agent's paths share its user; the token can. It is
   compared in constant time, never with `==`, never recorded, and its
@@ -183,11 +187,11 @@ it would be started with fewer rules, its starting entry naming its parent
 and its rules, so the airlock could check they are no wider. It would still
 be named by that entry's hash: a child names its parent, the way a git
 commit does, never the other way round. None of that is built: today the
-service that starts a journey path gives it whatever rules it likes.
+docking port gives a journey path whatever rules it likes.
 
 ## What the contract does not promise
 
-An airlock guards the drivers it is started with, not the journey. An agent
+An airlock guards the drivers it is given, not the journey. An agent
 that joins a journey with its own drivers and its own airlock, or none, is
 outside it. So "every effect through these drivers is recorded" holds, and
 "every effect in the journey is recorded" is not this package's to promise;

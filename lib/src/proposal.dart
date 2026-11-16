@@ -3,9 +3,9 @@ part of 'run.dart';
 /// The secret that shows a [Proposal] came from the agent loop of the
 /// journey path it names.
 ///
-/// The airlock service mints one when it starts a journey path
-/// ([JourneyPath.token]) and hands it to whoever started the path, who gives
-/// it to that path's loop, and to nothing else. The OS user on the socket
+/// The airlock service mints one when it sets up its side of a journey path
+/// ([JourneyPath.token]) and hands it to the docking port, which started the
+/// path and gives it to that path's loop, and to nothing else. The OS user on the socket
 /// cannot tell one journey path from another, since every path of one agent
 /// runs as that agent's user, so the token is what does.
 ///
@@ -268,21 +268,25 @@ final class Considered implements ProposalAnswer {
 }
 
 /// The request was not considered, and is in no journey path's record,
-/// because [why]: it was not a proposal or a start, named no journey path
-/// the service holds, or did not show that path's token.
+/// because [why]: it was not a proposal or a [PathStarted], named no
+/// journey path the service holds, or did not show that path's token.
 ///
 /// Recorded by the service in the airlock's own chain, with the journey path
 /// it claimed and the OS user of the socket's peer, and never the token: a
 /// wrong token is the one attack the token is there to stop, and a refusal
 /// with no trace would leave nobody able to see it happened.
 final class Rejected
-    implements Received, ProposalAnswer, StartReceived, StartAnswer {
+    implements
+        Received,
+        ProposalAnswer,
+        PathStartedReceived,
+        PathStartedAnswer {
   const Rejected(this.why);
 
   final String why;
 
   /// The sender is told it was refused, with [why], in the form of a
-  /// refused outcome, which a loop and a starter both read.
+  /// refused outcome, which a loop and the docking port both read.
   @override
   Object? get json => encodeOutcome(Refused(why), (Never _) => null);
 }

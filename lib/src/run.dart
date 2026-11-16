@@ -7,8 +7,8 @@ import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
+part 'path_started.dart';
 part 'proposal.dart';
-part 'start.dart';
 
 /// What a tool's code returns for a call: a run whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -498,21 +498,22 @@ final class Sends extends Reach {
 /// rules [R] that say what it may do, and places [P] that say where in a
 /// turn each entry happened.
 ///
-/// Its drivers are those it was started with, acting as the journey's user,
-/// each wherever it runs. They are reached only by a [Run] proposed at one
-/// of its apexes, so every such run passes its airlock.
+/// Its drivers are those it was given, acting as the journey's user, each
+/// wherever it runs. They are reached only by a [Run] proposed at one of its
+/// apexes, so every such run passes its airlock.
 ///
-/// Started by whoever holds the drivers ([JourneyPath.start]), which is
-/// already the power to touch the world, so starting one grants nothing
-/// new.
+/// This is the airlock service's side of a journey path, set up when the
+/// docking port says the path has started ([PathStarted]). The airlock
+/// starts nothing. Whoever holds the drivers already has the power to touch
+/// the world, so setting up a side grants nothing new.
 final class JourneyPath<R, P> {
-  /// A journey path named [id], on [drivers], decided and recorded by
-  /// [airlock], under [rules].
+  /// The side of the journey path named [id], on [drivers], decided and
+  /// recorded by [airlock], under [rules].
   ///
-  /// [id] is the hash of the record entry that started it, which whoever
-  /// starts it writes, so no two journey paths share one and nothing here
+  /// [id] is the hash of the record entry that started the path, which the
+  /// docking port writes, so no two journey paths share one and nothing here
   /// mints one.
-  JourneyPath.start({
+  JourneyPath({
     required this.id,
     required Iterable<Driver> drivers,
     required this._airlock,
@@ -529,14 +530,15 @@ final class JourneyPath<R, P> {
   bool _stopped = false;
 
   /// What this journey path's agent loop puts in each [Proposal], to show it
-  /// is that loop: minted here, and handed only to whoever started the path.
+  /// is that loop: minted here, and handed only to the docking port, which
+  /// builds the loop.
   PathToken get token => _token;
   PathToken _token = PathToken._mint();
 
   /// A new [token], in place of the old one, which is rejected from then
-  /// on: for a [StartPath] naming a path that is already live, when whoever
-  /// started it has restarted and lost the token. Only one loop holds a
-  /// path's token.
+  /// on: for a [PathStarted] naming a path whose side is already set up,
+  /// when the docking port has restarted and lost the token. Only one loop
+  /// holds a path's token.
   PathToken reissue() => _token = PathToken._mint();
 
   /// This journey path's tip at [place], where its runs are proposed in this
@@ -548,8 +550,8 @@ final class JourneyPath<R, P> {
 
   /// Refuses every run on this journey path whose driver has not yet been
   /// reached. A run whose driver has been reached is not interrupted. Never
-  /// undone: a
-  /// [StartPath] that says the path is not stopped leaves it stopped.
+  /// undone: a [PathStarted] that says the path is not stopped leaves it
+  /// stopped.
   void stop() => _stopped = true;
 
   bool get stopped => _stopped;
@@ -665,7 +667,7 @@ final class _AtPath<P> extends Apex {
 /// Decides each run on a journey path, and records it.
 ///
 /// What intersyntactic's airlock implements. It guards the drivers it is
-/// started with, not the journey: an agent that joins a journey with its own
+/// given, not the journey: an agent that joins a journey with its own
 /// drivers is decided, or not, by its own.
 abstract interface class Airlock<R, P> {
   /// Whether a driver may carry out a run that would do [reach], under

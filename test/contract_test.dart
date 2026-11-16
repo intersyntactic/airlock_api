@@ -166,16 +166,18 @@ Future<String> follow(Result<String> result, Apex apex) async {
   };
 }
 
-/// The id of a journey path started by the entry [startedBy], as whoever
-/// starts it names it: by that entry's hash.
+/// The id of a journey path started by the entry [startedBy], as the
+/// docking port names it: by that entry's hash.
 JourneyPathId idOf(String startedBy) =>
     JourneyPathId.of(utf8.encode(startedBy));
 
+/// A journey path as the docking port starts one, with the airlock's side
+/// of it set up in this process.
 JourneyPath<Set<String>, int> start(
   LogAirlock airlock,
   List<Driver> drivers, {
   Set<String> rules = const {'read', 'write', 'dart'},
-}) => JourneyPath.start(
+}) => JourneyPath(
   id: idOf('started root'),
   drivers: drivers,
   airlock: airlock,
@@ -458,7 +460,7 @@ void main() {
       'what the airlock follows to the body', () async {
     final airlock = _FollowingAirlock();
     final turn = airlock.remember('done');
-    final path = JourneyPath<Set<String>, int>.start(
+    final path = JourneyPath<Set<String>, int>(
       id: idOf('started root'),
       drivers: [RecordedWeb()],
       airlock: airlock,
@@ -498,7 +500,7 @@ void main() {
     final airlock = _FollowingAirlock();
     final answer = await follow(
       post(teams, hart),
-      JourneyPath<Set<String>, int>.start(
+      JourneyPath<Set<String>, int>(
         id: idOf('started root'),
         drivers: [RecordedWeb()],
         airlock: airlock,

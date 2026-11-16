@@ -21,16 +21,20 @@ by the airlock
   continuation (Nick, 16 Nov: "Proposal"; only a driver carries an effect
   out). `JourneyPath.at` is unchanged, and `Apex` is now sealed, with the
   two kinds, so a tool does not change.
-- `PathToken`, minted by `JourneyPath.start` as `JourneyPath.token`:
-  what shows a proposal is from that journey path's loop (Nick, 16 Nov: a
-  token per path). Compared in constant time, never recorded, hidden by
+- `JourneyPath.start(...)` is now the unnamed `JourneyPath(...)`, taking
+  the same arguments: it is the airlock service's side of a journey path,
+  and the airlock starts nothing; the docking port starts journey paths
+  (Nick, 16 Nov).
+- `PathToken`, minted with each `JourneyPath` as `JourneyPath.token`: what
+  shows a proposal is from that journey path's loop (Nick, 16 Nov: a token
+  per path). Compared in constant time, never recorded, hidden by
   `toString`.
-- `StartPath`: the service that starts a journey path asks the airlock
-  service to start it, under its id and rules, and is answered `Started`
-  with the token, or `Rejected`. Sent again after a restart: same id, new
-  token, with `JourneyPath.reissue` for a path still live; `stopped`
-  keeps the person's stop across, and a start never un-stops a path.
-  `JourneyPath.token` is now a getter.
+- `PathStarted`: the docking port tells the airlock service a journey path
+  has started, under its id and rules, and is answered `Ready` with the
+  token, or `Rejected`. Sent again after either service restarts: same id,
+  new token, with `JourneyPath.reissue` for a path whose side is still
+  set up; `stopped` keeps the person's stop across, and nothing un-stops a
+  path. `JourneyPath.token` is now a getter.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected`;
   `JourneyPath.consider(proposal, place)` gives `Considered` or `Rejected`.
   A rejected request is in no journey path's record; the service records
