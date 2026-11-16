@@ -67,29 +67,32 @@ Apex loopApex(RecordedLink link, {int place = 1}) =>
     Apex.through(link, place: place);
 
 void main() {
-  test('a run proposed through the record is decided, recorded and run as '
-      'in the airlock, and its continuation runs in the loop', () async {
-    final airlock = LogAirlock();
-    final files = MemoryFiles();
-    final link = RecordedLink(
-      start(airlock, [files, RecordedPrograms()]),
-      airlock,
-    );
-    expect(
-      await answerOf(writeAndFormat('a.dart'), loopApex(link, place: 3)),
-      'Formatted 1 file',
-    );
-    expect(files.files, {'a.dart': 'void main() {}'});
-    expect(airlock.log, [
-      '3: allow write a.dart',
-      '3: ran write a.dart',
-      '3: allow dart format a.dart',
-      '3: ran dart format a.dart',
-    ]);
-    expect(link.rejected, isEmpty);
-  });
+  test(
+    'an effect proposed through the record is decided, recorded and '
+    'carried out as in the airlock, and its continuation runs in the loop',
+    () async {
+      final airlock = LogAirlock();
+      final files = MemoryFiles();
+      final link = RecordedLink(
+        start(airlock, [files, RecordedPrograms()]),
+        airlock,
+      );
+      expect(
+        await answerOf(writeAndFormat('a.dart'), loopApex(link, place: 3)),
+        'Formatted 1 file',
+      );
+      expect(files.files, {'a.dart': 'void main() {}'});
+      expect(airlock.log, [
+        '3: allow write a.dart',
+        '3: ran write a.dart',
+        '3: allow dart format a.dart',
+        '3: ran dart format a.dart',
+      ]);
+      expect(link.rejected, isEmpty);
+    },
+  );
 
-  test("what a run returned reaches the loop from the record, in full, and "
+  test("what an effect returned reaches the loop from the record, in full, and "
       'its entries name the proposal', () async {
     final airlock = LogAirlock();
     final files = MemoryFiles()..files['a.dart'] = 'the text';
@@ -149,7 +152,7 @@ void main() {
   });
 
   test(
-    'a run proposed in-process has no entry in the record to answer',
+    'an effect proposed in-process has no entry in the record to answer',
     () async {
       final airlock = LogAirlock();
       final path = start(airlock, [MemoryFiles()]);

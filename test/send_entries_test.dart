@@ -20,7 +20,7 @@ import 'contract_test.dart'
 /// [json] as the journal would hold it and give it back: JSON text.
 Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
 
-/// The [Decided] entries recorded while [run] is run through on a journey path
+/// The [Decided] entries recorded while [run] is carried through on a journey path
 /// with [rules].
 Future<List<Decided<int>>> decidedWhile(
   Future<void> Function(JourneyPath<Set<String>, int> path) run, {
@@ -78,7 +78,7 @@ void main() {
     expect((unnamed.decision as Deny).why, 'no renderer named nowhere');
   });
 
-  test("a run that is not a send has no send entry", () async {
+  test("an effect that is not a send has no send entry", () async {
     final decided = await decidedWhile(
       (path) => answerOf(writeAndFormat('a.dart'), path.at(1)),
       rules: {'write', 'dart'},

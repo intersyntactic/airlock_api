@@ -1,6 +1,6 @@
-/// The airlock's contract: what a tool returns for a call, the runs of
-/// programs it describes, the journey path each run is proposed on, and
-/// the [Airlock] that decides and records each one.
+/// The airlock's contract: what a tool returns for a call, the effects it
+/// describes, the journey path each effect is proposed on, and the
+/// [Airlock] that decides and records each one.
 ///
 /// The airlock itself, which decides and records, is not here: this library
 /// holds only the types it and the tools agree on. What an effect takes and
@@ -12,4 +12,4 @@ export 'package:is_content_id/is_content_id.dart' show ObjectId;
 export 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
-export 'src/run.dart';
+export 'src/effect.dart';

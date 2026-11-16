@@ -153,7 +153,7 @@ final class _ReadingAirlock extends LogAirlock {
 
 final dart = Executable.parse('dart')!;
 
-/// Writes [path], then formats it: two runs, and what the second printed.
+/// Writes [path], then formats it: two effects, and what the second printed.
 Result<String> writeAndFormat(String path) => Program.write.runOrRefusal(
   FileText(RelativePath(path), 'void main() {}'),
   then: (wrote) => dart.runOrRefusal(
@@ -162,15 +162,15 @@ Result<String> writeAndFormat(String path) => Program.write.runOrRefusal(
   ),
 );
 
-/// [result] run through at [apex] to an answer, or why there is none.
+/// [result] carried through at [apex] to an answer, or why there is none.
 Future<String> answerOf(Result<String> result, Apex apex) async {
-  while (result is Run<String>) {
+  while (result is Effect<String>) {
     result = await result.next(apex);
   }
   return switch (result) {
     Done(:final value) => value,
     Failed(:final why) => 'failed: $why',
-    Run() => throw StateError('run through to an answer'),
+    Effect() => throw StateError('carried through to an answer'),
   };
 }
 
@@ -269,7 +269,7 @@ void main() {
     },
   );
 
-  test('a denied run reaches no driver, is recorded, and fails', () async {
+  test('a denied effect reaches no driver, is recorded, and fails', () async {
     final files = MemoryFiles();
     final airlock = LogAirlock();
     final answer = await answerOf(

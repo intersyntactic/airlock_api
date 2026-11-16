@@ -1,4 +1,4 @@
-part of 'run.dart';
+part of 'effect.dart';
 
 /// [journeyPath] has started, and its work has not begun: it is waiting for
 /// room (Nick, 17 Nov: "waiting-to-start"; a traveller does not know what a

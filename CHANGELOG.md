@@ -4,6 +4,11 @@
 
 Breaking.
 
+- `Run` is now `Effect`, and the library's file `run.dart` is `effect.dart`
+  (Nick, 17 Nov: "we retired 'run' did we not?"). RULINGS retires "run"
+  for a journey, and already names what the airlock decides an effect.
+  The verb stays: `Program.run(input, then:)` and `runOrRefusal` still
+  run a program, and a loop still runs as its user.
 - `Held` (kind `held`) is now `WaitingToStart` (kind `waiting-to-start`),
   named for what happens: the path has started and its work has not
   begun (Nick, 17 Nov: "waiting-to-start"; a traveller does not know what

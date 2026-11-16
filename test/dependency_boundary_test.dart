@@ -68,7 +68,7 @@ void main() {
     expect(
       violations,
       isEmpty,
-      reason: 'is_airlock_api is a contract: it describes runs and reaches no driver',
+      reason: 'is_airlock_api is a contract: it describes effects and reaches no driver',
     );
   });
 }
