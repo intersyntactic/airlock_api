@@ -7,7 +7,7 @@ import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
-part 'carry.dart';
+part 'proposal.dart';
 part 'start.dart';
 
 /// What a tool's code returns for a call: a run whose outcome it needs
@@ -15,8 +15,9 @@ part 'start.dart';
 /// type of the answer, the tool's output type.
 ///
 /// A tool holds no driver and touches nothing. Its result is followed at an
-/// [Apex], whose journey path has each run decided, recorded and carried out,
-/// and gives what became of it to the run's continuation. So a tool can
+/// [Apex], whose journey path has each run decided and recorded, and reached
+/// by a driver if it is allowed, and gives what became of it to the run's
+/// continuation. So a tool can
 /// describe nothing a run cannot express.
 ///
 /// Not an [Outcome], which is what happened to one run. A [Run] never reaches
@@ -27,7 +28,7 @@ sealed class Result<A> {
 
   /// This result with its answer, once there is one, given to [f].
   ///
-  /// Carries out nothing: a run's continuation is extended, so [f] is applied
+  /// Reaches no driver: a run's continuation is extended, so [f] is applied
   /// when a later [Run.next] reaches an answer, and every run on the way is
   /// still decided and recorded. So whoever turns a tool's answer into what
   /// the model is told can do it without following the runs.
@@ -52,12 +53,12 @@ sealed class Result<A> {
 abstract final class Run<A> extends Result<A> {
   const Run._();
 
-  /// This run carried out at [apex], and the result it leads to.
+  /// This run proposed at [apex], and the result it leads to.
   ///
-  /// The only way to carry out a run. What it would do to the world, its
-  /// [Reach], is worked out first; the journey path's airlock decides it,
-  /// and records the decision, at the apex's place, before any driver is
-  /// reached; an allowed run is carried out by a driver of the journey path;
+  /// The only way a run reaches the world. What it would do, its [Reach], is
+  /// worked out first; the journey path's airlock decides it, and records
+  /// the decision, at the apex's place, before any driver is reached; a
+  /// driver of the journey path carries out an allowed run;
   /// the airlock records what became of it before the continuation sees it.
   /// If either record cannot be written, its error ends the call: no driver
   /// is reached without a recorded decision, and no outcome flows on
@@ -83,7 +84,7 @@ final class _Run<I, O, A> extends Run<A> {
 
   @override
   Future<Result<A>> next(Apex apex) async =>
-      _then(await apex._carryOut(_program, _input));
+      _then(await apex._propose(_program, _input));
 
   @override
   Run<B> map<B>(B Function(A answer) f) =>
@@ -113,7 +114,7 @@ final class Failed extends Result<Never> {
   Failed map<B>(B Function(Never answer) f) => this;
 }
 
-/// A program a run may carry out: what it takes, [I], and what it gives
+/// A program a run may be of: what it takes, [I], and what it gives
 /// back, [O].
 ///
 /// A closed set: [ReadFile], [WriteFile], [Executable] and [WebPost].
@@ -363,11 +364,11 @@ final class WebPost extends Program<Post, Sent> {
 }
 
 /// What a tool posts: where to, as whom, and which recorded entries the
-/// words are drawn from, by which renderer. It carries no words of its own,
+/// words are drawn from, by which renderer. It holds no words of its own,
 /// so a tool cannot put any in a post.
 ///
 /// [path] and [headers] are checked as is_effects's `Request` checks them:
-/// a [WebPath] cannot name another site, and [headers] carry no credential.
+/// a [WebPath] cannot name another site, and [headers] hold no credential.
 final class Post {
   Post(
     this.origin, {
@@ -467,7 +468,7 @@ final class Starts extends Reach {
 /// sign-in when null.
 ///
 /// Null means no sign-in, never any: it is null exactly when the request
-/// carries none. So a rule granting a site under no sign-in must not match
+/// has none. So a rule granting a site under no sign-in must not match
 /// a send that has one, or a grant to fetch a page anonymously would let a
 /// journey path post there as a bot.
 ///
@@ -493,13 +494,13 @@ final class Sends extends Reach {
   SignIn? get signIn => post.signIn;
 }
 
-/// One agent's own journey: the thread its runs are carried out on, with
+/// One agent's own journey: the thread its runs are proposed on, with
 /// rules [R] that say what it may do, and places [P] that say where in a
 /// turn each entry happened.
 ///
 /// Its drivers are those it was started with, acting as the journey's user,
-/// each wherever it runs. They are reached only by a [Run] carried out at
-/// one of its apexes, so every such run passes its airlock.
+/// each wherever it runs. They are reached only by a [Run] proposed at one
+/// of its apexes, so every such run passes its airlock.
 ///
 /// Started by whoever holds the drivers ([JourneyPath.start]), which is
 /// already the power to touch the world, so starting one grants nothing
@@ -527,26 +528,27 @@ final class JourneyPath<R, P> {
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
 
-  /// What this journey path's agent loop puts in each [Carry], to show it is
-  /// that loop: minted here, and handed only to whoever started the path.
+  /// What this journey path's agent loop puts in each [Proposal], to show it
+  /// is that loop: minted here, and handed only to whoever started the path.
   PathToken get token => _token;
   PathToken _token = PathToken._mint();
 
-  /// A new [token], in place of the old one, which no longer carries out
-  /// anything: for a [StartPath] naming a path that is already live, when
-  /// whoever started it has restarted and lost the token. Only one loop
-  /// holds a path's token.
+  /// A new [token], in place of the old one, which is rejected from then
+  /// on: for a [StartPath] naming a path that is already live, when whoever
+  /// started it has restarted and lost the token. Only one loop holds a
+  /// path's token.
   PathToken reissue() => _token = PathToken._mint();
 
-  /// This journey path's tip at [place], where its runs are carried out in
-  /// this process.
+  /// This journey path's tip at [place], where its runs are proposed in this
+  /// process.
   ///
   /// Here, where [P] is known, so a place of another type does not compile;
   /// whoever is handed the apex never sees [P].
   Apex at(P place) => _AtPath(this, place);
 
-  /// Refuses every run not yet carried out on this journey path. A run whose
-  /// driver has already been reached is not interrupted. Never undone: a
+  /// Refuses every run on this journey path whose driver has not yet been
+  /// reached. A run whose driver has been reached is not interrupted. Never
+  /// undone: a
   /// [StartPath] that says the path is not stopped leaves it stopped.
   void stop() => _stopped = true;
 
@@ -561,7 +563,7 @@ final class JourneyPath<R, P> {
 
   D? _driver<D extends Driver>() => _drivers.whereType<D>().firstOrNull;
 
-  Future<Outcome<O>> _carryOut<I, O>(
+  Future<Outcome<O>> _consider<I, O>(
     Program<I, O> program,
     I input,
     P place,
@@ -600,30 +602,34 @@ final class JourneyPath<R, P> {
     _entries.add(entry);
   }
 
-  /// [carry] carried out at [place], as it would be at [at]'s apex, once it
-  /// shows this path's [token]. A carry of another journey path, or with
-  /// another token, is [Rejected] and recorded in no journey path's record.
+  /// [proposal] considered at [place], as a run proposed at [at]'s apex
+  /// would be, once it shows this path's [token]: decided and recorded, and
+  /// carried out by a driver if it is allowed. A proposal of another journey
+  /// path, or with another token, is [Rejected] and recorded in no journey
+  /// path's record.
   ///
-  /// [place] is [Carry.place] read as a [P] by the service, which knows
+  /// [place] is [Proposal.place] read as a [P] by the service, which knows
   /// [P].
-  Future<CarryAnswer> carryOut(Carry carry, P place) async {
-    if (carry.journeyPath != id) {
+  Future<ProposalAnswer> consider(Proposal proposal, P place) async {
+    if (proposal.journeyPath != id) {
       return const Rejected('another journey path');
     }
-    if (!token._matches(carry.token)) {
+    if (!token._matches(proposal.token)) {
       return const Rejected("not this journey path's token");
     }
-    return Carried._(await carry._work.on(this, place));
+    return Considered._(await proposal._work.on(this, place));
   }
 }
 
-/// A journey path's tip at one place in a turn: where its agent loop and
-/// airlock carry out the next run, recording each entry at that place.
+/// A journey path's tip at one place in a turn: where its agent loop
+/// proposes the next run and its airlock decides it, recording each entry
+/// at that place.
 ///
 /// Made by [JourneyPath.at] where the journey path is, in the airlock
 /// service, and by [Apex.through] in the agent loop, which is another
-/// process: there a run's program and input go to the airlock as a [Carry],
-/// and its continuation stays behind, since it is the tool's own code. Either
+/// process: there a run's program and input go to the airlock as a
+/// [Proposal], and its continuation stays behind, since it is the tool's own
+/// code. Either
 /// way, what follows a tool's result takes an apex and never handles the
 /// place. Two agents on one machine have two apexes; one step's two tool
 /// calls are two apexes of one journey path, at two places.
@@ -642,7 +648,7 @@ sealed class Apex {
     required Object? place,
   }) = _ThroughLink;
 
-  Future<Outcome<O>> _carryOut<I, O>(Program<I, O> program, I input);
+  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
 }
 
 final class _AtPath<P> extends Apex {
@@ -652,8 +658,8 @@ final class _AtPath<P> extends Apex {
   final P _place;
 
   @override
-  Future<Outcome<O>> _carryOut<I, O>(Program<I, O> program, I input) =>
-      _journeyPath._carryOut(program, input, _place);
+  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) =>
+      _journeyPath._consider(program, input, _place);
 }
 
 /// Decides each run on a journey path, and records it.
@@ -662,7 +668,8 @@ final class _AtPath<P> extends Apex {
 /// started with, not the journey: an agent that joins a journey with its own
 /// drivers is decided, or not, by its own.
 abstract interface class Airlock<R, P> {
-  /// Whether a run that would do [reach] may be carried out under [rules].
+  /// Whether a driver may carry out a run that would do [reach], under
+  /// [rules].
   ///
   /// Given the reach, not the run, so the decision is about exactly what is
   /// recorded: for a post, the renderer its name resolved to.
@@ -712,12 +719,12 @@ sealed class Decision {
   final DecidedBy by;
 }
 
-/// The run may be carried out.
+/// A driver may carry the run out.
 final class Allow extends Decision {
   const Allow({required super.by});
 }
 
-/// The run is not carried out, because [why]; its continuation is handed
+/// No driver carries the run out, because [why]; its continuation is handed
 /// [Refused] with that reason.
 final class Deny extends Decision {
   const Deny(this.why, {required super.by});

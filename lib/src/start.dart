@@ -15,7 +15,7 @@ part of 'run.dart';
 /// Sent again after either service restarts: for a path the airlock service
 /// no longer holds, it is started anew under the same id, so it is the same
 /// path, with a new token; for one it holds, [JourneyPath.reissue] gives a
-/// new token and the old one carries out nothing more. [stopped] says the
+/// new token and the old one is rejected from then on. [stopped] says the
 /// person stopped it, since a stop lives in the airlock service's memory and
 /// a restart would otherwise undo it; a start never un-stops a path.
 final class StartPath implements StartReceived {
@@ -81,7 +81,7 @@ sealed class StartAnswer {
 }
 
 /// The journey path is live, and [token] is what its loop shows: the only
-/// token that carries out anything on it now.
+/// token accepted on it now.
 final class Started implements StartAnswer {
   const Started._(this.token);
 

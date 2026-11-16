@@ -4,12 +4,12 @@ import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
-import 'carry_test.dart' show ServiceLink;
+import 'proposal_test.dart' show ServiceLink;
 import 'contract_test.dart' show LogAirlock, MemoryFiles, follow;
 
 /// The airlock service, in memory: the journey paths it holds, started by
 /// [start] as the service would on a [StartPath], with its rules read as a
-/// list of names. Its [link] carries the loops' runs to them.
+/// list of names. Its [link] takes the loops' proposals to them.
 final class AirlockService {
   AirlockService(this.airlock, this.files);
 
@@ -75,7 +75,7 @@ Result<String> write(String path) => Program.write.runOrRefusal(
 );
 
 void main() {
-  test("a started path's loop carries out runs with the token it was "
+  test("a started path's loop proposes runs with the token it was "
       'answered with', () async {
     final service = AirlockService(LogAirlock(), MemoryFiles());
     final apex = startLoop(service, thread);
@@ -83,8 +83,8 @@ void main() {
     expect(service.files.files.keys, ['a']);
   });
 
-  test('a start for a live path gives a new token, and the old one carries '
-      'out nothing more', () async {
+  test('a start for a live path gives a new token, and the old one is '
+      'rejected from then on', () async {
     final service = AirlockService(LogAirlock(), MemoryFiles());
     final before = startLoop(service, thread);
     final after = startLoop(service, thread);

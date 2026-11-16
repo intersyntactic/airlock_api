@@ -540,7 +540,7 @@ void main() {
     expect(web.sent, isEmpty);
   });
 
-  test('a post cannot carry a credential, or a path to another site', () {
+  test('a post cannot hold a credential, or a path to another site', () {
     expect(
       () => Post(
         teams,

@@ -16,23 +16,25 @@ by the airlock
   so the exact bytes sent are in the record. The check that a renderer was
   built from the source its id names moves to the entry it records.
 - `Apex.through(link, journeyPath:, token:, place:)`: an apex in the agent
-  loop that sends each run's program and input over an `AirlockLink` as a
-  `Carry` and keeps the continuation. `JourneyPath.at` is unchanged, and
-  `Apex` is now sealed, with the two kinds, so a tool does not change.
+  loop that proposes each run's program and input over an `AirlockLink`
+  (`propose`) as a `Proposal`, an effect not yet decided, and keeps the
+  continuation (Nick, 16 Nov: "Proposal"; only a driver carries an effect
+  out). `JourneyPath.at` is unchanged, and `Apex` is now sealed, with the
+  two kinds, so a tool does not change.
 - `PathToken`, minted by `JourneyPath.start` as `JourneyPath.token`:
-  what shows a carry is from that journey path's loop (Nick, 16 Nov: a
+  what shows a proposal is from that journey path's loop (Nick, 16 Nov: a
   token per path). Compared in constant time, never recorded, hidden by
   `toString`.
 - `StartPath`: the service that starts a journey path asks the airlock
   service to start it, under its id and rules, and is answered `Started`
   with the token, or `Rejected`. Sent again after a restart: same id, new
   token, with `JourneyPath.reissue` for a path still live; `stopped`
-  carries the person's stop across, and a start never un-stops a path.
+  keeps the person's stop across, and a start never un-stops a path.
   `JourneyPath.token` is now a getter.
-- `Carry.read(json)` gives a `Carry` or `Rejected`;
-  `JourneyPath.carryOut(carry, place)` gives `Carried` or `Rejected`. A
-  rejected request is in no journey path's record; the service records it
-  in the airlock's own chain.
+- `Proposal.read(json)` gives a `Proposal` or `Rejected`;
+  `JourneyPath.consider(proposal, place)` gives `Considered` or `Rejected`.
+  A rejected request is in no journey path's record; the service records
+  it in the airlock's own chain.
 - Programs, inputs and outputs travel by is_effects's codecs; a `Post` by
   its own, built on them.
 - Depends on `is_effects` ^0.2.1, for its codecs.

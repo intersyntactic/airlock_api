@@ -1,7 +1,7 @@
 part of 'run.dart';
 
-/// The secret that shows a [Carry] came from the agent loop of the journey
-/// path it names.
+/// The secret that shows a [Proposal] came from the agent loop of the
+/// journey path it names.
 ///
 /// The airlock service mints one when it starts a journey path
 /// ([JourneyPath.token]) and hands it to whoever started the path, who gives
@@ -42,8 +42,8 @@ final class PathToken {
 
   final Uint8List _bytes;
 
-  /// The token as text, to hand to the loop and to put in a [Carry]: the one
-  /// way to read it, so every place it is written down can be found.
+  /// The token as text, to hand to the loop and to put in a [Proposal]: the
+  /// one way to read it, so every place it is written down can be found.
   String get hex =>
       [for (final b in _bytes) b.toRadixString(16).padLeft(2, '0')].join();
 
@@ -62,15 +62,16 @@ final class PathToken {
 
 final _tokenHex = RegExp(r'^[0-9a-f]{64}$');
 
-/// Takes a [Carry], as JSON, from an agent loop to the airlock service, and
-/// brings back its answer, as JSON: the transport, which this package does
-/// not have. A socket, say, whose peer's OS user the service checks as well.
+/// Takes a [Proposal], as JSON, from an agent loop to the airlock service,
+/// and brings back its answer, as JSON: the transport, which this package
+/// does not have. A socket, say, whose peer's OS user the service checks as
+/// well.
 abstract interface class AirlockLink {
-  Future<Object?> carry(Object? request);
+  Future<Object?> propose(Object? proposal);
 }
 
-/// An apex in the agent loop: sends each run's program and input to the
-/// airlock as a [Carry], and keeps the continuation.
+/// An apex in the agent loop: proposes each run's program and input to the
+/// airlock, and keeps the continuation.
 final class _ThroughLink extends Apex {
   const _ThroughLink(
     this._link, {
@@ -88,9 +89,9 @@ final class _ThroughLink extends Apex {
   /// [FormatException], ending the call: whether the run reached the world
   /// is then not known here, and the airlock's record says.
   @override
-  Future<Outcome<O>> _carryOut<I, O>(Program<I, O> program, I input) async =>
+  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) async =>
       decodeOutcome(
-        await _link.carry({
+        await _link.propose({
           'journeyPath': _journeyPath.hex,
           'token': _token.hex,
           'place': _place,
@@ -101,7 +102,7 @@ final class _ThroughLink extends Apex {
       );
 }
 
-/// How a program, its input and its output travel in a [Carry] and its
+/// How a program, its input and its output travel in a [Proposal] and its
 /// answer, by is_effects's codecs. A decoder throws a [FormatException]
 /// naming the field, as a dotted path from [field].
 final class _Wire<I, O> {
@@ -113,7 +114,7 @@ final class _Wire<I, O> {
     required this.outputFromJson,
   });
 
-  /// The keys that name the program in a carry.
+  /// The keys that name the program in a proposal.
   final Map<String, Object?> program;
   final Object? Function(I input) inputToJson;
   final I Function(Object? json, String field) inputFromJson;
@@ -121,7 +122,7 @@ final class _Wire<I, O> {
   final O Function(Object? json, String field) outputFromJson;
 }
 
-/// [post] as a carry holds it.
+/// [post] as a proposal holds it.
 Object? _postToJson(Post post) => {
   'origin': encodeOrigin(post.origin),
   'method': encodeMethod(post.method),
@@ -167,17 +168,22 @@ Post _postFromJson(Object? json, [String field = 'post']) {
   );
 }
 
-/// What a request from an agent loop came to, once read: a [Carry] to
-/// carry out, or [Rejected].
+/// What a request from an agent loop came to, once read: a [Proposal] to
+/// consider, or [Rejected].
 sealed class Received {}
 
-/// A run an agent loop asked the airlock to carry out: read from JSON and
-/// checked, but not yet shown to be from that journey path's loop, which
-/// [JourneyPath.carryOut] checks by [token].
-final class Carry implements Received {
-  Carry._(this.journeyPath, this.token, this.place, this._work);
+/// An effect an agent loop proposes, not yet decided: a run's program and
+/// input, read from JSON and checked, but not yet shown to be from that
+/// journey path's loop, which [JourneyPath.consider] checks by [token].
+///
+/// What leaves the loop is a proposal; the airlock decides it, and only a
+/// driver carries an effect out. So a post goes proposed, decided,
+/// rendered, returned; the record holds the last three, and a proposal that
+/// is [Rejected] is in no journey path's record.
+final class Proposal implements Received {
+  Proposal._(this.journeyPath, this.token, this.place, this._work);
 
-  /// [json] read as a carry, or [Rejected] with why it is not one. Every
+  /// [json] read as a proposal, or [Rejected] with why it is not one. Every
   /// part is checked here, as its type's own `parse` checks it, since the
   /// socket is not to be trusted to have gone through it.
   static Received read(Object? json) {
@@ -193,12 +199,17 @@ final class Carry implements Received {
       final p = _programNamed(program, json['executable']);
       if (p == null) return Rejected('not a program: $program');
       try {
-        return Carry._(journeyPath, t, json['place'], p._work(json['input']));
+        return Proposal._(
+          journeyPath,
+          t,
+          json['place'],
+          p._work(json['input']),
+        );
       } on FormatException catch (e) {
         return Rejected(e.message);
       }
     }
-    return const Rejected('not a carry');
+    return const Rejected('not a proposal');
   }
 
   /// The journey path it claims to be of.
@@ -225,7 +236,7 @@ final class _Work<I, O> {
 
   Future<Object?> on<P>(JourneyPath<Object?, P> journeyPath, P place) async =>
       encodeOutcome(
-        await journeyPath._carryOut(program, input, place),
+        await journeyPath._consider(program, input, place),
         program._wire.outputToJson,
       );
 }
@@ -241,31 +252,31 @@ Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
       _ => null,
     };
 
-/// What the airlock service answers a request with.
-sealed class CarryAnswer {
+/// What the airlock service answers a [Proposal] with.
+sealed class ProposalAnswer {
   /// The answer as JSON, for the link to take back to the loop.
   Object? get json;
 }
 
-/// The run was carried out, or refused, and both are in the journey path's
-/// record.
-final class Carried implements CarryAnswer {
-  const Carried._(this.json);
+/// The proposal was decided, and the run it describes ran or was refused;
+/// both are in the journey path's record.
+final class Considered implements ProposalAnswer {
+  const Considered._(this.json);
 
   @override
   final Object? json;
 }
 
-/// The request was not carried out, and is in no journey path's record,
-/// because [why]: it was not a carry or a start, named no journey path the
-/// service holds, or did not show that path's token.
+/// The request was not considered, and is in no journey path's record,
+/// because [why]: it was not a proposal or a start, named no journey path
+/// the service holds, or did not show that path's token.
 ///
 /// Recorded by the service in the airlock's own chain, with the journey path
 /// it claimed and the OS user of the socket's peer, and never the token: a
 /// wrong token is the one attack the token is there to stop, and a refusal
 /// with no trace would leave nobody able to see it happened.
 final class Rejected
-    implements Received, CarryAnswer, StartReceived, StartAnswer {
+    implements Received, ProposalAnswer, StartReceived, StartAnswer {
   const Rejected(this.why);
 
   final String why;

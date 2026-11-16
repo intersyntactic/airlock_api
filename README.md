@@ -41,7 +41,7 @@ while (result is Run<ExecResult>) {
   `Result<Never>`, so one fits every tool. A tool may take several runs, with
   ordinary logic between them; each is decided on its own.
 - `result.map(f)`: the same result with its answer, once there is one, given
-  to `f`. It carries out nothing: a run's continuation is extended, so every
+  to `f`. It reaches no driver: a run's continuation is extended, so every
   run is still decided and recorded at an apex. Turning a tool's answer into
   what the model is told takes no journey path.
 
@@ -55,7 +55,7 @@ while (result is Run<ExecResult>) {
   program.
 - `Run<A>`: a program, its input and the continuation, all private. Made only
   by its program, so its input is the program's own type. Nothing about a
-  run shows outside; when it is carried out, what it would do is worked out
+  run shows outside; when it is proposed, what it would do is worked out
   as its `Reach`, which the airlock decides and records: `Reads(path)`,
   `Writes(file)`, `Starts(program, args)` or `Sends(post, renderer)`. A
   rule grants a send by origin and sign-in together.
@@ -101,7 +101,7 @@ supplies and the airlock records; nothing here computes one.
   starts a journey path. Holding the drivers is already the power to touch
   the world, so starting a journey path grants nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
-  agent loop and airlock carry out the next run. The journey path checks
+  agent loop proposes the next run and its airlock decides it. The journey path checks
   the place's type, so whatever follows a tool's result takes an `Apex` and
   never handles `P`. Two agents on one machine have two apexes; one step's
   two tool calls are two apexes of one journey path, at two places.
@@ -109,9 +109,9 @@ supplies and the airlock records; nothing here computes one.
   the record entry that started it (`JourneyPathId.of(entryBytes)`), which
   whoever starts it writes, the way a `JourneyId` names a journey. So no two journey
   paths share an id, after a restart too, and nothing here mints one. Every
-  entry carries it.
-- `run.next(apex)`, the only way to carry out a run: the airlock
-  decides it; the airlock records the decision (`Decided`) and only then is
+  entry names it.
+- `run.next(apex)`, the only way a run reaches the world: it is proposed at
+  the apex, and the airlock decides it; the airlock records the decision (`Decided`) and only then is
   a driver reached; the run comes back and the airlock records it
   (`Returned`), and only then does the continuation see it. A record that
   cannot be written ends the call. A `Decided` with no `Returned` is a run
@@ -120,8 +120,8 @@ supplies and the airlock records; nothing here computes one.
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped journey path's refusal
   is the person's.
-- `stop()`: refuses every run not yet carried out on this journey path. A
-  run whose driver has been reached is not interrupted.
+- `stop()`: refuses every run on this journey path whose driver has not
+  yet been reached. A run whose driver has been reached is not interrupted.
 - `entries`: each entry once recorded, at its place. `underway`: what
   drivers report while a run is underway, for a live view, and not
   recorded. Each names its journey path and place.
@@ -133,7 +133,9 @@ supplies and the airlock records; nothing here computes one.
 The agent loop and the airlock are separate services, and what passes
 between them is a message with a type (RULINGS, "No server"). A run's
 continuation is the tool's own code, so it stays in the loop; its program
-and input go to the airlock as a `Carry`, and the outcome comes back.
+and input go to the airlock as a `Proposal`, an effect not yet decided, and
+the outcome comes back. The airlock decides and records, and only a driver
+carries an effect out (RULINGS: "the airlock operates nothing").
 
 - `JourneyPath.at(place)` is an apex where the journey path is, in the
   airlock service. `Apex.through(link, journeyPath:, token:, place:)` is one
@@ -147,19 +149,20 @@ and input go to the airlock as a `Carry`, and the outcome comes back.
   service takes a start only from that service's OS user. Sent again after
   either service restarts: a path the airlock service no longer holds is
   started anew under the same id, and one it holds gets a new token
-  (`JourneyPath.reissue`), after which the old one carries out nothing.
-  `stopped` carries the person's stop across a restart, and a start never
-  un-stops a path. A live path keeps the rules it started under.
+  (`JourneyPath.reissue`), after which the old one is rejected. `stopped`
+  keeps the person's stop across a restart, and a start never un-stops a
+  path. A live path keeps the rules it started under.
 - `PathToken`: minted by `JourneyPath.start` and handed by the airlock
   service only to whoever started the path, for its loop to put in every
-  `Carry`. The OS user on the socket cannot tell one journey path from
+  `Proposal`. The OS user on the socket cannot tell one journey path from
   another, since an agent's paths share its user; the token can. It is
   compared in constant time, never with `==`, never recorded, and its
   `toString` does not show it.
-- `Carry.read(json)` gives a `Carry` or `Rejected(why)`, checking every part
-  as its type's own `parse` does, with is_effects's codecs.
-  `journeyPath.carryOut(carry, place)` carries it out as `at(place)` would,
-  once it shows the path's token, giving `Carried` or `Rejected`.
+- `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
+  every part as its type's own `parse` does, with is_effects's codecs.
+  `journeyPath.consider(proposal, place)` decides and records it as a run
+  proposed at `at(place)` would be, once it shows the path's token, giving
+  `Considered` or `Rejected`.
 - A `Rejected` request is in no journey path's record, so a stranger cannot
   write into one. The service records it in the airlock's own chain, with
   the journey path it claimed and the socket peer's OS user, never the

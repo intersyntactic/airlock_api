@@ -1,7 +1,7 @@
 name: is_airlock_api
 description: >-
   The airlock's contract: the runs a tool describes, the journey paths they
-  are carried out on, and the airlock that decides and records each one.
+  are proposed on, and the airlock that decides and records each one.
 # Between releases main is `<next>-dev`, so whoever builds on it by path or
 # git ref can see it moves; the release commit drops `-dev`.
 version: 0.5.0

@@ -31,12 +31,15 @@ final class ServiceLink implements AirlockLink {
   Object? Function(Object? answer) answerWith = (answer) => answer;
 
   @override
-  Future<Object?> carry(Object? request) async {
-    final CarryAnswer answer = switch (Carry.read(_wire(request))) {
+  Future<Object?> propose(Object? request) async {
+    final ProposalAnswer answer = switch (Proposal.read(_wire(request))) {
       final Rejected rejected => rejected,
-      final Carry carry => switch ((paths[carry.journeyPath], carry.place)) {
-        (null, _) => Rejected('no journey path ${carry.journeyPath}'),
-        (final path?, final int place) => await path.carryOut(carry, place),
+      final Proposal proposal => switch ((
+        paths[proposal.journeyPath],
+        proposal.place,
+      )) {
+        (null, _) => Rejected('no journey path ${proposal.journeyPath}'),
+        (final path?, final int place) => await path.consider(proposal, place),
         _ => const Rejected('not a place'),
       },
     };
@@ -62,7 +65,7 @@ Apex loopApex(
 );
 
 void main() {
-  test('a run through the link is decided, recorded and carried out as '
+  test('a run proposed through the link is decided, recorded and run as '
       'in the airlock, and its continuation runs in the loop', () async {
     final airlock = LogAirlock();
     final files = MemoryFiles();
@@ -125,7 +128,7 @@ void main() {
     expect(link.rejected, ["not this journey path's token"]);
   });
 
-  test("one path's token does not carry out runs on another", () async {
+  test("one path's token is rejected on another", () async {
     final airlock = LogAirlock();
     final mine = start(airlock, [MemoryFiles()]);
     final theirs = JourneyPath<Set<String>, int>.start(
@@ -144,19 +147,19 @@ void main() {
     expect(airlock.log, isEmpty);
   });
 
-  test('a carry naming another journey path is rejected by the path it '
+  test('a proposal naming another journey path is rejected by the path it '
       'reached', () async {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles()]);
     final other = JourneyPathId.of(utf8.encode('started elsewhere'));
-    final answer = await path.carryOut(switch (Carry.read({
+    final answer = await path.consider(switch (Proposal.read({
       'journeyPath': other.hex,
       'token': path.token.hex,
       'place': 1,
       'program': 'read',
       'input': 'a.dart',
     })) {
-      final Carry carry => carry,
+      final Proposal proposal => proposal,
       final Rejected r => fail(r.why),
     }, 1);
     expect(answer, isA<Rejected>());
@@ -168,7 +171,7 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [RecordedWeb()], rules: {'$teams as $hart'});
     final link = ServiceLink([path]);
-    final carry = {
+    final proposal = {
       'journeyPath': path.id.hex,
       'token': path.token.hex,
       'place': 1,
@@ -194,7 +197,7 @@ void main() {
         'entries': ['not an id'],
       },
     ]) {
-      await link.carry({...carry, 'input': postWith(change)});
+      await link.propose({...proposal, 'input': postWith(change)});
     }
     expect(link.rejected, hasLength(4));
     expect(link.rejected[0], startsWith('input.path'));
@@ -204,10 +207,10 @@ void main() {
     expect(airlock.log, isEmpty);
   });
 
-  test('what is not a carry is rejected', () async {
+  test('what is not a proposal is rejected', () async {
     final path = start(LogAirlock(), [MemoryFiles()]);
     final link = ServiceLink([path]);
-    final carry = {
+    final proposal = {
       'journeyPath': path.id.hex,
       'token': path.token.hex,
       'place': 1,
@@ -216,16 +219,16 @@ void main() {
     for (final request in [
       null,
       'read a.dart',
-      {...carry, 'program': 'delete'},
-      {...carry, 'program': 'start'},
-      {...carry, 'program': 'read', 'token': 'short'},
-      {...carry, 'program': 'read', 'journeyPath': 'nope'},
+      {...proposal, 'program': 'delete'},
+      {...proposal, 'program': 'start'},
+      {...proposal, 'program': 'read', 'token': 'short'},
+      {...proposal, 'program': 'read', 'journeyPath': 'nope'},
     ]) {
-      await link.carry(request);
+      await link.propose(request);
     }
     expect(link.rejected, [
-      'not a carry',
-      'not a carry',
+      'not a proposal',
+      'not a proposal',
       'not a program: delete',
       'not a program: start',
       'not a token',
