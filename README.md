@@ -178,7 +178,12 @@ and records, and only a driver carries an effect out.
   writes it on its own chain, never the path's, which only the loop user
   writes. `ReturnedProposal.of(returned)` makes one from a `Returned` entry;
   `ReturnedProposal.refused(entryId, why)` answers a `proposed` entry that
-  was `Rejected`, so its loop is answered and no other path is held up.
+  was `Rejected`, so its loop is answered and no other path is stalled.
+- `WaitingToStart` (kind `waiting-to-start`, `{"journeyPath": <hex>}`,
+  read strictly): loop_launcher records it once, on a chain of its own,
+  when a path that has no `assigned` entry yet has to wait for room. Its
+  `assigned` ends the wait. Why it waits goes to the operator only, so the
+  entry carries no reason.
 - `LoopUser` (`loop-<n>`) and `Suit` (`suit-<n>`): the OS users
   loop_launcher hands each path from pools infra makes ahead of time, and
   records in the path's `assigned` entry. The path's loop runs as its loop

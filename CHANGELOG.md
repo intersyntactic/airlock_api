@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+Breaking.
+
+- `Held` (kind `held`) is now `WaitingToStart` (kind `waiting-to-start`),
+  named for what happens: the path has started and its work has not
+  begun (Nick, 17 Nov: "waiting-to-start"; a traveller does not know what
+  a loop is or what held means). `Held` shipped in 0.5.0 but was missing
+  from its changelog. No entry was ever written with the old kind.
 - Docs: "follow" is retired (https://github.com/enspyrco/intersyntactic/pull/1155).
   A reader subscribes to the record, an entry names its previous, and a
   tool's result is run through at an apex. No API changes.

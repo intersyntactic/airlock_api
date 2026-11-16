@@ -178,7 +178,7 @@ Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
 
 /// A `proposed` entry that is not a proposal, because [why]. The airlock
 /// service records [ReturnedProposal.refused] naming it, so the loop that
-/// wrote it is answered and no other path is held up.
+/// wrote it is answered and no other path is stalled.
 final class Rejected implements Received {
   const Rejected(this.why);
 
