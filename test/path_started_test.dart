@@ -57,7 +57,7 @@ final class AirlockService {
   Object? _wire(Object? json) => jsonDecode(jsonEncode(json));
 }
 
-/// What loop_launcher does when the docking port has started a journey
+/// What loop_launcher does when the docking station has started a journey
 /// path: tells the airlock service, and launches the loop with an apex
 /// built from the token it is answered with.
 Apex loopLauncherLaunches(

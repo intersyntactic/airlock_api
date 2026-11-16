@@ -18,7 +18,7 @@ Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrRefusal(
       dart.runOrRefusal(Args(['format', file.path.value]), then: Done.new),
 );
 
-// The airlock service's side of a journey path the docking port started;
+// The airlock service's side of a journey path the docking station started;
 // the airlock service holds the drivers:
 final journeyPath = JourneyPath(
   id: JourneyPathId.of(startEntry), // the hash of the entry that started it
@@ -108,7 +108,7 @@ Every entry it records is at a place `P` in a turn, which the agent loop
 supplies and the airlock records; nothing here computes one.
 
 - `JourneyPath(id:, drivers:, airlock:, rules:)`: the airlock service's
-  side of a journey path, set up when loop_launcher says the docking port
+  side of a journey path, set up when loop_launcher says the docking station
   has started the path (`PathStarted`). The airlock starts nothing. Holding the drivers
   is already the power to touch the world, so setting up a side grants
   nothing new.
@@ -120,7 +120,7 @@ supplies and the airlock records; nothing here computes one.
   two places.
 - `JourneyPathId`, from `is_shapes`: a journey path is named by the hash of
   the record entry that started it (`JourneyPathId.of(entryBytes)`), which
-  the docking port writes, the way a `JourneyId` names a journey. So no two
+  the docking station writes, the way a `JourneyId` names a journey. So no two
   journey paths share an id, after a restart too, and nothing here mints
   one. Every entry names it.
 - `run.next(apex)`, the only way a run reaches the world: it is proposed at
@@ -156,7 +156,7 @@ carries an effect out (RULINGS: "the airlock operates nothing").
   which this package does not have. `run.next(apex)` is the same with
   either, so a tool does not change.
 - `PathStarted(journeyPath, rules:, loopUser:, journeyUser:, stopped:)`:
-  the docking port starts journey paths, and records that it did;
+  the docking station starts journey paths, and records that it did;
   loop_launcher follows the journal for those entries and tells the airlock
   service, which holds the drivers and so sets up its own side of the path
   (`JourneyPath`). The answer is `Ready`, with the token loop_launcher gives
@@ -203,7 +203,7 @@ it would be started with fewer rules, its starting entry naming its parent
 and its rules, so the airlock could check they are no wider. It would still
 be named by that entry's hash: a child names its parent, the way a git
 commit does, never the other way round. None of that is built: today the
-docking port gives a journey path whatever rules it likes.
+docking station gives a journey path whatever rules it likes.
 
 ## What the contract does not promise
 

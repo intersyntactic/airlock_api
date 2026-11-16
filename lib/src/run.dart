@@ -521,7 +521,7 @@ final class Sends extends Reach {
 /// apexes, so every such run passes its airlock.
 ///
 /// This is the airlock service's side of a journey path, set up when
-/// loop_launcher says the docking port has started the path
+/// loop_launcher says the docking station has started the path
 /// ([PathStarted]). The airlock
 /// starts nothing. Whoever holds the drivers already has the power to touch
 /// the world, so setting up a side grants nothing new.
@@ -531,7 +531,7 @@ final class JourneyPath<R, P> {
   /// and whose programs run as [journeyUser].
   ///
   /// [id] is the hash of the record entry that started the path, which the
-  /// docking port writes, so no two journey paths share one and nothing here
+  /// docking station writes, so no two journey paths share one and nothing here
   /// mints one.
   JourneyPath({
     required this.id,

@@ -23,14 +23,14 @@ by the airlock
   two kinds, so a tool does not change.
 - `JourneyPath.start(...)` is now the unnamed `JourneyPath(...)`, taking
   the same arguments: it is the airlock service's side of a journey path,
-  and the airlock starts nothing; the docking port starts journey paths
+  and the airlock starts nothing; the docking station starts journey paths
   (Nick, 16 Nov).
 - `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`), moved here
   from loop_launcher so both services read one type: the OS users
   loop_launcher hands each path from pools made ahead of time. A path's
   loop runs as its loop user and its programs as its journey user (Nick,
   16 Nov).
-- `PathStarted`: loop_launcher, following the docking port's entries that
+- `PathStarted`: loop_launcher, following the docking station's entries that
   start a journey path, tells the airlock service the path has started,
   under its id, rules, `loopUser` and `journeyUser`, and is answered
   `Ready` with the token for the loop it launches, or `Rejected` (Nick, 16

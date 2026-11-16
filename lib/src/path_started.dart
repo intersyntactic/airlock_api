@@ -5,10 +5,10 @@ part of 'run.dart';
 /// up its own side of it, or hand over a new token for it when that side is
 /// already set up.
 ///
-/// The docking port starts journey paths: it decides which journey path an
+/// The docking station starts journey paths: it decides which journey path an
 /// outside conversation belongs to, and records that decision; a journey
 /// starts with its first thread. loop_launcher follows the journal for the
-/// docking port's entries that start a path, sends this, and launches the
+/// docking station's entries that start a path, sends this, and launches the
 /// path's loop with the token this is answered with ([Ready]). The airlock
 /// starts nothing. Its side of a path, a [JourneyPath], holds the drivers,
 /// so it lives in the airlock service. The airlock service takes this only

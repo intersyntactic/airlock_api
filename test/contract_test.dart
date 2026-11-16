@@ -167,11 +167,11 @@ Future<String> follow(Result<String> result, Apex apex) async {
 }
 
 /// The id of a journey path started by the entry [startedBy], as the
-/// docking port names it: by that entry's hash.
+/// docking station names it: by that entry's hash.
 JourneyPathId idOf(String startedBy) =>
     JourneyPathId.of(utf8.encode(startedBy));
 
-/// A journey path as the docking port starts one, with the airlock's side
+/// A journey path as the docking station starts one, with the airlock's side
 /// of it set up in this process.
 JourneyPath<Set<String>, int> start(
   LogAirlock airlock,
