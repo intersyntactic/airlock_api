@@ -1,102 +1,38 @@
 part of 'run.dart';
 
-/// The secret that shows a [Proposal] came from the agent loop of the
-/// journey path it names.
+// A proposal is an entry in the record (Nick, 16 Nov, 20:15): an agent loop
+// writes a `proposed` entry on its journey path's chain, which the journal
+// takes only from that path's loop user; the airlock reads it, decides,
+// records, and writes a `returned` entry naming it, with what came back
+// (20:45: "what an effect returns is in the record, once"). loop_launcher
+// hands that entry to the path's loop. The airlock has no door of its own.
+
+/// Records a [Proposal], as JSON, and brings back the outcome the airlock
+/// recorded for it, as JSON: the transport, which this package does not
+/// have.
 ///
-/// The airlock service mints one when it sets up its side of a journey path
-/// ([JourneyPath.token]) and hands it to loop_launcher, which gives it to
-/// the loop it launches for that path, and to nothing else.
-///
-/// A check beside the main one, not instead of it. Each path's loop runs as
-/// a loop user of its own, so [JourneyPath.consider] first takes a proposal
-/// only from that user, as the kernel reports the socket's peer, which the
-/// sender cannot choose (Nick, 16 Nov). The token is kept as well, for now.
-///
-/// Never recorded: no [Reach] holds it, and [toString] does not show it.
-/// Never compared with `==`, which would stop at the first byte that differs
-/// and so tell a guesser how many it had right; [JourneyPath] compares it in
-/// constant time.
-final class PathToken {
-  PathToken._(this._bytes);
-
-  /// A new token, from the system's secure random source.
-  factory PathToken._mint() {
-    final random = Random.secure();
-    return PathToken._(
-      Uint8List.fromList([
-        for (var i = 0; i < _length; i++) random.nextInt(256),
-      ]),
-    );
-  }
-
-  /// [s] as a token, read back from the text [hex] gave; null unless it is
-  /// 32 bytes in lower-case hex.
-  static PathToken? parse(String s) {
-    if (!_tokenHex.hasMatch(s)) return null;
-    return PathToken._(
-      Uint8List.fromList([
-        for (var i = 0; i < s.length; i += 2)
-          int.parse(s.substring(i, i + 2), radix: 16),
-      ]),
-    );
-  }
-
-  static const _length = 32;
-
-  final Uint8List _bytes;
-
-  /// The token as text, to hand to the loop and to put in a [Proposal]: the
-  /// one way to read it, so every place it is written down can be found.
-  String get hex =>
-      [for (final b in _bytes) b.toRadixString(16).padLeft(2, '0')].join();
-
-  /// Whether [other] is this token, taking as long whichever byte differs.
-  bool _matches(PathToken other) {
-    var differ = 0;
-    for (var i = 0; i < _length; i++) {
-      differ |= _bytes[i] ^ other._bytes[i];
-    }
-    return differ == 0;
-  }
-
-  @override
-  String toString() => 'PathToken(hidden)';
-}
-
-final _tokenHex = RegExp(r'^[0-9a-f]{64}$');
-
-/// Takes a [Proposal], as JSON, from an agent loop to the airlock service,
-/// and brings back its answer, as JSON: the transport, which this package
-/// does not have. A socket, say, whose peer's OS user the service checks as
-/// well.
-abstract interface class AirlockLink {
+/// For an agent loop: write a [Proposal.kind] entry on the loop's journey
+/// path's chain, wait for the [ReturnedProposal] that names it, and give
+/// back its [ReturnedProposal.outcome].
+abstract interface class RecordLink {
   Future<Object?> propose(Object? proposal);
 }
 
-/// An apex in the agent loop: proposes each run's program and input to the
-/// airlock, and keeps the continuation.
-final class _ThroughLink extends Apex {
-  const _ThroughLink(
-    this._link, {
-    required this._journeyPath,
-    required this._token,
-    required this._place,
-  });
+/// An apex in the agent loop: proposes each run's program and input through
+/// the record, and keeps the continuation.
+final class _ThroughRecord extends Apex {
+  const _ThroughRecord(this._link, {required this._place});
 
-  final AirlockLink _link;
-  final JourneyPathId _journeyPath;
-  final PathToken _token;
+  final RecordLink _link;
   final Object? _place;
 
-  /// The outcome the airlock answered. An answer that is not one throws a
+  /// The outcome the airlock recorded. An answer that is not one throws a
   /// [FormatException], ending the call: whether the run reached the world
   /// is then not known here, and the airlock's record says.
   @override
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) async =>
       decodeOutcome(
         await _link.propose({
-          'journeyPath': _journeyPath.hex,
-          'token': _token.hex,
           'place': _place,
           ...program._wire.program,
           'input': program._wire.inputToJson(input),
@@ -106,8 +42,8 @@ final class _ThroughLink extends Apex {
 }
 
 /// How a program, its input and its output travel in a [Proposal] and its
-/// answer, by is_effects's codecs. A decoder throws a [FormatException]
-/// naming the field, as a dotted path from [field].
+/// [ReturnedProposal], by is_effects's codecs. A decoder throws a
+/// [FormatException] naming the field, as a dotted path from [field].
 final class _Wire<I, O> {
   const _Wire(
     this.program, {
@@ -171,43 +107,35 @@ Send _sendFromJson(Object? json, [String field = 'send']) {
   );
 }
 
-/// What a request from an agent loop came to, once read: a [Proposal] to
-/// consider, or [Rejected].
+/// What a `proposed` entry came to, once read: a [Proposal] to consider, or
+/// [Rejected].
 sealed class Received {}
 
 /// An effect an agent loop proposes, not yet decided: a run's program and
-/// input, read from JSON and checked, but not yet shown to be from that
-/// journey path's loop, which [JourneyPath.consider] checks by [token].
+/// input, read from a [kind] entry and checked.
+///
+/// It names no journey path: the airlock takes the path from the chain the
+/// entry is on, whose entries the journal takes only from that path's loop
+/// user. So a loop cannot claim another path, since there is no claim to
+/// make.
 ///
 /// What leaves the loop is a proposal; the airlock decides it, and only a
-/// driver carries an effect out. So a send goes proposed, decided,
-/// rendered, returned; the record holds the last three, and a proposal that
-/// is [Rejected] is in no journey path's record.
+/// driver carries an effect out.
 final class Proposal implements Received {
-  Proposal._(this.journeyPath, this.token, this.place, this._work);
+  Proposal._(this.place, this._work);
+
+  /// The entry's kind in the journal.
+  static const kind = 'proposed';
 
   /// [json] read as a proposal, or [Rejected] with why it is not one. Every
-  /// part is checked here, as its type's own `parse` checks it, since the
-  /// socket is not to be trusted to have gone through it.
+  /// part is checked here, as its type's own `parse` checks it, since a loop
+  /// is not to be trusted to have gone through it.
   static Received read(Object? json) {
-    if (json case {
-      'journeyPath': final String path,
-      'token': final String token,
-      'program': final String program,
-    }) {
-      final journeyPath = JourneyPathId.parse(path);
-      if (journeyPath == null) return Rejected('not a journey path: $path');
-      final t = PathToken.parse(token);
-      if (t == null) return const Rejected('not a token');
+    if (json case {'program': final String program}) {
       final p = _programNamed(program, json['executable']);
       if (p == null) return Rejected('not a program: $program');
       try {
-        return Proposal._(
-          journeyPath,
-          t,
-          json['place'],
-          p._work(json['input']),
-        );
+        return Proposal._(json['place'], p._work(json['input']));
       } on FormatException catch (e) {
         return Rejected(e.message);
       }
@@ -215,15 +143,8 @@ final class Proposal implements Received {
     return const Rejected('not a proposal');
   }
 
-  /// The journey path it claims to be of.
-  final JourneyPathId journeyPath;
-
-  /// What shows it is from that path's loop. Compared in constant time, and
-  /// never recorded.
-  final PathToken token;
-
-  /// The place in a turn, as the loop wrote it; the service reads it as its
-  /// journey path's `P`.
+  /// The place in a turn, as the loop wrote it; the airlock service reads
+  /// it as its journey path's `P`.
   final Object? place;
 
   final _Work<Object?, Object?> _work;
@@ -237,11 +158,11 @@ final class _Work<I, O> {
   final Program<I, O> program;
   final I input;
 
-  Future<Object?> on<P>(JourneyPath<Object?, P> journeyPath, P place) async =>
-      encodeOutcome(
-        await journeyPath._consider(program, input, place),
-        program._wire.outputToJson,
-      );
+  Future<void> on<P>(
+    JourneyPath<Object?, P> journeyPath,
+    P place,
+    EntryId proposed,
+  ) => journeyPath._consider(program, input, place, proposed: proposed);
 }
 
 /// The program [name] names, with [executable] the program's name when it
@@ -255,41 +176,64 @@ Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
       _ => null,
     };
 
-/// What the airlock service answers a [Proposal] with.
-sealed class ProposalAnswer {
-  /// The answer as JSON, for the link to take back to the loop.
-  Object? get json;
-}
-
-/// The proposal was decided, and the run it describes ran or was refused;
-/// both are in the journey path's record.
-final class Considered implements ProposalAnswer {
-  const Considered._(this.json);
-
-  @override
-  final Object? json;
-}
-
-/// The request was not considered, and is in no journey path's record,
-/// because [why]: it was not a proposal or a [PathStarted], named no
-/// journey path the service holds, or did not show that path's token.
-///
-/// Recorded by the service in the airlock's own chain, with the journey path
-/// it claimed and the OS user of the socket's peer, and never the token: a
-/// wrong token is the one attack the token is there to stop, and a refusal
-/// with no trace would leave nobody able to see it happened.
-final class Rejected
-    implements
-        Received,
-        ProposalAnswer,
-        PathStartedReceived,
-        PathStartedAnswer {
+/// A `proposed` entry that is not a proposal, because [why]. The airlock
+/// service records [ReturnedProposal.refused] naming it, so the loop that
+/// wrote it is answered and no other path is held up.
+final class Rejected implements Received {
   const Rejected(this.why);
 
   final String why;
+}
 
-  /// The sender is told it was refused, with [why], in the form of a
-  /// refused outcome, which a loop and loop_launcher both read.
-  @override
-  Object? get json => encodeOutcome(Refused(why), (Never _) => null);
+/// A proposal's [Returned] entry as the journal holds it: what came back
+/// from the run the `proposed` entry [proposed] asked for, as that program's
+/// codec writes it, or the refusal.
+///
+/// The one copy of what an effect returned (Nick, 16 Nov, 20:45): a read's
+/// text, a program's output, a site's answer. The airlock writes it on its
+/// own chain, never the path's, which only the loop user writes.
+/// loop_launcher hands it to the loop whose path's chain holds [proposed],
+/// and the loop reads [outcome] with the program it proposed.
+final class ReturnedProposal {
+  const ReturnedProposal._(this.proposed, this.outcome);
+
+  /// The entry's kind in the journal.
+  static const kind = 'returned';
+
+  /// [returned] as the journal holds it; null when no proposal asked for
+  /// its run.
+  static ReturnedProposal? of<P>(Returned<P> returned) =>
+      switch (returned.proposed) {
+        final proposed? => ReturnedProposal._(proposed, returned._outcomeJson),
+        null => null,
+      };
+
+  /// The answer to [proposed], a `proposed` entry that was [Rejected]
+  /// because [why]: refused, with no run decided.
+  factory ReturnedProposal.refused(EntryId proposed, String why) =>
+      ReturnedProposal._(
+        proposed,
+        encodeOutcome<Never>(Refused(why), (_) => null),
+      );
+
+  /// [json] read back. Throws a [FormatException] naming the part. Reads
+  /// [outcome] no further, since only the program that was proposed knows
+  /// its output's type.
+  static ReturnedProposal fromJson(Object? json, [String field = 'returned']) {
+    final map = _object(field, json);
+    return ReturnedProposal._(
+      EntryId.parse(_string('$field.proposed', map['proposed'])) ??
+          (throw FormatException('$field.proposed: not an entry id')),
+      map['outcome'],
+    );
+  }
+
+  /// The `proposed` entry this answers.
+  final EntryId proposed;
+
+  /// What came back, as is_effects's `encodeOutcome` writes it with the
+  /// proposed program's output codec.
+  final Object? outcome;
+
+  Object? toJson() => {'proposed': proposed.hex, 'outcome': outcome};
 }
