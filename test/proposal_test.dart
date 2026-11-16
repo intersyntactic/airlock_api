@@ -11,7 +11,7 @@ import 'contract_test.dart'
         RecordedWeb,
         follow,
         hart,
-        post,
+        send,
         start,
         teams,
         writeAndFormat;
@@ -85,14 +85,14 @@ void main() {
     expect(link.rejected, isEmpty);
   });
 
-  test('a post through the link is drawn from recorded entries', () async {
+  test('a send through the link is drawn from recorded entries', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final turn = airlock.remember('done');
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
       await follow(
-        post(teams, hart, entries: [turn]),
+        send(teams, hart, entries: [turn]),
         loopApex(ServiceLink([path]), path),
       ),
       '201 activity-1',
@@ -177,7 +177,7 @@ void main() {
       'place': 1,
       'program': 'web',
     };
-    Map<String, Object?> postWith(Map<String, Object?> change) => {
+    Map<String, Object?> sendWith(Map<String, Object?> change) => {
       'origin': '$teams',
       'method': 'post',
       'path': '/v3/conversations/c/activities',
@@ -197,7 +197,7 @@ void main() {
         'entries': ['not an id'],
       },
     ]) {
-      await link.propose({...proposal, 'input': postWith(change)});
+      await link.propose({...proposal, 'input': sendWith(change)});
     }
     expect(link.rejected, hasLength(4));
     expect(link.rejected[0], startsWith('input.path'));

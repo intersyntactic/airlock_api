@@ -8,7 +8,7 @@ import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
 part 'path_started.dart';
-part 'post_entries.dart';
+part 'send_entries.dart';
 part 'proposal.dart';
 
 /// What a tool's code returns for a call: a run whose outcome it needs
@@ -38,7 +38,7 @@ sealed class Result<A> {
 
 /// Run a program on an input, then continue with what became of the run.
 ///
-/// The one effect a tool can describe. A read, a write, `git diff` and a post
+/// The one effect a tool can describe. A read, a write, `git diff` and a send
 /// to a chat are all runs, of one of four programs.
 ///
 /// The continuation travels with the run, not in the tool, so one tool can
@@ -118,7 +118,7 @@ final class Failed extends Result<Never> {
 /// A program a run may be of: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile], [Executable] and [WebPost].
+/// A closed set: [ReadFile], [WriteFile], [Executable] and [WebSend].
 /// Programs reach drivers, so they are part of what is trusted, with the
 /// drivers and the airlock; a new kind of effect is a new driver and program
 /// here.
@@ -131,7 +131,7 @@ sealed class Program<I, O> {
 
   static const read = ReadFile();
   static const write = WriteFile();
-  static const web = WebPost();
+  static const web = WebSend();
 
   /// For the model and the record; an [Executable] is compared by it.
   String get name;
@@ -156,7 +156,7 @@ sealed class Program<I, O> {
     },
   );
 
-  /// What [input] would do to the world. Only a post asks [findRenderer]
+  /// What [input] would do to the world. Only a send asks [findRenderer]
   /// for the renderer it names.
   Future<Reach> _reach(I input, _FindRenderer findRenderer);
 
@@ -171,7 +171,7 @@ sealed class Program<I, O> {
 
   /// [input], whose reach is [reach], performed by [journeyPath]'s driver
   /// for this program, reporting to [report] while it runs, or null when it
-  /// has none. Only a post waits on [rendered], for its body.
+  /// has none. Only a send waits on [rendered], for its body.
   Future<Outcome<O>>? _on(
     JourneyPath<Object?, Object?> journeyPath,
     I input,
@@ -299,10 +299,10 @@ final class Executable extends Program<Args, ExecResult> {
   );
 }
 
-/// Sends a [Post] to a site, through the sign-in it names, with the body
+/// Sends a [Send] to a site, through the sign-in it names, with the body
 /// its renderer drew from recorded entries and recorded.
 ///
-/// An effect, decided like any other: what a tool posts to a chat, an issue
+/// An effect, decided like any other: what a tool sends to a chat, an issue
 /// tracker or an API. Not a prompt, which is the agent planning and is not
 /// decided.
 ///
@@ -312,21 +312,21 @@ final class Executable extends Program<Args, ExecResult> {
 /// what was recorded. So the words exist only once the decision is kept,
 /// the exact bytes sent are in the record, and the airlock never talks to a
 /// renderer (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
-final class WebPost extends Program<Post, Sent> {
-  const WebPost();
+final class WebSend extends Program<Send, Sent> {
+  const WebSend();
 
   @override
   String get name => 'web';
 
   @override
-  Future<Reach> _reach(Post post, _FindRenderer findRenderer) async =>
-      Sends(post, await findRenderer(post.renderer));
+  Future<Reach> _reach(Send send, _FindRenderer findRenderer) async =>
+      Sends(send, await findRenderer(send.renderer));
 
   @override
-  _Wire<Post, Sent> get _wire => const _Wire(
+  _Wire<Send, Sent> get _wire => const _Wire(
     {'program': 'web'},
-    inputToJson: _postToJson,
-    inputFromJson: _postFromJson,
+    inputToJson: _sendToJson,
+    inputFromJson: _sendFromJson,
     outputToJson: encodeSent,
     outputFromJson: decodeSent,
   );
@@ -334,44 +334,44 @@ final class WebPost extends Program<Post, Sent> {
   @override
   Future<Outcome<Sent>>? _on(
     JourneyPath<Object?, Object?> journeyPath,
-    Post post,
+    Send send,
     covariant Sends reach,
     _Rendered rendered,
     Report report,
   ) => switch ((journeyPath._driver<WebDriver>(), reach.renderer)) {
     (null, _) => null,
-    (final web?, _?) => _send(web, rendered(), post),
+    (final web?, _?) => _send(web, rendered(), send),
     // Decided as a denial before any driver, so not reached.
-    (_, null) => Future.value(Refused('no renderer named ${post.renderer}')),
+    (_, null) => Future.value(Refused('no renderer named ${send.renderer}')),
   };
 
   static Future<Outcome<Sent>> _send(
     WebDriver web,
     Future<Outcome<String>> rendering,
-    Post post,
+    Send send,
   ) async => switch (await rendering) {
     Refused(:final why) => Refused(why),
     Ran(output: final body) => await web.send(
       Request(
-        post.origin,
-        method: post.method,
-        path: post.path,
-        signIn: post.signIn,
-        headers: post.headers,
+        send.origin,
+        method: send.method,
+        path: send.path,
+        signIn: send.signIn,
+        headers: send.headers,
         body: body,
       ),
     ),
   };
 }
 
-/// What a tool posts: where to, as whom, and which recorded entries the
+/// What a tool sends: where to, as whom, and which recorded entries the
 /// words are drawn from, by which renderer. It holds no words of its own,
-/// so a tool cannot put any in a post.
+/// so a tool cannot put any in a send.
 ///
 /// [path] and [headers] are checked as is_effects's `Request` checks them:
 /// a [WebPath] cannot name another site, and [headers] hold no credential.
-final class Post {
-  Post(
+final class Send {
+  Send(
     this.origin, {
     required this.renderer,
     Iterable<EntryId> entries = const [],
@@ -395,11 +395,11 @@ final class Post {
 
   /// The recorded entries the body is drawn from, in the order the renderer
   /// is given them: turns, events, the airlock's own entries, chunks of a
-  /// reply. Any one the journal does not hold refuses the post.
+  /// reply. Any one the journal does not hold refuses the send.
   final List<EntryId> entries;
 }
 
-/// A renderer's name, such as `teams-reply`: what a [Post] names, and the
+/// A renderer's name, such as `teams-reply`: what a [Send] names, and the
 /// airlock resolves to the exact [Renderer] before deciding it.
 final class RendererName {
   const RendererName._(this.value);
@@ -433,7 +433,7 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// records and pub.dev reports as `archive_sha256` (Nick, 16 Nov). The
 /// archive does not hold the packages it depends on, so [executable], built
 /// with every one of them, is what pins the whole of the code that wrote a
-/// post; the two are recorded together. So the check that a [Rendered]
+/// send's body; the two are recorded together. So the check that a [Rendered]
 /// entry came from this renderer rests on [executable]; [id] is enough on
 /// its own only for a renderer with no dependencies, which `teams-reply`
 /// holds itself to with a test.
@@ -443,7 +443,7 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// compiled once per renderer with [id] as a define, which it reports in
 /// [Rendered.renderer]. Since the define is compiled in, each renderer's
 /// follower has its own build, and that build is what the journal's writer
-/// approves. Both are recorded in the [Decided] entry, so an old post can be
+/// approves. Both are recorded in the [Decided] entry, so an old send can be
 /// rebuilt from the journal and checked
 /// (https://github.com/enspyrco/intersyntactic/issues/1147).
 final class Renderer {
@@ -486,28 +486,28 @@ final class Starts extends Reach {
 /// Null means no sign-in, never any: it is null exactly when the request
 /// has none. So a rule granting a site under no sign-in must not match
 /// a send that has one, or a grant to fetch a page anonymously would let a
-/// journey path post there as a bot.
+/// journey path send there as a bot.
 ///
 /// A rule grants the origin and the sign-in together, never the origin
-/// alone: every bot of a kind posts to the same sites, so a grant by origin
+/// alone: every bot of a kind sends to the same sites, so a grant by origin
 /// would let a journey path send as any sign-in the web driver holds.
 ///
-/// Holds the whole [post] and the [renderer] its name resolved to, never a
+/// Holds the whole [send] and the [renderer] its name resolved to, never a
 /// body, which does not exist yet when this is decided: the record says
 /// which entries the words were drawn from and which code drew them, so it
 /// holds no copy of what was said.
 final class Sends extends Reach {
-  const Sends(this.post, this.renderer);
+  const Sends(this.send, this.renderer);
 
-  final Post post;
+  final Send send;
 
-  /// The exact renderer [post] names, or null when its name named none on
+  /// The exact renderer [send] names, or null when its name named none on
   /// this machine. A send with no renderer is denied before the rules are
   /// asked, since there would be no way to draw its words.
   final Renderer? renderer;
 
-  Origin get origin => post.origin;
-  SignIn? get signIn => post.signIn;
+  Origin get origin => send.origin;
+  SignIn? get signIn => send.signIn;
 }
 
 /// One agent's own journey: the thread its runs are proposed on, with
@@ -591,8 +591,8 @@ final class JourneyPath<R, P> {
     final reach = await program._reach(input, _airlock.renderer);
     var decision = switch (reach) {
       _ when stopped => stoppedByPerson,
-      Sends(renderer: null, :final post) => Deny(
-        'no renderer named ${post.renderer}',
+      Sends(renderer: null, :final send) => Deny(
+        'no renderer named ${send.renderer}',
         by: DecidedBy.rules,
       ),
       _ => await _airlock.decide(reach, rules),
@@ -691,7 +691,7 @@ abstract interface class Airlock<R, P> {
   /// [rules].
   ///
   /// Given the reach, not the run, so the decision is about exactly what is
-  /// recorded: for a post, the renderer its name resolved to.
+  /// recorded: for a send, the renderer its name resolved to.
   Future<Decision> decide(Reach reach, R rules);
 
   /// Keeps [entry]. A run's driver is reached only once its [Decided] entry
@@ -706,15 +706,15 @@ abstract interface class Airlock<R, P> {
   Future<void> record(Entry<P> entry);
 
   /// The renderer called [name], or null when there is none, so the
-  /// [Decided] entry for a post names its renderer exactly.
+  /// [Decided] entry for a send names its renderer exactly.
   Future<Renderer?> renderer(RendererName name);
 
-  /// The body the renderer recorded for [decided], an allowed post's
+  /// The body the renderer recorded for [decided], an allowed send's
   /// [Decided] entry, once the airlock has followed the journal to it; or
   /// [Refused] with why there is none.
   ///
   /// Called only after [decided] is kept. The renderer follows the journal
-  /// for it, reads the entries the post draws from, and records the body,
+  /// for it, reads the entries the send draws from, and records the body,
   /// or a refusal when an entry is missing or fails its checks, in an entry
   /// of its own following [decided]. The airlock never talks to a renderer:
   /// it reads that entry, and accepts it only from the renderer [decided]

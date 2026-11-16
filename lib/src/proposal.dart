@@ -122,27 +122,27 @@ final class _Wire<I, O> {
   final O Function(Object? json, String field) outputFromJson;
 }
 
-/// [post] as a proposal holds it.
-Object? _postToJson(Post post) => {
-  'origin': encodeOrigin(post.origin),
-  'method': encodeMethod(post.method),
-  'path': encodeWebPath(post.path),
-  'signIn': switch (post.signIn) {
+/// [send] as a proposal holds it.
+Object? _sendToJson(Send send) => {
+  'origin': encodeOrigin(send.origin),
+  'method': encodeMethod(send.method),
+  'path': encodeWebPath(send.path),
+  'signIn': switch (send.signIn) {
     final signIn? => encodeSignIn(signIn),
     null => null,
   },
-  'headers': encodeHeaders(post.headers),
-  'renderer': post.renderer.value,
-  'entries': [for (final entry in post.entries) entry.hex],
+  'headers': encodeHeaders(send.headers),
+  'renderer': send.renderer.value,
+  'entries': [for (final entry in send.entries) entry.hex],
 };
 
-/// [json] as a post, each part checked as its type's `parse` checks it.
+/// [json] as a send, each part checked as its type's `parse` checks it.
 /// Throws a [FormatException] naming the part, as is_effects's decoders do.
-Post _postFromJson(Object? json, [String field = 'post']) {
+Send _sendFromJson(Object? json, [String field = 'send']) {
   if (json is! Map<String, Object?>) {
     throw FormatException('$field: not an object');
   }
-  return Post(
+  return Send(
     decodeOrigin(json['origin'], '$field.origin'),
     method: decodeMethod(json['method'], '$field.method'),
     path: decodeWebPath(json['path'], '$field.path'),
@@ -177,7 +177,7 @@ sealed class Received {}
 /// journey path's loop, which [JourneyPath.consider] checks by [token].
 ///
 /// What leaves the loop is a proposal; the airlock decides it, and only a
-/// driver carries an effect out. So a post goes proposed, decided,
+/// driver carries an effect out. So a send goes proposed, decided,
 /// rendered, returned; the record holds the last three, and a proposal that
 /// is [Rejected] is in no journey path's record.
 final class Proposal implements Received {

@@ -73,7 +73,7 @@ String reachOf(Reach reach) => switch (reach) {
 ///
 /// Knows `teams-reply` only. Its journal holds the text of each entry a
 /// test [remember]s, and its renderer draws a body by joining the texts of
-/// the entries a post names, logging `render <n>` when the airlock follows
+/// the entries a send names, logging `render <n>` when the airlock follows
 /// the journal to what it recorded.
 final class LogAirlock implements Airlock<Set<String>, int> {
   LogAirlock({this.failOn});
@@ -95,10 +95,10 @@ final class LogAirlock implements Airlock<Set<String>, int> {
 
   @override
   Future<Outcome<String>> rendered(Decided<int> decided) async {
-    final Sends(:post) = decided.reach as Sends;
-    log.add('render ${post.entries.length}');
+    final Sends(:send) = decided.reach as Sends;
+    log.add('render ${send.entries.length}');
     final texts = <String>[];
-    for (final id in post.entries) {
+    for (final id in send.entries) {
       final text = _journal[id];
       if (text == null) return Refused('entry $id is not recorded');
       texts.add(text);
@@ -187,7 +187,7 @@ JourneyPath<Set<String>, int> start(
 final hart = SignIn.parse('hart-bot')!;
 final teams = Origin.parse('https://smba.trafficmanager.net')!;
 
-/// The one renderer [LogAirlock] knows, as a post names it and as the
+/// The one renderer [LogAirlock] knows, as a send names it and as the
 /// airlock resolves it.
 final teamsReply = (
   name: RendererName.parse('teams-reply')!,
@@ -197,13 +197,13 @@ final teamsReply = (
   ),
 );
 
-Result<String> post(
+Result<String> send(
   Origin site,
   SignIn signIn, {
   List<EntryId> entries = const [],
   String renderer = 'teams-reply',
 }) => Program.web.runOrRefusal(
-  Post(
+  Send(
     site,
     path: WebPath.parse('/v3/conversations/c/activities')!,
     signIn: signIn,
@@ -403,9 +403,9 @@ void main() {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final path = start(airlock, [web], rules: {'$teams as $hart'});
-    expect(await follow(post(teams, hart), path.at(1)), '201 activity-1');
+    expect(await follow(send(teams, hart), path.at(1)), '201 activity-1');
     expect(
-      await follow(post(teams, SignIn.parse('other-bot')!), path.at(2)),
+      await follow(send(teams, SignIn.parse('other-bot')!), path.at(2)),
       'failed: not in the rules',
     );
     expect(web.sent.map((r) => r.signIn), [hart]);
@@ -429,7 +429,7 @@ void main() {
     for (final (i, signIn) in [hart, null].indexed) {
       await Program.web
           .run(
-            Post(teams, signIn: signIn, renderer: teamsReply.name),
+            Send(teams, signIn: signIn, renderer: teamsReply.name),
             then: (_) => const Done(''),
           )
           .next(path.at(i));
@@ -437,7 +437,7 @@ void main() {
     expect(seen, [(teams, hart), (teams, null)]);
   });
 
-  test("a post's body is what its renderer recorded, from recorded entries, "
+  test("a send's body is what its renderer recorded, from recorded entries, "
       'only once its decision is kept', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
@@ -445,7 +445,7 @@ void main() {
     final chunk = airlock.remember('and the build is green');
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
-      await follow(post(teams, hart, entries: [turn, chunk]), path.at(1)),
+      await follow(send(teams, hart, entries: [turn, chunk]), path.at(1)),
       '201 activity-1',
     );
     expect(web.sent.single.body, 'the tests pass and the build is green');
@@ -470,11 +470,11 @@ void main() {
     path.entries.listen((e) {
       if (e case final Decided<int> d) decided.add(d);
     });
-    await follow(post(teams, hart, entries: [turn]), path.at(1));
-    final Sends(:renderer, post: posted) = decided.single.reach as Sends;
+    await follow(send(teams, hart, entries: [turn]), path.at(1));
+    final Sends(:renderer, send: sent) = decided.single.reach as Sends;
     expect(renderer, same(teamsReply.renderer));
-    expect(posted.renderer, teamsReply.name);
-    expect(posted.entries, [turn]);
+    expect(sent.renderer, teamsReply.name);
+    expect(sent.entries, [turn]);
     expect(airlock.followedTo, [same(decided.single)]);
   });
 
@@ -483,7 +483,7 @@ void main() {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final answer = await follow(
-      post(teams, hart, renderer: 'slack-reply'),
+      send(teams, hart, renderer: 'slack-reply'),
       start(airlock, [web], rules: {'$teams as $hart'}).at(1),
     );
     expect(answer, 'failed: no renderer named slack-reply');
@@ -496,10 +496,10 @@ void main() {
     ]);
   });
 
-  test('a denied post is never followed to a body', () async {
+  test('a denied send is never followed to a body', () async {
     final airlock = _FollowingAirlock();
     final answer = await follow(
-      post(teams, hart),
+      send(teams, hart),
       JourneyPath<Set<String>, int>(
         id: idOf('started root'),
         drivers: [RecordedWeb()],
@@ -511,12 +511,12 @@ void main() {
     expect(airlock.followedTo, isEmpty);
   });
 
-  test('an entry the journal does not hold refuses the post', () async {
+  test('an entry the journal does not hold refuses the send', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final unrecorded = EntryId.of(utf8.encode('never written'));
     final answer = await follow(
-      post(teams, hart, entries: [unrecorded]),
+      send(teams, hart, entries: [unrecorded]),
       start(airlock, [web], rules: {'$teams as $hart'}).at(1),
     );
     expect(answer, 'failed: entry $unrecorded is not recorded');
@@ -533,7 +533,7 @@ void main() {
     final airlock = LogAirlock(failOn: Decided<int>);
     await expectLater(
       follow(
-        post(teams, hart),
+        send(teams, hart),
         start(airlock, [web], rules: {'$teams as $hart'}).at(1),
       ),
       throwsStateError,
@@ -542,9 +542,9 @@ void main() {
     expect(web.sent, isEmpty);
   });
 
-  test('a post cannot hold a credential, or a path to another site', () {
+  test('a send cannot hold a credential, or a path to another site', () {
     expect(
-      () => Post(
+      () => Send(
         teams,
         renderer: teamsReply.name,
         headers: {'Authorization': 'Bearer x'},
@@ -575,7 +575,7 @@ void main() {
   test('a machine with no web driver cannot send', () async {
     expect(
       await follow(
-        post(teams, hart),
+        send(teams, hart),
         start(LogAirlock(), [MemoryFiles()], rules: {'$teams as $hart'}).at(1),
       ),
       'failed: this machine cannot run web',

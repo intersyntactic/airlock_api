@@ -50,7 +50,7 @@ while (result is Run<ExecResult>) {
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
   (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`) and
-  `WebPost` (`Program.web`, a `Post` to an `Origin` through a named
+  `WebSend` (`Program.web`, a `Send` to an `Origin` through a named
   `SignIn`). Programs reach drivers, so they belong with the drivers and the
   airlock to what is trusted; a new kind of effect is a new driver and
   program.
@@ -58,16 +58,16 @@ while (result is Run<ExecResult>) {
   by its program, so its input is the program's own type. Nothing about a
   run shows outside; when it is proposed, what it would do is worked out
   as its `Reach`, which the airlock decides and records: `Reads(path)`,
-  `Writes(file)`, `Starts(program, args)` or `Sends(post, renderer)`. A
+  `Writes(file)`, `Starts(program, args)` or `Sends(send, renderer)`. A
   rule grants a send by origin and sign-in together.
 
-## A post
+## A send
 
-Everything a post says is drawn from recorded journal entries, by a
+Everything a send says is drawn from recorded journal entries, by a
 renderer the record names exactly
 (https://github.com/enspyrco/intersyntactic/issues/1147).
 
-- `Post`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
+- `Send`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
   such as `teams-reply`, and the `EntryId`s of the recorded entries its
   words are drawn from. It has no body, so a tool cannot put words in. The
   path and headers are checked as is_effects's `Request` checks them.
@@ -75,27 +75,27 @@ renderer the record names exactly
   `RendererId` (the sha256 of the renderer's published pub archive, as
   `pubspec.lock` records it) and the `ObjectId` of the follower built with
   it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
-  `Decided` holds the whole `Post` and the exact `Renderer`, never a body,
+  `Decided` holds the whole `Send` and the exact `Renderer`, never a body,
   which does not exist yet. A name that resolves to nothing is denied
   before the rules are asked.
 - The airlock never talks to a renderer
   (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
   A renderer follows the journal for `Decided` entries naming it, reads
-  the entries the post draws from, and records the body, or a refusal when
+  the entries the send draws from, and records the body, or a refusal when
   an entry is missing, in an entry of its own after the `Decided`.
   `Airlock.rendered(decided)` is the airlock following the journal to that
   entry; it is called only once `Decided` is kept, and what it gives is
   what is sent. So the exact bytes sent are in the record.
-- A post's chain in the journal: `DecidedPost` (kind `post-decided`), then
+- A send's chain in the journal: `DecidedSend` (kind `send-decided`), then
   the renderer's `Rendered` (kind `rendered`), then the airlock's
   `Returned`, each following the one before, so the journal's tip check
   lets each be written once. When the renderer does not answer in time,
-  `Returned` (refused) follows the `DecidedPost` directly and a late
+  `Returned` (refused) follows the `DecidedSend` directly and a late
   `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
-  Only a post's entries have a wire form: other runs' entries still name
+  Only a send's entries have a wire form: other runs' entries still name
   what a run reached and why, never a file's text or a program's output.
 
-A post is an effect, decided like any other: what a tool posts to a chat or
+A send is an effect, decided like any other: what a tool sends to a chat or
 an API. A journey path's prompts are not: the model is the agent planning,
 so a prompt is not decided, and no tool is in it. How a prompt is sent and
 recorded is not this contract's.

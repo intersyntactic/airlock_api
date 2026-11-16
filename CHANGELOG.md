@@ -40,17 +40,21 @@ by the airlock
   `JourneyPath.consider(proposal, place)` gives `Considered` or `Rejected`.
   A rejected request is in no journey path's record; the service records
   it in the airlock's own chain.
-- Programs, inputs and outputs travel by is_effects's codecs; a `Post` by
+- `Post` is now `Send`, and `WebPost` is `WebSend`; `Sends` holds `send`
+  where it held `post` (Nick, 16 Nov: "post" is ambiguous, beside the HTTP
+  method `Method.post` and a chat's posts). So the family reads `Send`,
+  `Sends`, and is_effects's `Sent`.
+- Programs, inputs and outputs travel by is_effects's codecs; a `Send` by
   its own, built on them.
-- One post's chain in the journal has wire forms: `DecidedPost` (kind
-  `post-decided`: journey path, place, the whole `Post`, the exact
+- One send's chain in the journal has wire forms: `DecidedSend` (kind
+  `send-decided`: journey path, place, the whole `Send`, the exact
   `Renderer` or none, and the decision), which a renderer follows the
   journal for and reads, and `Rendered` (kind `rendered`: the `EntryId` of
-  the `DecidedPost` it follows, the renderer's source id as it reports it,
+  the `DecidedSend` it follows, the renderer's source id as it reports it,
   and the body or why there is none), which the renderer writes and the
   airlock reads. `Returned` follows `Rendered`, or follows the
-  `DecidedPost` directly when the renderer did not answer in time. Only a
-  post's entries have a wire form: other runs' entries still record what a
+  `DecidedSend` directly when the renderer did not answer in time. Only a
+  send's entries have a wire form: other runs' entries still record what a
   run reached and why, never a file's text or a program's output.
 - Depends on `is_effects` ^0.2.1, for its codecs.
 
