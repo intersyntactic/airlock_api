@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Docs: "follow" is retired (https://github.com/enspyrco/intersyntactic/pull/1155).
+  A reader subscribes to the record, an entry names its previous, and a
+  tool's result is run through at an apex. No API changes.
+
 ## 0.5.0
 
 Breaking. The agent loop and the airlock in separate processes (RULINGS,

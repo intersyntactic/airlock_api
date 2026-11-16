@@ -73,8 +73,8 @@ String reachOf(Reach reach) => switch (reach) {
 ///
 /// Knows `teams-reply` only. Its journal holds the text of each entry a
 /// test [remember]s, and its renderer draws a body by joining the texts of
-/// the entries a send names, logging `render <n>` when the airlock follows
-/// the journal to what it recorded.
+/// the entries a send names, logging `render <n>` when the airlock reads
+/// what it recorded.
 final class LogAirlock implements Airlock<Set<String>, int> {
   LogAirlock({this.failOn});
 
@@ -140,14 +140,13 @@ final class LogAirlock implements Airlock<Set<String>, int> {
   }
 }
 
-/// A [LogAirlock] that keeps each [Decided] entry it follows the journal
-/// from to a body.
-final class _FollowingAirlock extends LogAirlock {
-  final followedTo = <Decided<int>>[];
+/// A [LogAirlock] that keeps each [Decided] entry it reads a body for.
+final class _ReadingAirlock extends LogAirlock {
+  final readFor = <Decided<int>>[];
 
   @override
   Future<Outcome<String>> rendered(Decided<int> decided) {
-    followedTo.add(decided);
+    readFor.add(decided);
     return super.rendered(decided);
   }
 }
@@ -163,15 +162,15 @@ Result<String> writeAndFormat(String path) => Program.write.runOrRefusal(
   ),
 );
 
-/// [result] followed at [apex] to an answer, or why there is none.
-Future<String> follow(Result<String> result, Apex apex) async {
+/// [result] run through at [apex] to an answer, or why there is none.
+Future<String> answerOf(Result<String> result, Apex apex) async {
   while (result is Run<String>) {
     result = await result.next(apex);
   }
   return switch (result) {
     Done(:final value) => value,
     Failed(:final why) => 'failed: $why',
-    Run() => throw StateError('followed to an answer'),
+    Run() => throw StateError('run through to an answer'),
   };
 }
 
@@ -231,11 +230,11 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles(), RecordedPrograms()]);
     expect(
-      await follow(writeAndFormat('a.dart'), path.at(1)),
+      await answerOf(writeAndFormat('a.dart'), path.at(1)),
       'Formatted 1 file',
     );
     expect(
-      await follow(writeAndFormat('b.dart'), path.at(2)),
+      await answerOf(writeAndFormat('b.dart'), path.at(2)),
       'Formatted 1 file',
     );
     expect(airlock.log, [
@@ -255,7 +254,7 @@ void main() {
     () async {
       final files = MemoryFiles();
       final airlock = LogAirlock();
-      final answer = await follow(
+      final answer = await answerOf(
         writeAndFormat('lib/a.dart'),
         start(airlock, [files]).at(1),
       );
@@ -273,7 +272,7 @@ void main() {
   test('a denied run reaches no driver, is recorded, and fails', () async {
     final files = MemoryFiles();
     final airlock = LogAirlock();
-    final answer = await follow(
+    final answer = await answerOf(
       writeAndFormat('lib/a.dart'),
       start(airlock, [files], rules: {'read'}).at(1),
     );
@@ -287,7 +286,7 @@ void main() {
 
   test('a driver refuses in its own words, and nothing after runs', () async {
     final programs = RecordedPrograms();
-    final answer = await follow(
+    final answer = await answerOf(
       writeAndFormat('.git/config'),
       start(LogAirlock(), [MemoryFiles(), programs]).at(1),
     );
@@ -298,7 +297,7 @@ void main() {
   test('no driver is reached when the decision cannot be recorded', () async {
     final files = MemoryFiles();
     await expectLater(
-      follow(
+      answerOf(
         writeAndFormat('lib/a.dart'),
         start(LogAirlock(failOn: Decided<int>), [files]).at(1),
       ),
@@ -311,7 +310,7 @@ void main() {
     final files = MemoryFiles();
     final programs = RecordedPrograms();
     await expectLater(
-      follow(
+      answerOf(
         writeAndFormat('lib/a.dart'),
         start(LogAirlock(failOn: Returned<int>), [files, programs]).at(1),
       ),
@@ -328,7 +327,7 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [files])..stop();
     expect(
-      await follow(writeAndFormat('lib/a.dart'), path.at(2)),
+      await answerOf(writeAndFormat('lib/a.dart'), path.at(2)),
       'failed: stopped',
     );
     expect(files.files, isEmpty);
@@ -346,9 +345,9 @@ void main() {
         decided.add('${decision.runtimeType} by ${decision.by.name}');
       }
     });
-    await follow(writeAndFormat('a.dart'), root.at(1));
+    await answerOf(writeAndFormat('a.dart'), root.at(1));
     root.stop();
-    await follow(writeAndFormat('a.dart'), root.at(2));
+    await answerOf(writeAndFormat('a.dart'), root.at(2));
     expect(decided, ['Allow by rules', 'Allow by rules', 'Deny by person']);
   });
 
@@ -360,7 +359,7 @@ void main() {
         '${e.journeyPathId == path.id} ${e.runtimeType} at ${e.place}',
       ),
     );
-    await follow(
+    await answerOf(
       Program.write.runOrRefusal(
         FileText(RelativePath('a'), ''),
         then: (_) => const Done('ok'),
@@ -382,8 +381,8 @@ void main() {
     );
     Result<String> format() =>
         dart.runOrRefusal(const Args(['format']), then: (e) => Done(e.stdout));
-    await follow(format(), path.at(2));
-    await follow(format(), path.at(3));
+    await answerOf(format(), path.at(2));
+    await answerOf(format(), path.at(3));
     expect(seen, [
       'at 2: stdout: Formatted 1 file',
       'at 3: stdout: Formatted 1 file',
@@ -407,7 +406,7 @@ void main() {
       ),
     );
     expect(
-      await follow(result, start(LogAirlock(), [files]).at(1)),
+      await answerOf(result, start(LogAirlock(), [files]).at(1)),
       'replaced true: new',
     );
   });
@@ -416,9 +415,9 @@ void main() {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final path = start(airlock, [web], rules: {'$teams as $hart'});
-    expect(await follow(send(teams, hart), path.at(1)), '201 activity-1');
+    expect(await answerOf(send(teams, hart), path.at(1)), '201 activity-1');
     expect(
-      await follow(send(teams, SignIn.parse('other-bot')!), path.at(2)),
+      await answerOf(send(teams, SignIn.parse('other-bot')!), path.at(2)),
       'failed: not in the rules',
     );
     expect(web.sent.map((r) => r.signIn), [hart]);
@@ -458,7 +457,7 @@ void main() {
     final chunk = airlock.remember('and the build is green');
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
-      await follow(send(teams, hart, entries: [turn, chunk]), path.at(1)),
+      await answerOf(send(teams, hart, entries: [turn, chunk]), path.at(1)),
       '201 activity-1',
     );
     expect(web.sent.single.body, 'the tests pass and the build is green');
@@ -470,8 +469,8 @@ void main() {
   });
 
   test('the decision records the exact renderer and the entries, and is '
-      'what the airlock follows to the body', () async {
-    final airlock = _FollowingAirlock();
+      'what the airlock reads the body for', () async {
+    final airlock = _ReadingAirlock();
     final turn = airlock.remember('done');
     final path = JourneyPath<Set<String>, int>(
       id: idOf('started root'),
@@ -484,19 +483,19 @@ void main() {
     path.entries.listen((e) {
       if (e case final Decided<int> d) decided.add(d);
     });
-    await follow(send(teams, hart, entries: [turn]), path.at(1));
+    await answerOf(send(teams, hart, entries: [turn]), path.at(1));
     final Sends(:renderer, send: sent) = decided.single.reach as Sends;
     expect(renderer, same(teamsReply.renderer));
     expect(sent.renderer, teamsReply.name);
     expect(sent.entries, [turn]);
-    expect(airlock.followedTo, [same(decided.single)]);
+    expect(airlock.readFor, [same(decided.single)]);
   });
 
   test('a renderer named nowhere is denied before the rules, and nothing '
       'is rendered or sent', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
-    final answer = await follow(
+    final answer = await answerOf(
       send(teams, hart, renderer: 'slack-reply'),
       start(airlock, [web], rules: {'$teams as $hart'}).at(1),
     );
@@ -510,9 +509,9 @@ void main() {
     ]);
   });
 
-  test('a denied send is never followed to a body', () async {
-    final airlock = _FollowingAirlock();
-    final answer = await follow(
+  test('a denied send never has a body read for it', () async {
+    final airlock = _ReadingAirlock();
+    final answer = await answerOf(
       send(teams, hart),
       JourneyPath<Set<String>, int>(
         id: idOf('started root'),
@@ -523,14 +522,14 @@ void main() {
       ).at(1),
     );
     expect(answer, 'failed: not in the rules');
-    expect(airlock.followedTo, isEmpty);
+    expect(airlock.readFor, isEmpty);
   });
 
   test('an entry the journal does not hold refuses the send', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final unrecorded = EntryId.of(utf8.encode('never written'));
-    final answer = await follow(
+    final answer = await answerOf(
       send(teams, hart, entries: [unrecorded]),
       start(airlock, [web], rules: {'$teams as $hart'}).at(1),
     );
@@ -547,7 +546,7 @@ void main() {
     final web = RecordedWeb();
     final airlock = LogAirlock(failOn: Decided<int>);
     await expectLater(
-      follow(
+      answerOf(
         send(teams, hart),
         start(airlock, [web], rules: {'$teams as $hart'}).at(1),
       ),
@@ -589,7 +588,7 @@ void main() {
 
   test('a machine with no web driver cannot send', () async {
     expect(
-      await follow(
+      await answerOf(
         send(teams, hart),
         start(LogAirlock(), [MemoryFiles()], rules: {'$teams as $hart'}).at(1),
       ),

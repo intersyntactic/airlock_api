@@ -2,7 +2,7 @@
 
 The airlock's contract. Tools describe effects; the airlock decides and
 records each one; drivers operate the world. A tool touches nothing: for
-each call it returns a `Result`, which is followed on a journey path.
+each call it returns a `Result`, which is run through on a journey path.
 
 What an effect takes and gives back, and the drivers that carry it out, are
 `is_effects`'s, so a driver never sees this package. Joining an
@@ -80,18 +80,18 @@ renderer the record names exactly
   before the rules are asked.
 - The airlock never talks to a renderer
   (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
-  A renderer follows the journal for `Decided` entries naming it, reads
-  the entries the send draws from, and records the body, or a refusal when
-  an entry is missing, in an entry of its own after the `Decided`.
-  `Airlock.rendered(decided)` is the airlock following the journal to that
-  entry; it is called only once `Decided` is kept, and what it gives is
+  A renderer subscribes to the record for `Decided` entries naming it,
+  reads the entries the send draws from, and records the body, or a
+  refusal when an entry is missing, in an entry of its own after the
+  `Decided`. `Airlock.rendered(decided)` is the airlock reading that entry
+  from the record; it is called only once `Decided` is kept, and what it gives is
   what is sent. So the exact bytes sent are in the record.
 - A send's chain in the journal: `DecidedSend` (kind `send-decided`), then
   the renderer's `Rendered` (kind `rendered`), then the airlock's
-  `Returned`, each following the one before, so the journal's tip check
-  lets each be written once. When the renderer does not answer in time,
-  `Returned` (refused) follows the `DecidedSend` directly and a late
-  `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
+  `Returned`, each naming the one before as its previous, so the journal's
+  tip check lets each be written once. When the renderer does not answer
+  in time, `Returned` (refused) names the `DecidedSend` as its previous and
+  a late `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
   What came back from any proposed run is recorded in full, in a
   `ReturnedProposal` (below).
 
@@ -116,7 +116,7 @@ supplies and the airlock records; nothing here computes one.
   nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
   agent loop proposes the next run and its airlock decides it. The journey
-  path checks the place's type, so whatever follows a tool's result takes
+  path checks the place's type, so whatever comes after a tool's result takes
   an `Apex` and never handles `P`. Two agents on one machine have two
   apexes; one step's two tool calls are two apexes of one journey path, at
   two places.

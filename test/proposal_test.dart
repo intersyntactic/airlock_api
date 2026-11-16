@@ -10,7 +10,7 @@ import 'contract_test.dart'
         MemoryFiles,
         RecordedPrograms,
         RecordedWeb,
-        follow,
+        answerOf,
         hart,
         send,
         start,
@@ -76,7 +76,7 @@ void main() {
       airlock,
     );
     expect(
-      await follow(writeAndFormat('a.dart'), loopApex(link, place: 3)),
+      await answerOf(writeAndFormat('a.dart'), loopApex(link, place: 3)),
       'Formatted 1 file',
     );
     expect(files.files, {'a.dart': 'void main() {}'});
@@ -98,7 +98,7 @@ void main() {
     final entries = <Entry<int>>[];
     path.entries.listen(entries.add);
     expect(
-      await follow(
+      await answerOf(
         Program.read.runOrRefusal(
           RelativePath('a.dart'),
           then: (read) => Done(switch (read) {
@@ -127,7 +127,7 @@ void main() {
     final turn = airlock.remember('done');
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
-      await follow(
+      await answerOf(
         send(teams, hart, entries: [turn]),
         loopApex(RecordedLink(path, airlock)),
       ),
@@ -140,7 +140,7 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles()], rules: {'read'});
     expect(
-      await follow(
+      await answerOf(
         writeAndFormat('a.dart'),
         loopApex(RecordedLink(path, airlock)),
       ),
@@ -155,7 +155,7 @@ void main() {
       final path = start(airlock, [MemoryFiles()]);
       final returned = <Returned<int>>[];
       path.entries.listen((e) => e is Returned<int> ? returned.add(e) : null);
-      await follow(writeAndFormat('a.dart'), path.at(1));
+      await answerOf(writeAndFormat('a.dart'), path.at(1));
       expect(returned, hasLength(2));
       expect(returned.map(ReturnedProposal.of), everyElement(isNull));
     },
@@ -232,7 +232,7 @@ void main() {
     final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock)
       ..answerWith = (_) => {'kind': 'maybe'};
     await expectLater(
-      follow(writeAndFormat('a.dart'), loopApex(link)),
+      answerOf(writeAndFormat('a.dart'), loopApex(link)),
       throwsFormatException,
     );
   });

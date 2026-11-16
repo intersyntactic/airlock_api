@@ -14,8 +14,8 @@ part 'proposal.dart';
 /// before it can answer, its answer, or that it could not answer. [A] is the
 /// type of the answer, the tool's output type.
 ///
-/// A tool holds no driver and touches nothing. Its result is followed at an
-/// [Apex], whose journey path has each run decided and recorded, and reached
+/// A tool holds no driver and touches nothing. Its result is run through at
+/// an [Apex], whose journey path has each run decided and recorded, and reached
 /// by a driver if it is allowed, and gives what became of it to the run's
 /// continuation. So a tool can
 /// describe nothing a run cannot express.
@@ -31,7 +31,7 @@ sealed class Result<A> {
   /// Reaches no driver: a run's continuation is extended, so [f] is applied
   /// when a later [Run.next] reaches an answer, and every run on the way is
   /// still decided and recorded. So whoever turns a tool's answer into what
-  /// the model is told can do it without following the runs.
+  /// the model is told can do it without running the runs.
   Result<B> map<B>(B Function(A answer) f);
 }
 
@@ -306,8 +306,8 @@ final class Executable extends Program<Args, ExecResult> {
 /// decided.
 ///
 /// The renderer is named exactly before the decision, so the [Decided]
-/// entry says which code will write the words. The renderer follows the
-/// journal for that entry, draws the body, and records it; the airlock sends
+/// entry says which code will write the words. The renderer subscribes to
+/// the record for that entry, draws the body, and records it; the airlock sends
 /// what was recorded. So the words exist only once the decision is kept,
 /// the exact bytes sent are in the record, and the airlock never talks to a
 /// renderer (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
@@ -650,8 +650,8 @@ final class JourneyPath<R, P> {
 /// process: there a run's program and input go into the record as a
 /// [Proposal], and its continuation stays behind, since it is the tool's own
 /// code. Either
-/// way, what follows a tool's result takes an apex and never handles the
-/// place. Two agents on one machine have two apexes; one step's two tool
+/// way, what comes after a tool's result takes an apex and never handles
+/// the place. Two agents on one machine have two apexes; one step's two tool
 /// calls are two apexes of one journey path, at two places.
 sealed class Apex {
   const Apex();
@@ -706,16 +706,17 @@ abstract interface class Airlock<R, P> {
   Future<Renderer?> renderer(RendererName name);
 
   /// The body the renderer recorded for [decided], an allowed send's
-  /// [Decided] entry, once the airlock has followed the journal to it; or
+  /// [Decided] entry, once the airlock has read it from the record; or
   /// [Refused] with why there is none.
   ///
-  /// Called only after [decided] is kept. The renderer follows the journal
-  /// for it, reads the entries the send draws from, and records the body,
-  /// or a refusal when an entry is missing or fails its checks, in an entry
-  /// of its own following [decided]. The airlock never talks to a renderer:
-  /// it reads that entry, and accepts it only from the renderer [decided]
-  /// names. A renderer that does not answer in time is the airlock's to
-  /// refuse, and its [Returned] entry then follows [decided] instead.
+  /// Called only after [decided] is kept. The renderer subscribes to the
+  /// record for it, reads the entries the send draws from, and records the
+  /// body, or a refusal when an entry is missing or fails its checks, in an
+  /// entry of its own whose previous is [decided]. The airlock never talks
+  /// to a renderer: it reads that entry, and accepts it only from the
+  /// renderer [decided] names. A renderer that does not answer in time is
+  /// the airlock's to refuse, and its [Returned] entry's previous is then
+  /// [decided] instead.
   ///
   /// The render runner reports the renderer it was built with, the
   /// archive hash its `pubspec.lock` records, given as a define at compile

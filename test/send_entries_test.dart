@@ -9,7 +9,7 @@ import 'contract_test.dart'
         LogAirlock,
         MemoryFiles,
         RecordedWeb,
-        follow,
+        answerOf,
         hart,
         send,
         start,
@@ -20,7 +20,7 @@ import 'contract_test.dart'
 /// [json] as the journal would hold it and give it back: JSON text.
 Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
 
-/// The [Decided] entries recorded while [run] is followed on a journey path
+/// The [Decided] entries recorded while [run] is run through on a journey path
 /// with [rules].
 Future<List<Decided<int>>> decidedWhile(
   Future<void> Function(JourneyPath<Set<String>, int> path) run, {
@@ -40,7 +40,7 @@ void main() {
   test("a send's Decided entry reads back as it was written", () async {
     final turn = EntryId.of(utf8.encode('done'));
     final decided = await decidedWhile(
-      (path) => follow(send(teams, hart, entries: [turn]), path.at(4)),
+      (path) => answerOf(send(teams, hart, entries: [turn]), path.at(4)),
       rules: {'$teams as $hart'},
     );
     final written = DecidedSend.of(decided.single, (int place) => place)!;
@@ -62,8 +62,8 @@ void main() {
   test('a denied send, and one whose renderer named nothing, read back with '
       'why', () async {
     final decided = await decidedWhile((path) async {
-      await follow(send(teams, hart), path.at(1));
-      await follow(send(teams, hart, renderer: 'nowhere'), path.at(2));
+      await answerOf(send(teams, hart), path.at(1));
+      await answerOf(send(teams, hart, renderer: 'nowhere'), path.at(2));
     });
     final [denied, unnamed] = [
       for (final d in decided)
@@ -80,7 +80,7 @@ void main() {
 
   test("a run that is not a send has no send entry", () async {
     final decided = await decidedWhile(
-      (path) => follow(writeAndFormat('a.dart'), path.at(1)),
+      (path) => answerOf(writeAndFormat('a.dart'), path.at(1)),
       rules: {'write', 'dart'},
     );
     expect(
@@ -121,7 +121,7 @@ void main() {
 
   test('a malformed entry is refused, naming the part', () async {
     final decided = await decidedWhile(
-      (path) => follow(send(teams, hart), path.at(1)),
+      (path) => answerOf(send(teams, hart), path.at(1)),
       rules: {'$teams as $hart'},
     );
     final json =
