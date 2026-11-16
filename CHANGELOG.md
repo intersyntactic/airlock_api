@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0-dev
+
+Unreleased: main between releases. Nothing yet.
+
 ## 0.3.1
 
 - `DecidedBy` is `is_shapes`'s, re-exported, so the airlock and the docking
