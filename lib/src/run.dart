@@ -239,8 +239,7 @@ final class Executable extends Program<Args, ExecResult> {
   );
 }
 
-/// Sends a request out of the home, through the sign-in it names, to a
-/// site.
+/// Sends a request to a site, through the sign-in it names.
 ///
 /// An effect, decided like any other: what a tool posts to a chat, an issue
 /// tracker or an API. Not a prompt, which is the agent planning and is not
@@ -287,7 +286,7 @@ final class Starts extends Reach {
   final Args args;
 }
 
-/// Leaves the home: a request goes to [origin], as [signIn], or under no
+/// Reaches the world: a request goes to [origin], as [signIn], or under no
 /// sign-in when null.
 ///
 /// Null means no sign-in, never any: it is null exactly when the request
@@ -324,8 +323,9 @@ final class JourneyPath<R, P> {
   /// A journey path named [id], on [drivers], decided and recorded by
   /// [airlock], under [rules].
   ///
-  /// [id] is the hash of the record entry that started it, which the host
-  /// writes, so no two journey paths share one and nothing here mints one.
+  /// [id] is the hash of the record entry that started it, which whoever
+  /// starts it writes, so no two journey paths share one and nothing here
+  /// mints one.
   JourneyPath.start({
     required this.id,
     required Iterable<Driver> drivers,
@@ -443,8 +443,9 @@ final class Deny extends Decision {
 /// One entry in a journey path's record: [Decided] before a run goes out,
 /// and [Returned] when it comes back.
 ///
-/// Each is at a [place] in a turn, of the host's type [P], which the host
-/// supplies and the airlock records; nothing here computes one.
+/// Each is at a [place] in a turn, of type [P], which the agent loop
+/// supplies, since it knows where in the turn it is, and the airlock
+/// records; nothing here computes one.
 ///
 /// Every kind takes [P] and nothing more, so a switch over the kinds is
 /// exhaustive: a kind with a type parameter its parent does not have cannot
