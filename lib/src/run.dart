@@ -513,8 +513,8 @@ final class Sends extends Reach {
 /// rules [R] that say what it may do, and places [P] that say where in a
 /// turn each entry happened.
 ///
-/// Its drivers are those it was given, acting as the journey's user, each
-/// wherever it runs. They are reached only by a [Run] proposed at one of its
+/// Its drivers are those it was given, acting for the path, each wherever
+/// it runs. They are reached only by a [Run] proposed at one of its
 /// apexes, so every such run passes its airlock.
 ///
 /// This is the airlock service's side of a journey path, set up when the
@@ -524,8 +524,7 @@ final class Sends extends Reach {
 /// the world, so setting up a side grants nothing new.
 final class JourneyPath<R, P> {
   /// The side of the journey path named [id], on [drivers], decided and
-  /// recorded by [airlock], under [rules], whose programs run as
-  /// [journeyUser].
+  /// recorded by [airlock], under [rules], whose programs run as [suit].
   ///
   /// [id] is the hash of the record entry that started the path, which the
   /// docking station writes, so no two journey paths share one and nothing here
@@ -535,17 +534,17 @@ final class JourneyPath<R, P> {
     required Iterable<Driver> drivers,
     required this._airlock,
     required this.rules,
-    required this.journeyUser,
+    required this.suit,
   }) : _drivers = List.unmodifiable(drivers);
 
   /// Names this journey path in every entry it records.
   final JourneyPathId id;
   final R rules;
 
-  /// The user this path's programs run as: the airlock service gives the
-  /// path a program driver that runs as it. Kept for the path's life, since
-  /// it owns the journey's working tree.
-  final JourneyUser journeyUser;
+  /// The OS user this path's programs run as: the airlock service gives the
+  /// path a program driver that runs as it. One per path, kept for the
+  /// path's life.
+  final Suit suit;
 
   final Airlock<R, P> _airlock;
   final List<Driver> _drivers;

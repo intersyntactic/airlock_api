@@ -38,12 +38,13 @@ by the airlock
   the same arguments: it is the airlock service's side of a journey path,
   and the airlock starts nothing; the docking station starts journey paths
   (Nick, 16 Nov).
-- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`), moved here
-  from loop_launcher so both services read one type: the OS users
-  loop_launcher hands each path from pools made ahead of time and records
-  in the path's `assigned` entry. A path's loop runs as its loop user and
-  its programs as its journey user (Nick, 16 Nov). `JourneyPath` takes
-  `journeyUser`.
+- `LoopUser` (`loop-<n>`) and `Suit` (`suit-<n>`), moved here from
+  loop_launcher so both services read one type: the OS users loop_launcher
+  hands each path from pools made ahead of time and records in the path's
+  `assigned` entry. A path's loop runs as its loop user and its programs as
+  its suit, one per path, contained or open (Nick, 16 Nov: "suit";
+  https://github.com/enspyrco/intersyntactic/pull/1158). `JourneyPath`
+  takes `suit`.
 - loop_launcher records itself (Nick, 16 Nov, 19:22), so the airlock
   service learns each path from the record: the path-start message
   (`PathStarted`, `Ready`), the path token and `JourneyPath.reissue`,

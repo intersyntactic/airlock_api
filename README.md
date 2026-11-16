@@ -103,11 +103,11 @@ recorded is not this contract's.
 ## A journey path
 
 One agent's own journey: its id, its rules `R`, and its airlock and
-drivers. Its drivers act as the journey's user, each wherever it runs.
+drivers. Its drivers act for the path, each wherever it runs.
 Every entry it records is at a place `P` in a turn, which the agent loop
 supplies and the airlock records; nothing here computes one.
 
-- `JourneyPath(id:, drivers:, airlock:, rules:, journeyUser:)`: the
+- `JourneyPath(id:, drivers:, airlock:, rules:, suit:)`: the
   airlock service's side of a journey path, set up when the record shows
   the docking station started the path (its rules, in `admitted`) and
   loop_launcher handed it users (`assigned`). The airlock starts nothing.
@@ -179,12 +179,12 @@ and records, and only a driver carries an effect out.
   writes. `ReturnedProposal.of(returned)` makes one from a `Returned` entry;
   `ReturnedProposal.refused(entryId, why)` answers a `proposed` entry that
   was `Rejected`, so its loop is answered and no other path is held up.
-- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`): the OS users
+- `LoopUser` (`loop-<n>`) and `Suit` (`suit-<n>`): the OS users
   loop_launcher hands each path from pools infra makes ahead of time, and
   records in the path's `assigned` entry. The path's loop runs as its loop
-  user, and its programs run as its journey user, which owns the journey's
-  working tree: the airlock service gives the path a program driver that
-  runs as it.
+  user, and its programs run as its suit, the identity the path wears,
+  contained or open (https://github.com/enspyrco/intersyntactic/pull/1158):
+  the airlock service gives the path a program driver that runs as it.
 - An answer the loop cannot read as an outcome throws a `FormatException`
   and ends the call: whether the run reached the world is then known only
   to the airlock's record.

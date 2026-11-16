@@ -24,20 +24,22 @@ final class LoopUser extends _PoolUser {
   String get name => 'loop-$n';
 }
 
-/// A user from the journey pool, `journey-<n>`: it owns a journey's working
-/// tree, and the journey's programs run as it, through the airlock's program
-/// driver. Nothing of loop_launcher's runs as it.
-final class JourneyUser extends _PoolUser {
-  JourneyUser._(super.n);
+/// A user from the suit pool, `suit-<n>`: the identity one journey path
+/// wears, contained or open (Nick, 16 Nov: "suit";
+/// https://github.com/enspyrco/intersyntactic/pull/1158). The path's
+/// programs run as it, through the airlock's program driver. Nothing of
+/// loop_launcher's runs as it.
+final class Suit extends _PoolUser {
+  Suit._(super.n);
 
-  /// [s] as a journey user; null unless it is `journey-<n>`, n from 1.
-  static JourneyUser? parse(String s) => switch (_numbered('journey', s)) {
-    final n? => JourneyUser._(n),
+  /// [s] as a suit; null unless it is `suit-<n>`, n from 1.
+  static Suit? parse(String s) => switch (_numbered('suit', s)) {
+    final n? => Suit._(n),
     null => null,
   };
 
   @override
-  String get name => 'journey-$n';
+  String get name => 'suit-$n';
 }
 
 sealed class _PoolUser {
