@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0-dev
+
+Unreleased: main between releases. Nothing yet.
+
 ## 0.4.0
 
 Breaking. The post design decided in
