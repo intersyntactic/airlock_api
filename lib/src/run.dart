@@ -428,7 +428,10 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// follower built with it.
 ///
 /// [id] names the renderer proper, a package whose `lib/` is only the pure
-/// function from entries to a body, which a person can read and check.
+/// function from entries to a body, which a person can read and check: the
+/// `FileSetId` of its `lib/` and of every package it imports, each under
+/// its package name, so an imported package cannot change what it writes
+/// without changing [id] (https://github.com/intersyntactic/shapes/pull/19).
 /// [executable] names the follower built with it: the one shared program
 /// that follows the journal, reads the entries and writes [Rendered],
 /// compiled once per renderer with [id] as a define, which it reports in
