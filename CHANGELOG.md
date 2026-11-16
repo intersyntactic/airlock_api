@@ -29,7 +29,7 @@ by the airlock
   in the airlock's own chain.
 - Programs, inputs and outputs travel by is_effects's codecs; a `Post` by
   its own, built on them.
-- Depends on `is_effects` ^0.3.0, for its codecs.
+- Depends on `is_effects` ^0.2.1, for its codecs.
 
 ## 0.4.0
 
