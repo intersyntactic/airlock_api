@@ -424,19 +424,25 @@ final class RendererName {
 
 final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 
-/// A renderer named exactly: [id], its source, and [executable], what was
-/// built from it and renders.
+/// A renderer named exactly: [id], its source, and [executable], the
+/// follower built with it.
 ///
-/// [id] names the code a person can read and check; [executable] names the
-/// program that actually renders, since the same source built by another
-/// SDK is another program. Both are recorded in the [Decided] entry, so an
-/// old post can be rebuilt from the journal and checked.
+/// [id] names the renderer proper, a package whose `lib/` is only the pure
+/// function from entries to a body, which a person can read and check.
+/// [executable] names the follower built with it: the one shared program
+/// that follows the journal, reads the entries and writes [Rendered],
+/// compiled once per renderer with [id] as a define, which it reports in
+/// [Rendered.renderer]. Since the define is compiled in, each renderer's
+/// follower has its own build, and that build is what the journal's writer
+/// approves. Both are recorded in the [Decided] entry, so an old post can be
+/// rebuilt from the journal and checked
+/// (https://github.com/enspyrco/intersyntactic/issues/1147).
 final class Renderer {
   const Renderer(this.id, {required this.executable});
 
   final RendererId id;
 
-  /// The journal object holding the executable's bytes.
+  /// The journal object holding the follower's bytes, built with [id].
   final ObjectId executable;
 }
 
