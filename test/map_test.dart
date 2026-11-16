@@ -14,6 +14,13 @@ final class _KeepingAirlock implements Airlock<String, int> {
 
   @override
   Future<void> record(Entry<int> entry) async => kept.add(entry);
+
+  @override
+  Future<Renderer?> renderer(RendererName name) async => null;
+
+  @override
+  Future<Outcome<String>> rendered(Decided<int> decided) async =>
+      const Refused('no renderer');
 }
 
 /// Writes nothing, and says it wrote.

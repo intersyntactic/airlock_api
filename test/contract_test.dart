@@ -55,42 +55,6 @@ final class RecordedWeb implements WebDriver {
   }
 }
 
-/// Finds `teams-reply` only, and draws a body by joining the text of the
-/// entries it holds. Keeps each render, so a test can see whether one
-/// happened and when.
-final class MemoryRenderers implements Renderers {
-  MemoryRenderers(this.log);
-
-  final List<String> log;
-  final recorded = <EntryId, String>{};
-
-  @override
-  Future<Renderer?> find(RendererName name) async =>
-      name == teamsReply.name ? teamsReply.renderer : null;
-
-  @override
-  Future<Outcome<String>> render(
-    Renderer renderer,
-    List<EntryId> entries,
-  ) async {
-    log.add('render ${entries.length}');
-    final texts = <String>[];
-    for (final id in entries) {
-      final text = recorded[id];
-      if (text == null) return Refused('entry $id is not recorded');
-      texts.add(text);
-    }
-    return Ran(texts.join(' '));
-  }
-
-  /// Records [text], as the journal would, and gives its id.
-  EntryId record(String text) {
-    final id = EntryId.of(utf8.encode(text));
-    recorded[id] = text;
-    return id;
-  }
-}
-
 String reachOf(Reach reach) => switch (reach) {
   Reads(:final path) => 'read $path',
   Writes(:final file) => 'write ${file.path}',
@@ -106,11 +70,41 @@ String reachOf(Reach reach) => switch (reach) {
 /// Rules: what a journey path may do, by name, and the sites it may send to
 /// as `<origin> as <sign-in>`. Places are step numbers. Keeps a line per
 /// entry, and can be told to fail writing one kind of entry.
+///
+/// Knows `teams-reply` only. Its journal holds the text of each entry a
+/// test [remember]s, and its renderer draws a body by joining the texts of
+/// the entries a post names, logging `render <n>` when the airlock follows
+/// the journal to what it recorded.
 final class LogAirlock implements Airlock<Set<String>, int> {
   LogAirlock({this.failOn});
 
   final Type? failOn;
   final log = <String>[];
+  final _journal = <EntryId, String>{};
+
+  /// Records [text], as the journal would, and gives its id.
+  EntryId remember(String text) {
+    final id = EntryId.of(utf8.encode(text));
+    _journal[id] = text;
+    return id;
+  }
+
+  @override
+  Future<Renderer?> renderer(RendererName name) async =>
+      name == teamsReply.name ? teamsReply.renderer : null;
+
+  @override
+  Future<Outcome<String>> rendered(Decided<int> decided) async {
+    final Sends(:post) = decided.reach as Sends;
+    log.add('render ${post.entries.length}');
+    final texts = <String>[];
+    for (final id in post.entries) {
+      final text = _journal[id];
+      if (text == null) return Refused('entry $id is not recorded');
+      texts.add(text);
+    }
+    return Ran(texts.join(' '));
+  }
 
   @override
   Future<Decision> decide(Reach reach, Set<String> rules) async =>
@@ -134,6 +128,18 @@ final class LogAirlock implements Airlock<Set<String>, int> {
         Returned(:final reach, outcome: Refused(:final why)) => 'refused ${reachOf(reach)}: $why',
       }}',
     );
+  }
+}
+
+/// A [LogAirlock] that keeps each [Decided] entry it follows the journal
+/// from to a body.
+final class _FollowingAirlock extends LogAirlock {
+  final followedTo = <Decided<int>>[];
+
+  @override
+  Future<Outcome<String>> rendered(Decided<int> decided) {
+    followedTo.add(decided);
+    return super.rendered(decided);
   }
 }
 
@@ -169,19 +175,17 @@ JourneyPath<Set<String>, int> start(
   LogAirlock airlock,
   List<Driver> drivers, {
   Set<String> rules = const {'read', 'write', 'dart'},
-  Renderers? renderers,
 }) => JourneyPath.start(
   id: idOf('started root'),
   drivers: drivers,
   airlock: airlock,
   rules: rules,
-  renderers: renderers ?? MemoryRenderers(airlock.log),
 );
 
 final hart = SignIn.parse('hart-bot')!;
 final teams = Origin.parse('https://smba.trafficmanager.net')!;
 
-/// The one renderer [MemoryRenderers] finds, as a post names it and as the
+/// The one renderer [LogAirlock] knows, as a post names it and as the
 /// airlock resolves it.
 final teamsReply = (
   name: RendererName.parse('teams-reply')!,
@@ -431,19 +435,13 @@ void main() {
     expect(seen, [(teams, hart), (teams, null)]);
   });
 
-  test("a post's body is drawn by its renderer, from recorded entries, "
+  test("a post's body is what its renderer recorded, from recorded entries, "
       'only once its decision is kept', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
-    final renderers = MemoryRenderers(airlock.log);
-    final turn = renderers.record('the tests pass');
-    final chunk = renderers.record('and the build is green');
-    final path = start(
-      airlock,
-      [web],
-      rules: {'$teams as $hart'},
-      renderers: renderers,
-    );
+    final turn = airlock.remember('the tests pass');
+    final chunk = airlock.remember('and the build is green');
+    final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
       await follow(post(teams, hart, entries: [turn, chunk]), path.at(1)),
       '201 activity-1',
@@ -456,23 +454,26 @@ void main() {
     ]);
   });
 
-  test('the decision records the exact renderer and the entries', () async {
-    final renderers = MemoryRenderers([]);
-    final turn = renderers.record('done');
-    final path = start(
-      LogAirlock(),
-      [RecordedWeb()],
+  test('the decision records the exact renderer and the entries, and is '
+      'what the airlock follows to the body', () async {
+    final airlock = _FollowingAirlock();
+    final turn = airlock.remember('done');
+    final path = JourneyPath<Set<String>, int>.start(
+      id: idOf('started root'),
+      drivers: [RecordedWeb()],
+      airlock: airlock,
       rules: {'$teams as $hart'},
-      renderers: renderers,
     );
-    final decided = <Sends>[];
+    final decided = <Decided<int>>[];
     path.entries.listen((e) {
-      if (e case Decided(reach: final Sends sends)) decided.add(sends);
+      if (e case final Decided<int> d) decided.add(d);
     });
     await follow(post(teams, hart, entries: [turn]), path.at(1));
-    expect(decided.single.renderer, same(teamsReply.renderer));
-    expect(decided.single.post.renderer, teamsReply.name);
-    expect(decided.single.post.entries, [turn]);
+    final Sends(:renderer, post: posted) = decided.single.reach as Sends;
+    expect(renderer, same(teamsReply.renderer));
+    expect(posted.renderer, teamsReply.name);
+    expect(posted.entries, [turn]);
+    expect(airlock.followedTo, [same(decided.single)]);
   });
 
   test('a renderer named nowhere is denied before the rules, and nothing '
@@ -493,19 +494,19 @@ void main() {
     ]);
   });
 
-  test('a journey path with no renderers posts nothing', () async {
-    final web = RecordedWeb();
+  test('a denied post is never followed to a body', () async {
+    final airlock = _FollowingAirlock();
     final answer = await follow(
       post(teams, hart),
       JourneyPath<Set<String>, int>.start(
         id: idOf('started root'),
-        drivers: [web],
-        airlock: LogAirlock(),
-        rules: {'$teams as $hart'},
+        drivers: [RecordedWeb()],
+        airlock: airlock,
+        rules: const {},
       ).at(1),
     );
-    expect(answer, 'failed: no renderer named teams-reply');
-    expect(web.sent, isEmpty);
+    expect(answer, 'failed: not in the rules');
+    expect(airlock.followedTo, isEmpty);
   });
 
   test('an entry the journal does not hold refuses the post', () async {

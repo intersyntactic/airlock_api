@@ -70,16 +70,20 @@ renderer the record names exactly
   such as `teams-reply`, and the `EntryId`s of the recorded entries its
   words are drawn from. It has no body, so a tool cannot put words in. The
   path and headers are checked as is_effects's `Request` checks them.
-- `Renderers`: implemented by the service that starts journey paths.
-  `find` resolves a name to a `Renderer`, its `RendererId` (the hash of its
-  source) and the `ObjectId` of the executable run. `render` reads each
-  entry from the journal, checks it, and runs the renderer as its own
-  program with no network and no secrets: entries in, body out.
-- The renderer is resolved before the decision, so `Decided` holds the
-  whole `Post` and the exact `Renderer`, never a body, which does not exist
-  yet. A name that resolves to nothing is denied before the rules are
-  asked. The body is drawn only once `Decided` is kept; an entry the
-  journal does not hold refuses the post, and nothing is sent.
+- `Airlock.renderer(name)` resolves a name to a `Renderer`: its
+  `RendererId` (the hash of its source) and the `ObjectId` of the
+  executable that renders. It is resolved before the decision, so
+  `Decided` holds the whole `Post` and the exact `Renderer`, never a body,
+  which does not exist yet. A name that resolves to nothing is denied
+  before the rules are asked.
+- The airlock never talks to a renderer
+  (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
+  A renderer follows the journal for `Decided` entries naming it, reads
+  the entries the post draws from, and records the body, or a refusal when
+  an entry is missing, in an entry of its own after the `Decided`.
+  `Airlock.rendered(decided)` is the airlock following the journal to that
+  entry; it is called only once `Decided` is kept, and what it gives is
+  what is sent. So the exact bytes sent are in the record.
 
 A post is an effect, decided like any other: what a tool posts to a chat or
 an API. A journey path's prompts are not: the model is the agent planning,
@@ -93,9 +97,8 @@ drivers. Its drivers act as the journey's user, each wherever it runs.
 Every entry it records is at a place `P` in a turn, which the agent loop
 supplies and the airlock records; nothing here computes one.
 
-- `JourneyPath.start(id:, drivers:, airlock:, rules:, renderers:)`: by the
-  service that starts a journey path. With no `renderers`, every post is
-  denied. Holding the drivers is already the power to touch
+- `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the service that
+  starts a journey path. Holding the drivers is already the power to touch
   the world, so starting a journey path grants nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
   agent loop and airlock carry out the next run. The journey path checks
@@ -124,6 +127,41 @@ supplies and the airlock records; nothing here computes one.
   recorded. Each names its journey path and place.
 - `Airlock<R, P>`: `decide`, given a run's `Reach`, and `record`,
   implemented by intersyntactic's airlock.
+
+## Between the agent loop and the airlock
+
+The agent loop and the airlock are separate services, and what passes
+between them is a message with a type (RULINGS, "No server"). A run's
+continuation is the tool's own code, so it stays in the loop; its program
+and input go to the airlock as a `Carry`, and the outcome comes back.
+
+- `JourneyPath.at(place)` is an apex where the journey path is, in the
+  airlock service. `Apex.through(link, journeyPath:, token:, place:)` is one
+  in the agent loop, over an `AirlockLink`, the transport (a socket, say),
+  which this package does not have. `run.next(apex)` is the same with
+  either, so a tool does not change.
+- `PathToken`: minted by `JourneyPath.start` and handed by the airlock
+  service only to whoever started the path, for its loop to put in every
+  `Carry`. The OS user on the socket cannot tell one journey path from
+  another, since an agent's paths share its user; the token can. It is
+  compared in constant time, never with `==`, never recorded, and its
+  `toString` does not show it.
+- `Carry.read(json)` gives a `Carry` or `Rejected(why)`, checking every part
+  as its type's own `parse` does, with is_effects's codecs.
+  `journeyPath.carryOut(carry, place)` carries it out as `at(place)` would,
+  once it shows the path's token, giving `Carried` or `Rejected`.
+- A `Rejected` request is in no journey path's record, so a stranger cannot
+  write into one. The service records it in the airlock's own chain, with
+  the journey path it claimed and the socket peer's OS user, never the
+  token: a wrong token is the attack the token is there to stop, and it
+  should leave a trace. Only processes allowed to reach the airlock's socket
+  can send at all, so how much a stranger can add there is bounded by who
+  can connect; nothing here limits the rate.
+- An answer the loop cannot read as an outcome throws a `FormatException`
+  and ends the call: whether the run reached the world is then known only
+  to the airlock's record.
+- Progress (`underway`) stays in the airlock service; the journal's
+  `follow` gives `entries` to anyone.
 
 A journey path is not narrowed from another. For one agent to do less than
 another in the same journey (a reviewer that reads while the crew writes,
