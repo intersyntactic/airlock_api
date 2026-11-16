@@ -8,6 +8,7 @@ import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
 part 'path_started.dart';
+part 'post_entries.dart';
 part 'proposal.dart';
 
 /// What a tool's code returns for a call: a run whose outcome it needs

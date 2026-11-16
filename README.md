@@ -85,6 +85,14 @@ renderer the record names exactly
   `Airlock.rendered(decided)` is the airlock following the journal to that
   entry; it is called only once `Decided` is kept, and what it gives is
   what is sent. So the exact bytes sent are in the record.
+- A post's chain in the journal: `DecidedPost` (kind `post-decided`), then
+  the renderer's `Rendered` (kind `rendered`), then the airlock's
+  `Returned`, each following the one before, so the journal's tip check
+  lets each be written once. When the renderer does not answer in time,
+  `Returned` (refused) follows the `DecidedPost` directly and a late
+  `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
+  Only a post's entries have a wire form: other runs' entries still name
+  what a run reached and why, never a file's text or a program's output.
 
 A post is an effect, decided like any other: what a tool posts to a chat or
 an API. A journey path's prompts are not: the model is the agent planning,
