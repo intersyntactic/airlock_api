@@ -7,10 +7,9 @@ part of 'run.dart';
 // `Returned` (refused) following the `DecidedSend` directly, after which a
 // late `Rendered` is turned away, since its entry is no longer the tip.
 //
-// Only a send's entries have a wire form here: a renderer reads one and
-// writes the other, and the airlock reads what it wrote. Other runs' entries
-// stay as the airlock writes them, naming what a run reached and why, never
-// a file's text or a program's output.
+// A renderer reads the one and writes the other, and the airlock reads what
+// it wrote. What came back from any proposed run, a send's among them, is
+// recorded in full in a [ReturnedProposal].
 
 /// A send's [Decided] entry as the journal holds it: what its renderer
 /// follows the journal for, and reads to know what to draw.

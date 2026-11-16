@@ -92,8 +92,8 @@ renderer the record names exactly
   lets each be written once. When the renderer does not answer in time,
   `Returned` (refused) follows the `DecidedSend` directly and a late
   `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
-  Only a send's entries have a wire form: other runs' entries still name
-  what a run reached and why, never a file's text or a program's output.
+  What came back from any proposed run is recorded in full, in a
+  `ReturnedProposal` (below).
 
 A send is an effect, decided like any other: what a tool sends to a chat or
 an API. A journey path's prompts are not: the model is the agent planning,
@@ -107,9 +107,11 @@ drivers. Its drivers act as the journey's user, each wherever it runs.
 Every entry it records is at a place `P` in a turn, which the agent loop
 supplies and the airlock records; nothing here computes one.
 
-- `JourneyPath(id:, drivers:, airlock:, rules:)`: the airlock service's
-  side of a journey path, set up when loop_launcher says the docking station
-  has started the path (`PathStarted`). The airlock starts nothing. Holding the drivers
+- `JourneyPath(id:, drivers:, airlock:, rules:, journeyUser:)`: the
+  airlock service's side of a journey path, set up when the record shows
+  the docking station started the path (its rules, in `admitted`) and
+  loop_launcher handed it users (`assigned`). The airlock starts nothing.
+  Holding the drivers
   is already the power to touch the world, so setting up a side grants
   nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
@@ -143,58 +145,51 @@ supplies and the airlock records; nothing here computes one.
 
 ## Between the agent loop and the airlock
 
-The agent loop and the airlock are separate services, and what passes
-between them is a message with a type (RULINGS, "No server"). A run's
+The agent loop and the airlock are separate services, and the record is
+the only channel between them: the airlock has no door of its own
+(https://github.com/enspyrco/intersyntactic/pull/1156). A run's
 continuation is the tool's own code, so it stays in the loop; its program
-and input go to the airlock as a `Proposal`, an effect not yet decided, and
-the outcome comes back. The airlock decides and records, and only a driver
-carries an effect out (RULINGS: "the airlock operates nothing").
+and input go into the record as a `Proposal`, an effect not yet decided,
+and what came back returns through the record
+(https://github.com/enspyrco/intersyntactic/pull/1157). The airlock decides
+and records, and only a driver carries an effect out.
 
 - `JourneyPath.at(place)` is an apex where the journey path is, in the
-  airlock service. `Apex.through(link, journeyPath:, token:, place:)` is one
-  in the agent loop, over an `AirlockLink`, the transport (a socket, say),
-  which this package does not have. `run.next(apex)` is the same with
-  either, so a tool does not change.
-- `PathStarted(journeyPath, rules:, loopUser:, journeyUser:, stopped:)`:
-  the docking station starts journey paths, and records that it did;
-  loop_launcher follows the journal for those entries and tells the airlock
-  service, which holds the drivers and so sets up its own side of the path
-  (`JourneyPath`). The answer is `Ready`, with the token loop_launcher gives
-  the loop it launches for the path, or `Rejected`. The airlock service
-  takes this only from loop_launcher's OS user. Sent again after either
-  service restarts: a path whose side the airlock service no longer holds
-  is set up anew under the same id, and one it holds gets a new token and
-  loop user (`JourneyPath.reissue`), after which the old token is rejected.
-  `stopped` keeps the person's stop across a restart, and nothing un-stops a
-  path. A live path keeps the rules and the journey user it had.
-- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`): the OS users
-  loop_launcher hands each path from pools infra makes ahead of time (Nick,
-  16 Nov). The path's loop runs as its loop user, and its programs run as
-  its journey user, which owns the journey's working tree: the airlock
-  service gives the path a program driver that runs as it.
+  airlock service. `Apex.through(link, place:)` is one in the agent loop,
+  over a `RecordLink`, the transport, which this package does not have: it
+  writes a `proposed` entry on the loop's journey path's chain and waits
+  for the `returned` entry that names it, which loop_launcher hands the
+  loop. `run.next(apex)` is the same with either, so a tool does not
+  change.
+- A `Proposal` (kind `proposed`) names no journey path. The journal takes
+  the entries on a path's chain only from that path's loop user, so the
+  airlock takes the path from the chain the entry is on, and a loop has no
+  claim to make about another path. Until the journal enforces that, the
+  airlock must not act on `proposed` entries.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
   every part as its type's own `parse` does, with is_effects's codecs.
-  `journeyPath.consider(proposal, place, from: peer)` decides and records it
-  as a run proposed at `at(place)` would be, once it comes from the path's
-  loop user, as the kernel reports the socket's peer, and shows the path's
-  token, giving `Considered` or `Rejected`.
-- `PathToken`: minted when the airlock service sets up its side of a path,
-  and handed only to loop_launcher, for the loop it launches to put in
-  every `Proposal`. A check beside the loop user, kept for now: the kernel's
-  report of the peer is the main one. It is compared in constant time,
-  never with `==`, never recorded, and its `toString` does not show it.
-- A `Rejected` request is in no journey path's record, so a stranger cannot
-  write into one. The service records it in the airlock's own chain, with
-  the journey path it claimed and the socket peer's OS user, never the
-  token: a wrong token is the attack the token is there to stop, and it
-  should leave a trace. Only processes allowed to reach the airlock's socket
-  can send at all, so how much a stranger can add there is bounded by who
-  can connect; nothing here limits the rate.
+  `journeyPath.consider(proposal, place, proposed: entryId)` decides and
+  records it as a run proposed at `at(place)` would be; its `Decided` and
+  `Returned` name the `proposed` entry.
+- `ReturnedProposal` (kind `returned`): what came back from a proposed run,
+  in full, as the program's codec writes it, or the refusal, naming the
+  `proposed` entry it answers. It is the one copy of what an effect
+  returned: a read's text, a program's output, a site's answer. The airlock
+  writes it on its own chain, never the path's, which only the loop user
+  writes. `ReturnedProposal.of(returned)` makes one from a `Returned` entry;
+  `ReturnedProposal.refused(entryId, why)` answers a `proposed` entry that
+  was `Rejected`, so its loop is answered and no other path is held up.
+- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`): the OS users
+  loop_launcher hands each path from pools infra makes ahead of time, and
+  records in the path's `assigned` entry. The path's loop runs as its loop
+  user, and its programs run as its journey user, which owns the journey's
+  working tree: the airlock service gives the path a program driver that
+  runs as it.
 - An answer the loop cannot read as an outcome throws a `FormatException`
   and ends the call: whether the run reached the world is then known only
   to the airlock's record.
-- Progress (`underway`) stays in the airlock service; the journal's
-  `follow` gives `entries` to anyone.
+- Progress (`underway`) stays in the airlock service; anyone who
+  subscribes to the record sees the entries.
 
 A journey path is not narrowed from another. For one agent to do less than
 another in the same journey (a reviewer that reads while the crew writes,

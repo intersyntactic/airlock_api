@@ -15,39 +15,39 @@ by the airlock
   called only once `Decided` is kept, and what it gives is what is sent,
   so the exact bytes sent are in the record. The check that a renderer was
   built from the source its id names moves to the entry it records.
-- `Apex.through(link, journeyPath:, token:, place:)`: an apex in the agent
-  loop that proposes each run's program and input over an `AirlockLink`
-  (`propose`) as a `Proposal`, an effect not yet decided, and keeps the
-  continuation (Nick, 16 Nov: "Proposal"; only a driver carries an effect
-  out). `JourneyPath.at` is unchanged, and `Apex` is now sealed, with the
-  two kinds, so a tool does not change.
+- A proposal is an entry in the record, and the airlock has no door of its
+  own (Nick, 16 Nov, https://github.com/enspyrco/intersyntactic/pull/1156).
+  `Apex.through(link, place:)`: an apex in the agent loop that proposes each
+  run's program and input over a `RecordLink` as a `Proposal` (kind
+  `proposed`), an effect not yet decided, on the loop's journey path's
+  chain, and keeps the continuation. `JourneyPath.at` is unchanged, and
+  `Apex` is now sealed, with the two kinds, so a tool does not change.
+- A `Proposal` names no journey path: the journal takes a path's chain only
+  from its loop user, so the airlock takes the path from the chain.
+  `Proposal.read(json)` gives a `Proposal` or `Rejected`;
+  `JourneyPath.consider(proposal, place, proposed:)` decides and records
+  it, and `Decided` and `Returned` gain `proposed`, the entry that asked.
+- What an effect returns is in the record, once (Nick, 16 Nov,
+  https://github.com/enspyrco/intersyntactic/pull/1157): `ReturnedProposal`
+  (kind `returned`) holds what came back in full, by the program's codec,
+  or the refusal, naming the `proposed` entry; loop_launcher hands it to
+  the path's loop. `ReturnedProposal.refused` answers a `Rejected` entry.
+  `Returned`'s constructor is private, since only a journey path knows the
+  program's codec.
 - `JourneyPath.start(...)` is now the unnamed `JourneyPath(...)`, taking
   the same arguments: it is the airlock service's side of a journey path,
   and the airlock starts nothing; the docking station starts journey paths
   (Nick, 16 Nov).
 - `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`), moved here
   from loop_launcher so both services read one type: the OS users
-  loop_launcher hands each path from pools made ahead of time. A path's
-  loop runs as its loop user and its programs as its journey user (Nick,
-  16 Nov).
-- `PathStarted`: loop_launcher, following the docking station's entries that
-  start a journey path, tells the airlock service the path has started,
-  under its id, rules, `loopUser` and `journeyUser`, and is answered
-  `Ready` with the token for the loop it launches, or `Rejected` (Nick, 16
-  Nov). Sent again after either service restarts: same id, new token, with
-  `JourneyPath.reissue(loopUser:)` for a path whose side is still set up,
-  since a loop launched again may run as another user; `stopped` keeps the
-  person's stop across, and nothing un-stops a path. `JourneyPath` takes
-  `loopUser` and `journeyUser`; `JourneyPath.token` is now a getter.
-- `Proposal.read(json)` gives a `Proposal` or `Rejected`;
-  `JourneyPath.consider(proposal, place, from:)` gives `Considered` or
-  `Rejected`. It takes a path's proposals only from the path's loop user,
-  as the kernel reports the socket's peer (Nick, 16 Nov), and with its
-  token. A rejected request is in no journey path's record; the service
-  records it in the airlock's own chain.
-- `PathToken`, minted with each `JourneyPath` as `JourneyPath.token`: a
-  check beside the loop user, kept for now (Nick, 16 Nov). Compared in
-  constant time, never recorded, hidden by `toString`.
+  loop_launcher hands each path from pools made ahead of time and records
+  in the path's `assigned` entry. A path's loop runs as its loop user and
+  its programs as its journey user (Nick, 16 Nov). `JourneyPath` takes
+  `journeyUser`.
+- loop_launcher records itself (Nick, 16 Nov, 19:22), so the airlock
+  service learns each path from the record: the path-start message
+  (`PathStarted`, `Ready`), the path token and `JourneyPath.reissue`,
+  briefly on main, never shipped.
 - `Post` is now `Send`, and `WebPost` is `WebSend`; `Sends` holds `send`
   where it held `post` (Nick, 16 Nov: "post" is ambiguous, beside the HTTP
   method `Method.post` and a chat's posts). So the family reads `Send`,
