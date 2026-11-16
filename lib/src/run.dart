@@ -5,6 +5,7 @@ import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
+part 'held.dart';
 part 'pool_user.dart';
 part 'send_entries.dart';
 part 'proposal.dart';
