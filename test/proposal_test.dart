@@ -11,7 +11,7 @@ import 'contract_test.dart'
         RecordedWeb,
         follow,
         hart,
-        post,
+        send,
         start,
         teams,
         writeAndFormat;
@@ -20,12 +20,16 @@ import 'contract_test.dart'
 /// goes through `jsonEncode` and back, as it would over a socket, so
 /// anything that is not JSON fails here. Places are ints. Keeps why each
 /// rejected request was rejected, as the service would record it.
+///
+/// The kernel reports the socket's peer; here [peer] does, and when it is
+/// null the peer is the path's own loop user, as for an honest loop.
 final class ServiceLink implements AirlockLink {
-  ServiceLink(Iterable<JourneyPath<Set<String>, int>> paths)
+  ServiceLink(Iterable<JourneyPath<Set<String>, int>> paths, {this.peer})
     : paths = {for (final path in paths) path.id: path};
 
   final Map<JourneyPathId, JourneyPath<Set<String>, int>> paths;
   final rejected = <String>[];
+  final LoopUser? peer;
 
   /// What the service would send back, when a test wants another answer.
   Object? Function(Object? answer) answerWith = (answer) => answer;
@@ -39,7 +43,11 @@ final class ServiceLink implements AirlockLink {
         proposal.place,
       )) {
         (null, _) => Rejected('no journey path ${proposal.journeyPath}'),
-        (final path?, final int place) => await path.consider(proposal, place),
+        (final path?, final int place) => await path.consider(
+          proposal,
+          place,
+          from: peer ?? path.loopUser,
+        ),
         _ => const Rejected('not a place'),
       },
     };
@@ -85,14 +93,14 @@ void main() {
     expect(link.rejected, isEmpty);
   });
 
-  test('a post through the link is drawn from recorded entries', () async {
+  test('a send through the link is drawn from recorded entries', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final turn = airlock.remember('done');
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
       await follow(
-        post(teams, hart, entries: [turn]),
+        send(teams, hart, entries: [turn]),
         loopApex(ServiceLink([path]), path),
       ),
       '201 activity-1',
@@ -128,6 +136,20 @@ void main() {
     expect(link.rejected, ["not this journey path's token"]);
   });
 
+  test("a proposal from another user is rejected, even with the path's "
+      'token, and recorded in no journey path', () async {
+    final airlock = LogAirlock();
+    final files = MemoryFiles();
+    final path = start(airlock, [files]);
+    final link = ServiceLink([path], peer: LoopUser.parse('loop-9'));
+    expect(
+      await follow(writeAndFormat('a.dart'), loopApex(link, path)),
+      "failed: not this journey path's loop user: loop-9",
+    );
+    expect(files.files, isEmpty);
+    expect(airlock.log, isEmpty);
+  });
+
   test("one path's token is rejected on another", () async {
     final airlock = LogAirlock();
     final mine = start(airlock, [MemoryFiles()]);
@@ -136,6 +158,8 @@ void main() {
       drivers: [MemoryFiles()],
       airlock: airlock,
       rules: const {'write'},
+      loopUser: LoopUser.parse('loop-2')!,
+      journeyUser: JourneyUser.parse('journey-2')!,
     );
     expect(
       await follow(
@@ -152,16 +176,20 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles()]);
     final other = JourneyPathId.of(utf8.encode('started elsewhere'));
-    final answer = await path.consider(switch (Proposal.read({
-      'journeyPath': other.hex,
-      'token': path.token.hex,
-      'place': 1,
-      'program': 'read',
-      'input': 'a.dart',
-    })) {
-      final Proposal proposal => proposal,
-      final Rejected r => fail(r.why),
-    }, 1);
+    final answer = await path.consider(
+      switch (Proposal.read({
+        'journeyPath': other.hex,
+        'token': path.token.hex,
+        'place': 1,
+        'program': 'read',
+        'input': 'a.dart',
+      })) {
+        final Proposal proposal => proposal,
+        final Rejected r => fail(r.why),
+      },
+      1,
+      from: path.loopUser,
+    );
     expect(answer, isA<Rejected>());
     expect(airlock.log, isEmpty);
   });
@@ -177,7 +205,7 @@ void main() {
       'place': 1,
       'program': 'web',
     };
-    Map<String, Object?> postWith(Map<String, Object?> change) => {
+    Map<String, Object?> sendWith(Map<String, Object?> change) => {
       'origin': '$teams',
       'method': 'post',
       'path': '/v3/conversations/c/activities',
@@ -197,7 +225,7 @@ void main() {
         'entries': ['not an id'],
       },
     ]) {
-      await link.propose({...proposal, 'input': postWith(change)});
+      await link.propose({...proposal, 'input': sendWith(change)});
     }
     expect(link.rejected, hasLength(4));
     expect(link.rejected[0], startsWith('input.path'));

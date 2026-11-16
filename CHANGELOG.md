@@ -23,25 +23,47 @@ by the airlock
   two kinds, so a tool does not change.
 - `JourneyPath.start(...)` is now the unnamed `JourneyPath(...)`, taking
   the same arguments: it is the airlock service's side of a journey path,
-  and the airlock starts nothing; the docking port starts journey paths
+  and the airlock starts nothing; the docking station starts journey paths
   (Nick, 16 Nov).
-- `PathToken`, minted with each `JourneyPath` as `JourneyPath.token`: what
-  shows a proposal is from that journey path's loop (Nick, 16 Nov: a token
-  per path). Compared in constant time, never recorded, hidden by
-  `toString`.
-- `PathStarted`: loop_launcher, following the docking port's entries that
+- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`), moved here
+  from loop_launcher so both services read one type: the OS users
+  loop_launcher hands each path from pools made ahead of time. A path's
+  loop runs as its loop user and its programs as its journey user (Nick,
+  16 Nov).
+- `PathStarted`: loop_launcher, following the docking station's entries that
   start a journey path, tells the airlock service the path has started,
-  under its id and rules, and is answered `Ready` with the token for the
-  loop it launches, or `Rejected` (Nick, 16 Nov). Sent again after either service restarts: same id,
-  new token, with `JourneyPath.reissue` for a path whose side is still
-  set up; `stopped` keeps the person's stop across, and nothing un-stops a
-  path. `JourneyPath.token` is now a getter.
+  under its id, rules, `loopUser` and `journeyUser`, and is answered
+  `Ready` with the token for the loop it launches, or `Rejected` (Nick, 16
+  Nov). Sent again after either service restarts: same id, new token, with
+  `JourneyPath.reissue(loopUser:)` for a path whose side is still set up,
+  since a loop launched again may run as another user; `stopped` keeps the
+  person's stop across, and nothing un-stops a path. `JourneyPath` takes
+  `loopUser` and `journeyUser`; `JourneyPath.token` is now a getter.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected`;
-  `JourneyPath.consider(proposal, place)` gives `Considered` or `Rejected`.
-  A rejected request is in no journey path's record; the service records
-  it in the airlock's own chain.
-- Programs, inputs and outputs travel by is_effects's codecs; a `Post` by
+  `JourneyPath.consider(proposal, place, from:)` gives `Considered` or
+  `Rejected`. It takes a path's proposals only from the path's loop user,
+  as the kernel reports the socket's peer (Nick, 16 Nov), and with its
+  token. A rejected request is in no journey path's record; the service
+  records it in the airlock's own chain.
+- `PathToken`, minted with each `JourneyPath` as `JourneyPath.token`: a
+  check beside the loop user, kept for now (Nick, 16 Nov). Compared in
+  constant time, never recorded, hidden by `toString`.
+- `Post` is now `Send`, and `WebPost` is `WebSend`; `Sends` holds `send`
+  where it held `post` (Nick, 16 Nov: "post" is ambiguous, beside the HTTP
+  method `Method.post` and a chat's posts). So the family reads `Send`,
+  `Sends`, and is_effects's `Sent`.
+- Programs, inputs and outputs travel by is_effects's codecs; a `Send` by
   its own, built on them.
+- One send's chain in the journal has wire forms: `DecidedSend` (kind
+  `send-decided`: journey path, place, the whole `Send`, the exact
+  `Renderer` or none, and the decision), which a renderer follows the
+  journal for and reads, and `Rendered` (kind `rendered`: the `EntryId` of
+  the `DecidedSend` it follows, the renderer's source id as it reports it,
+  and the body or why there is none), which the renderer writes and the
+  airlock reads. `Returned` follows `Rendered`, or follows the
+  `DecidedSend` directly when the renderer did not answer in time. Only a
+  send's entries have a wire form: other runs' entries still record what a
+  run reached and why, never a file's text or a program's output.
 - Depends on `is_effects` ^0.2.1, for its codecs.
 
 ## 0.4.0

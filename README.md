@@ -18,7 +18,7 @@ Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrRefusal(
       dart.runOrRefusal(Args(['format', file.path.value]), then: Done.new),
 );
 
-// The airlock service's side of a journey path the docking port started;
+// The airlock service's side of a journey path the docking station started;
 // the airlock service holds the drivers:
 final journeyPath = JourneyPath(
   id: JourneyPathId.of(startEntry), // the hash of the entry that started it
@@ -50,7 +50,7 @@ while (result is Run<ExecResult>) {
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
   (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`) and
-  `WebPost` (`Program.web`, a `Post` to an `Origin` through a named
+  `WebSend` (`Program.web`, a `Send` to an `Origin` through a named
   `SignIn`). Programs reach drivers, so they belong with the drivers and the
   airlock to what is trusted; a new kind of effect is a new driver and
   program.
@@ -58,35 +58,44 @@ while (result is Run<ExecResult>) {
   by its program, so its input is the program's own type. Nothing about a
   run shows outside; when it is proposed, what it would do is worked out
   as its `Reach`, which the airlock decides and records: `Reads(path)`,
-  `Writes(file)`, `Starts(program, args)` or `Sends(post, renderer)`. A
+  `Writes(file)`, `Starts(program, args)` or `Sends(send, renderer)`. A
   rule grants a send by origin and sign-in together.
 
-## A post
+## A send
 
-Everything a post says is drawn from recorded journal entries, by a
+Everything a send says is drawn from recorded journal entries, by a
 renderer the record names exactly
 (https://github.com/enspyrco/intersyntactic/issues/1147).
 
-- `Post`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
+- `Send`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
   such as `teams-reply`, and the `EntryId`s of the recorded entries its
   words are drawn from. It has no body, so a tool cannot put words in. The
   path and headers are checked as is_effects's `Request` checks them.
 - `Airlock.renderer(name)` resolves a name to a `Renderer`: its
-  `RendererId` (the hash of its source) and the `ObjectId` of the
-  executable that renders. It is resolved before the decision, so
-  `Decided` holds the whole `Post` and the exact `Renderer`, never a body,
+  `RendererId` (the sha256 of the renderer's published pub archive, as
+  `pubspec.lock` records it) and the `ObjectId` of the render runner built
+  with it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
+  `Decided` holds the whole `Send` and the exact `Renderer`, never a body,
   which does not exist yet. A name that resolves to nothing is denied
   before the rules are asked.
 - The airlock never talks to a renderer
   (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
   A renderer follows the journal for `Decided` entries naming it, reads
-  the entries the post draws from, and records the body, or a refusal when
+  the entries the send draws from, and records the body, or a refusal when
   an entry is missing, in an entry of its own after the `Decided`.
   `Airlock.rendered(decided)` is the airlock following the journal to that
   entry; it is called only once `Decided` is kept, and what it gives is
   what is sent. So the exact bytes sent are in the record.
+- A send's chain in the journal: `DecidedSend` (kind `send-decided`), then
+  the renderer's `Rendered` (kind `rendered`), then the airlock's
+  `Returned`, each following the one before, so the journal's tip check
+  lets each be written once. When the renderer does not answer in time,
+  `Returned` (refused) follows the `DecidedSend` directly and a late
+  `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
+  Only a send's entries have a wire form: other runs' entries still name
+  what a run reached and why, never a file's text or a program's output.
 
-A post is an effect, decided like any other: what a tool posts to a chat or
+A send is an effect, decided like any other: what a tool sends to a chat or
 an API. A journey path's prompts are not: the model is the agent planning,
 so a prompt is not decided, and no tool is in it. How a prompt is sent and
 recorded is not this contract's.
@@ -99,7 +108,7 @@ Every entry it records is at a place `P` in a turn, which the agent loop
 supplies and the airlock records; nothing here computes one.
 
 - `JourneyPath(id:, drivers:, airlock:, rules:)`: the airlock service's
-  side of a journey path, set up when loop_launcher says the docking port
+  side of a journey path, set up when loop_launcher says the docking station
   has started the path (`PathStarted`). The airlock starts nothing. Holding the drivers
   is already the power to touch the world, so setting up a side grants
   nothing new.
@@ -111,7 +120,7 @@ supplies and the airlock records; nothing here computes one.
   two places.
 - `JourneyPathId`, from `is_shapes`: a journey path is named by the hash of
   the record entry that started it (`JourneyPathId.of(entryBytes)`), which
-  the docking port writes, the way a `JourneyId` names a journey. So no two
+  the docking station writes, the way a `JourneyId` names a journey. So no two
   journey paths share an id, after a restart too, and nothing here mints
   one. Every entry names it.
 - `run.next(apex)`, the only way a run reaches the world: it is proposed at
@@ -146,28 +155,34 @@ carries an effect out (RULINGS: "the airlock operates nothing").
   in the agent loop, over an `AirlockLink`, the transport (a socket, say),
   which this package does not have. `run.next(apex)` is the same with
   either, so a tool does not change.
-- `PathStarted(journeyPath, rules:, stopped:)`: the docking port starts
-  journey paths, and records that it did; loop_launcher follows the journal
-  for those entries and tells the airlock service, which holds the drivers
-  and so sets up its own side of the path (`JourneyPath`). The answer is
-  `Ready`, with the token loop_launcher gives the loop it launches for the
-  path, or `Rejected`. The airlock service takes this only from
-  loop_launcher's OS user. Sent again after either service restarts: a path whose
-  side the airlock service no longer holds is set up anew under the same
-  id, and one it holds gets a new token (`JourneyPath.reissue`), after
-  which the old one is rejected. `stopped` keeps the person's stop across a
-  restart, and nothing un-stops a path. A live path keeps the rules it had.
-- `PathToken`: minted when the airlock service sets up its side of a path,
-  and handed only to loop_launcher, for the loop it launches to put in
-  every `Proposal`. The OS user on the socket cannot tell one journey path from
-  another, since an agent's paths share its user; the token can. It is
-  compared in constant time, never with `==`, never recorded, and its
-  `toString` does not show it.
+- `PathStarted(journeyPath, rules:, loopUser:, journeyUser:, stopped:)`:
+  the docking station starts journey paths, and records that it did;
+  loop_launcher follows the journal for those entries and tells the airlock
+  service, which holds the drivers and so sets up its own side of the path
+  (`JourneyPath`). The answer is `Ready`, with the token loop_launcher gives
+  the loop it launches for the path, or `Rejected`. The airlock service
+  takes this only from loop_launcher's OS user. Sent again after either
+  service restarts: a path whose side the airlock service no longer holds
+  is set up anew under the same id, and one it holds gets a new token and
+  loop user (`JourneyPath.reissue`), after which the old token is rejected.
+  `stopped` keeps the person's stop across a restart, and nothing un-stops a
+  path. A live path keeps the rules and the journey user it had.
+- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`): the OS users
+  loop_launcher hands each path from pools infra makes ahead of time (Nick,
+  16 Nov). The path's loop runs as its loop user, and its programs run as
+  its journey user, which owns the journey's working tree: the airlock
+  service gives the path a program driver that runs as it.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
   every part as its type's own `parse` does, with is_effects's codecs.
-  `journeyPath.consider(proposal, place)` decides and records it as a run
-  proposed at `at(place)` would be, once it shows the path's token, giving
-  `Considered` or `Rejected`.
+  `journeyPath.consider(proposal, place, from: peer)` decides and records it
+  as a run proposed at `at(place)` would be, once it comes from the path's
+  loop user, as the kernel reports the socket's peer, and shows the path's
+  token, giving `Considered` or `Rejected`.
+- `PathToken`: minted when the airlock service sets up its side of a path,
+  and handed only to loop_launcher, for the loop it launches to put in
+  every `Proposal`. A check beside the loop user, kept for now: the kernel's
+  report of the peer is the main one. It is compared in constant time,
+  never with `==`, never recorded, and its `toString` does not show it.
 - A `Rejected` request is in no journey path's record, so a stranger cannot
   write into one. The service records it in the airlock's own chain, with
   the journey path it claimed and the socket peer's OS user, never the
@@ -188,7 +203,7 @@ it would be started with fewer rules, its starting entry naming its parent
 and its rules, so the airlock could check they are no wider. It would still
 be named by that entry's hash: a child names its parent, the way a git
 commit does, never the other way round. None of that is built: today the
-docking port gives a journey path whatever rules it likes.
+docking station gives a journey path whatever rules it likes.
 
 ## What the contract does not promise
 
