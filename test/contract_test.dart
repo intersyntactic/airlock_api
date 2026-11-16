@@ -55,14 +55,52 @@ final class RecordedWeb implements WebDriver {
   }
 }
 
-String reachOf(Run<Object?> run) => switch (run.reach) {
+/// Finds `teams-reply` only, and draws a body by joining the text of the
+/// entries it holds. Keeps each render, so a test can see whether one
+/// happened and when.
+final class MemoryRenderers implements Renderers {
+  MemoryRenderers(this.log);
+
+  final List<String> log;
+  final recorded = <EntryId, String>{};
+
+  @override
+  Future<Renderer?> find(RendererName name) async =>
+      name == teamsReply.name ? teamsReply.renderer : null;
+
+  @override
+  Future<Outcome<String>> render(
+    Renderer renderer,
+    List<EntryId> entries,
+  ) async {
+    log.add('render ${entries.length}');
+    final texts = <String>[];
+    for (final id in entries) {
+      final text = recorded[id];
+      if (text == null) return Refused('entry $id is not recorded');
+      texts.add(text);
+    }
+    return Ran(texts.join(' '));
+  }
+
+  /// Records [text], as the journal would, and gives its id.
+  EntryId record(String text) {
+    final id = EntryId.of(utf8.encode(text));
+    recorded[id] = text;
+    return id;
+  }
+}
+
+String reachOf(Reach reach) => switch (reach) {
   Reads(:final path) => 'read $path',
   Writes(:final file) => 'write ${file.path}',
   Starts(:final program, :final args) => [
     program.value,
     ...args.args,
   ].join(' '),
-  Sends(:final origin, :final signIn) => 'send to $origin as $signIn',
+  Sends(:final origin, :final signIn, :final renderer) =>
+    'send to $origin as $signIn'
+        '${renderer == null ? ' with no renderer' : ''}',
 };
 
 /// Rules: what a journey path may do, by name, and the sites it may send to
@@ -75,8 +113,8 @@ final class LogAirlock implements Airlock<Set<String>, int> {
   final log = <String>[];
 
   @override
-  Future<Decision> decide(Run<Object?> run, Set<String> rules) async =>
-      rules.contains(switch (run.reach) {
+  Future<Decision> decide(Reach reach, Set<String> rules) async =>
+      rules.contains(switch (reach) {
         Reads() => 'read',
         Writes() => 'write',
         Starts(:final program) => program.value,
@@ -90,10 +128,10 @@ final class LogAirlock implements Airlock<Set<String>, int> {
     if (entry.runtimeType == failOn) throw StateError('disk full');
     log.add(
       '${entry.place}: ${switch (entry) {
-        Decided(:final run, decision: Allow()) => 'allow ${reachOf(run)}',
-        Decided(:final run, decision: Deny(:final why)) => 'deny ${reachOf(run)}: $why',
-        Returned(:final run, outcome: Ran()) => 'ran ${reachOf(run)}',
-        Returned(:final run, outcome: Refused(:final why)) => 'refused ${reachOf(run)}: $why',
+        Decided(:final reach, decision: Allow()) => 'allow ${reachOf(reach)}',
+        Decided(:final reach, decision: Deny(:final why)) => 'deny ${reachOf(reach)}: $why',
+        Returned(:final reach, outcome: Ran()) => 'ran ${reachOf(reach)}',
+        Returned(:final reach, outcome: Refused(:final why)) => 'refused ${reachOf(reach)}: $why',
       }}',
     );
   }
@@ -131,23 +169,40 @@ JourneyPath<Set<String>, int> start(
   LogAirlock airlock,
   List<Driver> drivers, {
   Set<String> rules = const {'read', 'write', 'dart'},
+  Renderers? renderers,
 }) => JourneyPath.start(
   id: idOf('started root'),
   drivers: drivers,
   airlock: airlock,
   rules: rules,
+  renderers: renderers ?? MemoryRenderers(airlock.log),
 );
 
 final hart = SignIn.parse('hart-bot')!;
 final teams = Origin.parse('https://smba.trafficmanager.net')!;
 
-Result<String> post(Origin site, SignIn signIn) => Program.web.runOrRefusal(
-  Request(
+/// The one renderer [MemoryRenderers] finds, as a post names it and as the
+/// airlock resolves it.
+final teamsReply = (
+  name: RendererName.parse('teams-reply')!,
+  renderer: Renderer(
+    RendererId.parse('1' * 64)!,
+    executable: ObjectId.parse('2' * 64)!,
+  ),
+);
+
+Result<String> post(
+  Origin site,
+  SignIn signIn, {
+  List<EntryId> entries = const [],
+  String renderer = 'teams-reply',
+}) => Program.web.runOrRefusal(
+  Post(
     site,
-    method: Method.post,
-    path: '/v3/conversations/c/activities',
+    path: WebPath.parse('/v3/conversations/c/activities')!,
     signIn: signIn,
-    body: '{"text":"done"}',
+    renderer: RendererName.parse(renderer)!,
+    entries: entries,
   ),
   then: (sent) => Done('${sent.status} ${sent.created}'),
 );
@@ -350,26 +405,168 @@ void main() {
     expect(web.sent.map((r) => r.signIn), [hart]);
     expect(airlock.log, [
       '1: allow send to $teams as hart-bot',
+      'render 0',
       '1: ran send to $teams as hart-bot',
       '2: deny send to $teams as other-bot: not in the rules',
       '2: refused send to $teams as other-bot: not in the rules',
     ]);
   });
 
-  test('a send shows its sign-in, and null only when it has none', () {
-    Run<String> send(SignIn? signIn) => Program.web.run(
-      Request(teams, signIn: signIn),
-      then: (_) => const Done(''),
+  test('a send shows its sign-in, and null only when it has none', () async {
+    final path = start(LogAirlock(), [RecordedWeb()]);
+    final seen = <(Origin, SignIn?)>[];
+    path.entries.listen((e) {
+      if (e case Decided(reach: Sends(:final origin, :final signIn))) {
+        seen.add((origin, signIn));
+      }
+    });
+    for (final (i, signIn) in [hart, null].indexed) {
+      await Program.web
+          .run(
+            Post(teams, signIn: signIn, renderer: teamsReply.name),
+            then: (_) => const Done(''),
+          )
+          .next(path.at(i));
+    }
+    expect(seen, [(teams, hart), (teams, null)]);
+  });
+
+  test("a post's body is drawn by its renderer, from recorded entries, "
+      'only once its decision is kept', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock();
+    final renderers = MemoryRenderers(airlock.log);
+    final turn = renderers.record('the tests pass');
+    final chunk = renderers.record('and the build is green');
+    final path = start(
+      airlock,
+      [web],
+      rules: {'$teams as $hart'},
+      renderers: renderers,
     );
     expect(
-      [hart, null].map(
-        (signIn) => switch (send(signIn).reach) {
-          Sends(:final origin, :final signIn) => (origin, signIn),
-          _ => null,
-        },
-      ),
-      [(teams, hart), (teams, null)],
+      await follow(post(teams, hart, entries: [turn, chunk]), path.at(1)),
+      '201 activity-1',
     );
+    expect(web.sent.single.body, 'the tests pass and the build is green');
+    expect(airlock.log, [
+      '1: allow send to $teams as hart-bot',
+      'render 2',
+      '1: ran send to $teams as hart-bot',
+    ]);
+  });
+
+  test('the decision records the exact renderer and the entries', () async {
+    final renderers = MemoryRenderers([]);
+    final turn = renderers.record('done');
+    final path = start(
+      LogAirlock(),
+      [RecordedWeb()],
+      rules: {'$teams as $hart'},
+      renderers: renderers,
+    );
+    final decided = <Sends>[];
+    path.entries.listen((e) {
+      if (e case Decided(reach: final Sends sends)) decided.add(sends);
+    });
+    await follow(post(teams, hart, entries: [turn]), path.at(1));
+    expect(decided.single.renderer, same(teamsReply.renderer));
+    expect(decided.single.post.renderer, teamsReply.name);
+    expect(decided.single.post.entries, [turn]);
+  });
+
+  test('a renderer named nowhere is denied before the rules, and nothing '
+      'is rendered or sent', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock();
+    final answer = await follow(
+      post(teams, hart, renderer: 'slack-reply'),
+      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+    );
+    expect(answer, 'failed: no renderer named slack-reply');
+    expect(web.sent, isEmpty);
+    expect(airlock.log, [
+      '1: deny send to $teams as hart-bot with no renderer: '
+          'no renderer named slack-reply',
+      '1: refused send to $teams as hart-bot with no renderer: '
+          'no renderer named slack-reply',
+    ]);
+  });
+
+  test('a journey path with no renderers posts nothing', () async {
+    final web = RecordedWeb();
+    final answer = await follow(
+      post(teams, hart),
+      JourneyPath<Set<String>, int>.start(
+        id: idOf('started root'),
+        drivers: [web],
+        airlock: LogAirlock(),
+        rules: {'$teams as $hart'},
+      ).at(1),
+    );
+    expect(answer, 'failed: no renderer named teams-reply');
+    expect(web.sent, isEmpty);
+  });
+
+  test('an entry the journal does not hold refuses the post', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock();
+    final unrecorded = EntryId.of(utf8.encode('never written'));
+    final answer = await follow(
+      post(teams, hart, entries: [unrecorded]),
+      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+    );
+    expect(answer, 'failed: entry $unrecorded is not recorded');
+    expect(web.sent, isEmpty);
+    expect(
+      airlock.log.last,
+      '1: refused send to $teams as hart-bot: '
+      'entry $unrecorded is not recorded',
+    );
+  });
+
+  test('nothing is rendered when the decision cannot be recorded', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock(failOn: Decided<int>);
+    await expectLater(
+      follow(
+        post(teams, hart),
+        start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+      ),
+      throwsStateError,
+    );
+    expect(airlock.log, isEmpty);
+    expect(web.sent, isEmpty);
+  });
+
+  test('a post cannot carry a credential, or a path to another site', () {
+    expect(
+      () => Post(
+        teams,
+        renderer: teamsReply.name,
+        headers: {'Authorization': 'Bearer x'},
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      ['//evil.example', '/a/../b', '/@evil.example', 'v3'].map(WebPath.parse),
+      everyElement(isNull),
+    );
+  });
+
+  test('renderer names are checked once, at the boundary', () {
+    expect(
+      [
+        '',
+        'Teams',
+        'teams reply',
+        '-teams',
+        '1teams',
+        'teams_reply',
+      ].map(RendererName.parse),
+      everyElement(isNull),
+    );
+    expect(RendererName.parse('teams-reply'), teamsReply.name);
   });
 
   test('a machine with no web driver cannot send', () async {

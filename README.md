@@ -49,21 +49,42 @@ while (result is Run<ExecResult>) {
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
   (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`) and
-  `WebRequest` (`Program.web`, a `Request` to an `Origin` through a named
+  `WebPost` (`Program.web`, a `Post` to an `Origin` through a named
   `SignIn`). Programs reach drivers, so they belong with the drivers and the
   airlock to what is trusted; a new kind of effect is a new driver and
   program.
 - `Run<A>`: a program, its input and the continuation, all private. Made only
-  by its program, so its input is the program's own type. Outside, a run
-  shows only its `Reach`, for the airlock: `Reads(path)`, `Writes(file)`,
-  `Starts(program, args)` or `Sends(origin, signIn)`. A rule grants a send
-  by origin and sign-in together; `Sends` never holds the body, so what
-  was said cannot reach the record through a reach.
+  by its program, so its input is the program's own type. Nothing about a
+  run shows outside; when it is carried out, what it would do is worked out
+  as its `Reach`, which the airlock decides and records: `Reads(path)`,
+  `Writes(file)`, `Starts(program, args)` or `Sends(post, renderer)`. A
+  rule grants a send by origin and sign-in together.
 
-A `WebRequest` is an effect, decided like any other: what a tool posts to a
-chat or an API. A journey path's prompts are not: the model is the agent
-planning, so a prompt is not decided, and no tool is in it. How a prompt
-is sent and recorded is not this contract's.
+## A post
+
+Everything a post says is drawn from recorded journal entries, by a
+renderer the record names exactly
+(https://github.com/enspyrco/intersyntactic/issues/1147).
+
+- `Post`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
+  such as `teams-reply`, and the `EntryId`s of the recorded entries its
+  words are drawn from. It has no body, so a tool cannot put words in. The
+  path and headers are checked as is_effects's `Request` checks them.
+- `Renderers`: implemented by the service that starts journey paths.
+  `find` resolves a name to a `Renderer`, its `RendererId` (the hash of its
+  source) and the `ObjectId` of the executable run. `render` reads each
+  entry from the journal, checks it, and runs the renderer as its own
+  program with no network and no secrets: entries in, body out.
+- The renderer is resolved before the decision, so `Decided` holds the
+  whole `Post` and the exact `Renderer`, never a body, which does not exist
+  yet. A name that resolves to nothing is denied before the rules are
+  asked. The body is drawn only once `Decided` is kept; an entry the
+  journal does not hold refuses the post, and nothing is sent.
+
+A post is an effect, decided like any other: what a tool posts to a chat or
+an API. A journey path's prompts are not: the model is the agent planning,
+so a prompt is not decided, and no tool is in it. How a prompt is sent and
+recorded is not this contract's.
 
 ## A journey path
 
@@ -72,8 +93,9 @@ drivers. Its drivers act as the journey's user, each wherever it runs.
 Every entry it records is at a place `P` in a turn, which the agent loop
 supplies and the airlock records; nothing here computes one.
 
-- `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the service that
-  starts a journey path. Holding the drivers is already the power to touch
+- `JourneyPath.start(id:, drivers:, airlock:, rules:, renderers:)`: by the
+  service that starts a journey path. With no `renderers`, every post is
+  denied. Holding the drivers is already the power to touch
   the world, so starting a journey path grants nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
   agent loop and airlock carry out the next run. The journey path checks
@@ -90,7 +112,8 @@ supplies and the airlock records; nothing here computes one.
   a driver reached; the run comes back and the airlock records it
   (`Returned`), and only then does the continuation see it. A record that
   cannot be written ends the call. A `Decided` with no `Returned` is a run
-  cut short.
+  cut short. Recorded means it survives the journal crashing, not a power
+  cut (https://github.com/intersyntactic/journal/pull/12).
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped journey path's refusal
   is the person's.
@@ -99,8 +122,8 @@ supplies and the airlock records; nothing here computes one.
 - `entries`: each entry once recorded, at its place. `underway`: what
   drivers report while a run is underway, for a live view, and not
   recorded. Each names its journey path and place.
-- `Airlock<R, P>`: `decide` and `record`, implemented by intersyntactic's
-  airlock.
+- `Airlock<R, P>`: `decide`, given a run's `Reach`, and `record`,
+  implemented by intersyntactic's airlock.
 
 A journey path is not narrowed from another. For one agent to do less than
 another in the same journey (a reviewer that reads while the crew writes,
@@ -119,6 +142,6 @@ outside it. So "every effect through these drivers is recorded" holds, and
 "every effect in the journey is recorded" is not this package's to promise;
 the journey's rules bound our journey paths, not anyone else's.
 
-The library imports `is_effects` and `is_shapes` and nothing else outside
-the SDK; a test reads every directive's URI from Dart's parse tree and
+The library imports `is_effects`, `is_shapes` and `is_content_id` and
+nothing else outside the SDK; a test reads every directive's URI from Dart's parse tree and
 holds it to that.

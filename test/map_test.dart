@@ -9,7 +9,7 @@ final class _KeepingAirlock implements Airlock<String, int> {
   final kept = <Entry<int>>[];
 
   @override
-  Future<Decision> decide(Run<Object?> run, String rules) async =>
+  Future<Decision> decide(Reach reach, String rules) async =>
       const Allow(by: DecidedBy.rules);
 
   @override

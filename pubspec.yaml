@@ -4,15 +4,16 @@ description: >-
   are carried out on, and the airlock that decides and records each one.
 # Between releases main is `<next>-dev`, so whoever builds on it by path or
 # git ref can see it moves; the release commit drops `-dev`.
-version: 0.4.0-dev
+version: 0.4.0
 repository: https://github.com/intersyntactic/airlock_api
 
 environment:
   sdk: ^3.13.0
 
 dependencies:
-  is_effects: ^0.1.0
-  is_shapes: ^0.4.3
+  is_content_id: ^0.2.0
+  is_effects: ^0.2.0
+  is_shapes: ^0.4.4
 
 dev_dependencies:
   analyzer: ^14.7.0

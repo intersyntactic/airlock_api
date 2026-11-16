@@ -1,8 +1,38 @@
 # Changelog
 
-## 0.4.0-dev
+## 0.4.0
 
-Unreleased: main between releases. Nothing yet.
+Breaking. The post design decided in
+https://github.com/enspyrco/intersyntactic/issues/1147: everything a post
+says is drawn from recorded journal entries, by a renderer the record names
+exactly.
+
+- `Program.web` is a `WebPost`, a `Program<Post, Sent>`, in place of
+  `WebRequest`, a `Program<Request, Sent>`. A `Post` has an origin, method,
+  `WebPath`, sign-in, headers (checked by is_effects's `validatedHeaders`),
+  a `RendererName` and the `EntryId`s of the recorded entries its words are
+  drawn from. It has no body, so a tool cannot put words in.
+- `Renderers`, which the service that starts journey paths implements and
+  passes to `JourneyPath.start(renderers:)`: `find` resolves a
+  `RendererName` to an exact `Renderer` (its `RendererId` and the `ObjectId`
+  of the executable run); `render` reads and checks each entry and runs the
+  renderer, giving the body or why there is none.
+- A post's renderer is resolved before the decision, and `Sends` holds the
+  whole `Post` and that `Renderer`, so the `Decided` entry records which
+  code will write the words. A name that resolves to nothing, or a journey
+  path with no `Renderers`, is denied before the rules are asked. The body
+  is drawn only once `Decided` is kept, and a render that is refused (an
+  entry the journal does not hold, say) refuses the post with nothing sent.
+- `Airlock.decide` takes the `Reach`, not the `Run`, and `Decided`,
+  `Returned` and `Underway` hold the `reach` in place of the `run`. The
+  public `Run.reach` is gone: a post's reach needs its renderer resolved.
+- `Airlock.record`'s doc says what kept means: it survives the journal
+  crashing or being killed, not a power cut
+  (https://github.com/intersyntactic/journal/pull/12).
+- Re-exports `EntryId` and `RendererId` from `is_shapes`, and `ObjectId`
+  from `is_content_id`.
+- Depends on `is_effects` ^0.2.0, `is_shapes` ^0.4.4 and `is_content_id`
+  ^0.2.0.
 
 ## 0.3.1
 

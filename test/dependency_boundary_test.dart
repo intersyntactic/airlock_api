@@ -41,6 +41,7 @@ bool _allowed(String target) {
   return switch (uri.scheme) {
     'dart' => _allowedSdk.contains(target),
     'package' => const {
+      'is_content_id',
       'is_effects',
       'is_shapes',
     }.contains(uri.pathSegments.first),
