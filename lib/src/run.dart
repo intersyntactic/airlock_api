@@ -433,7 +433,11 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// records and pub.dev reports as `archive_sha256` (Nick, 16 Nov). The
 /// archive does not hold the packages it depends on, so [executable], built
 /// with every one of them, is what pins the whole of the code that wrote a
-/// post; the two are recorded together.
+/// post; the two are recorded together. So the check that a [Rendered]
+/// entry came from this renderer rests on [executable]; [id] is enough on
+/// its own only for a renderer with no dependencies, which `teams-reply`
+/// holds itself to with a test.
+///
 /// [executable] names the follower built with it: the one shared program
 /// that follows the journal, reads the entries and writes [Rendered],
 /// compiled once per renderer with [id] as a define, which it reports in
