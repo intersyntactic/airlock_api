@@ -80,6 +80,10 @@ final class LogAirlock implements Airlock<Set<String>, int> {
 
   final Type? failOn;
   final log = <String>[];
+
+  /// Each `returned` entry recorded for a proposal, by the proposal it
+  /// answers, as the airlock would write it on its own chain.
+  final returned = <EntryId, ReturnedProposal>{};
   final _journal = <EntryId, String>{};
 
   /// Records [text], as the journal would, and gives its id.
@@ -120,6 +124,11 @@ final class LogAirlock implements Airlock<Set<String>, int> {
   @override
   Future<void> record(Entry<int> entry) async {
     if (entry.runtimeType == failOn) throw StateError('disk full');
+    if (entry case Returned<int>()) {
+      if (ReturnedProposal.of(entry) case final answer?) {
+        returned[answer.proposed] = answer;
+      }
+    }
     log.add(
       '${entry.place}: ${switch (entry) {
         Decided(:final reach, decision: Allow()) => 'allow ${reachOf(reach)}',
@@ -182,12 +191,10 @@ JourneyPath<Set<String>, int> start(
   drivers: drivers,
   airlock: airlock,
   rules: rules,
-  loopUser: loop1,
   journeyUser: journey1,
 );
 
-/// The users loop_launcher hands a path in these tests.
-final loop1 = LoopUser.parse('loop-1')!;
+/// The journey user loop_launcher hands a path in these tests.
 final journey1 = JourneyUser.parse('journey-1')!;
 
 final hart = SignIn.parse('hart-bot')!;
@@ -471,7 +478,6 @@ void main() {
       drivers: [RecordedWeb()],
       airlock: airlock,
       rules: {'$teams as $hart'},
-      loopUser: loop1,
       journeyUser: journey1,
     );
     final decided = <Decided<int>>[];
@@ -513,7 +519,6 @@ void main() {
         drivers: [RecordedWeb()],
         airlock: airlock,
         rules: const {},
-        loopUser: loop1,
         journeyUser: journey1,
       ).at(1),
     );

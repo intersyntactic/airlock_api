@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
-part 'path_started.dart';
 part 'pool_user.dart';
 part 'send_entries.dart';
 part 'proposal.dart';
@@ -520,15 +517,15 @@ final class Sends extends Reach {
 /// wherever it runs. They are reached only by a [Run] proposed at one of its
 /// apexes, so every such run passes its airlock.
 ///
-/// This is the airlock service's side of a journey path, set up when
-/// loop_launcher says the docking station has started the path
-/// ([PathStarted]). The airlock
+/// This is the airlock service's side of a journey path, set up when the
+/// record shows the docking station started the path (its rules, in
+/// `admitted`) and loop_launcher handed it users (`assigned`). The airlock
 /// starts nothing. Whoever holds the drivers already has the power to touch
 /// the world, so setting up a side grants nothing new.
 final class JourneyPath<R, P> {
   /// The side of the journey path named [id], on [drivers], decided and
-  /// recorded by [airlock], under [rules], whose loop runs as [loopUser]
-  /// and whose programs run as [journeyUser].
+  /// recorded by [airlock], under [rules], whose programs run as
+  /// [journeyUser].
   ///
   /// [id] is the hash of the record entry that started the path, which the
   /// docking station writes, so no two journey paths share one and nothing here
@@ -538,7 +535,6 @@ final class JourneyPath<R, P> {
     required Iterable<Driver> drivers,
     required this._airlock,
     required this.rules,
-    required this._loopUser,
     required this.journeyUser,
   }) : _drivers = List.unmodifiable(drivers);
 
@@ -551,31 +547,11 @@ final class JourneyPath<R, P> {
   /// it owns the journey's working tree.
   final JourneyUser journeyUser;
 
-  /// The user this path's loop runs as: the only user [consider] takes the
-  /// path's proposals from.
-  LoopUser get loopUser => _loopUser;
-  LoopUser _loopUser;
   final Airlock<R, P> _airlock;
   final List<Driver> _drivers;
   final _entries = StreamController<Entry<P>>.broadcast(sync: true);
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
-
-  /// What this journey path's agent loop puts in each [Proposal], to show it
-  /// is that loop: minted here, and handed only to loop_launcher, which
-  /// launches the loop.
-  PathToken get token => _token;
-  PathToken _token = PathToken._mint();
-
-  /// A new [token], in place of the old one, which is rejected from then
-  /// on, and [loopUser], the user the path's loop now runs as: for a
-  /// [PathStarted] naming a path whose side is already set up, when
-  /// loop_launcher has restarted and launched the loop again. Only one loop
-  /// holds a path's token.
-  PathToken reissue({required LoopUser loopUser}) {
-    _loopUser = loopUser;
-    return _token = PathToken._mint();
-  }
 
   /// This journey path's tip at [place], where its runs are proposed in this
   /// process.
@@ -586,8 +562,7 @@ final class JourneyPath<R, P> {
 
   /// Refuses every run on this journey path whose driver has not yet been
   /// reached. A run whose driver has been reached is not interrupted. Never
-  /// undone: a [PathStarted] that says the path is not stopped leaves it
-  /// stopped.
+  /// undone.
   void stop() => _stopped = true;
 
   bool get stopped => _stopped;
@@ -604,8 +579,9 @@ final class JourneyPath<R, P> {
   Future<Outcome<O>> _consider<I, O>(
     Program<I, O> program,
     I input,
-    P place,
-  ) async {
+    P place, {
+    EntryId? proposed,
+  }) async {
     const stoppedByPerson = Deny('stopped', by: DecidedBy.person);
     final reach = await program._reach(input, _airlock.renderer);
     var decision = switch (reach) {
@@ -617,7 +593,7 @@ final class JourneyPath<R, P> {
       _ => await _airlock.decide(reach, rules),
     };
     if (stopped) decision = stoppedByPerson;
-    final decided = Decided(id, place, reach, decision);
+    final decided = Decided(id, place, reach, decision, proposed: proposed);
     await _record(decided);
     final Outcome<O> outcome = switch (decision) {
       Deny(:final why) => Refused(why),
@@ -631,7 +607,16 @@ final class JourneyPath<R, P> {
             ) ??
             Refused('this machine cannot run ${program.name}'),
     };
-    await _record(Returned(id, place, reach, outcome));
+    await _record(
+      Returned._(
+        id,
+        place,
+        reach,
+        outcome,
+        encodeOutcome(outcome, program._wire.outputToJson),
+        proposed,
+      ),
+    );
     return outcome;
   }
 
@@ -640,32 +625,20 @@ final class JourneyPath<R, P> {
     _entries.add(entry);
   }
 
-  /// [proposal] considered at [place], as a run proposed at [at]'s apex
-  /// would be, once it comes [from] this path's [loopUser] and shows its
-  /// [token]: decided and recorded, and carried out by a driver if it is
-  /// allowed. A proposal of another journey path, from another user, or
-  /// with another token, is [Rejected] and recorded in no journey path's
-  /// record.
+  /// [proposal], the `proposed` entry [proposed] on this path's chain,
+  /// considered at [place] as a run proposed at [at]'s apex would be:
+  /// decided and recorded, and carried out by a driver if it is allowed. Its
+  /// [Decided] and [Returned] entries name [proposed].
   ///
-  /// [from] is the socket peer's user as the kernel reports it, which the
-  /// sender cannot choose (Nick, 16 Nov). [place] is [Proposal.place] read
-  /// as a [P] by the service, which knows [P].
-  Future<ProposalAnswer> consider(
+  /// Only for an entry on this path's own chain, which the journal takes
+  /// only from this path's loop user, and only once the journal enforces
+  /// that. [place] is [Proposal.place] read as a [P] by the airlock service,
+  /// which knows [P].
+  Future<void> consider(
     Proposal proposal,
     P place, {
-    required LoopUser from,
-  }) async {
-    if (proposal.journeyPath != id) {
-      return const Rejected('another journey path');
-    }
-    if (from != loopUser) {
-      return Rejected("not this journey path's loop user: $from");
-    }
-    if (!token._matches(proposal.token)) {
-      return const Rejected("not this journey path's token");
-    }
-    return Considered._(await proposal._work.on(this, place));
-  }
+    required EntryId proposed,
+  }) => proposal._work.on(this, place, proposed);
 }
 
 /// A journey path's tip at one place in a turn: where its agent loop
@@ -674,7 +647,7 @@ final class JourneyPath<R, P> {
 ///
 /// Made by [JourneyPath.at] where the journey path is, in the airlock
 /// service, and by [Apex.through] in the agent loop, which is another
-/// process: there a run's program and input go to the airlock as a
+/// process: there a run's program and input go into the record as a
 /// [Proposal], and its continuation stays behind, since it is the tool's own
 /// code. Either
 /// way, what follows a tool's result takes an apex and never handles the
@@ -683,17 +656,12 @@ final class JourneyPath<R, P> {
 sealed class Apex {
   const Apex();
 
-  /// The apex at [place] on the journey path [journeyPath], reached through
-  /// [link], showing [token] to say this is that path's loop.
+  /// The apex at [place] on the journey path whose chain [link] writes to.
   ///
   /// [place] is already the JSON its journey path reads places from, since
   /// the loop and the airlock service agree its type between them.
-  const factory Apex.through(
-    AirlockLink link, {
-    required JourneyPathId journeyPath,
-    required PathToken token,
-    required Object? place,
-  }) = _ThroughLink;
+  const factory Apex.through(RecordLink link, {required Object? place}) =
+      _ThroughRecord;
 
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
 }
@@ -804,19 +772,44 @@ sealed class Entry<P> {
 /// yet. Without a [Returned] entry after it, the record shows the run was
 /// cut short.
 final class Decided<P> extends Entry<P> {
-  const Decided(super.journeyPathId, super.place, this.reach, this.decision);
+  const Decided(
+    super.journeyPathId,
+    super.place,
+    this.reach,
+    this.decision, {
+    this.proposed,
+  });
 
   final Reach reach;
   final Decision decision;
+
+  /// The `proposed` entry that asked for the run; null for a run proposed
+  /// in the airlock service's own process.
+  final EntryId? proposed;
 }
 
 /// The run that would do [reach] came back, with its [outcome], whether it
-/// ran or was refused.
+/// ran or was refused. Made only by a journey path, which knows the run's
+/// program, so [ReturnedProposal.of] can write what came back in full.
 final class Returned<P> extends Entry<P> {
-  const Returned(super.journeyPathId, super.place, this.reach, this.outcome);
+  const Returned._(
+    super.journeyPathId,
+    super.place,
+    this.reach,
+    this.outcome,
+    this._outcomeJson,
+    this.proposed,
+  );
 
   final Reach reach;
   final Outcome<Object?> outcome;
+
+  /// [outcome] as its program's codec writes it.
+  final Object? _outcomeJson;
+
+  /// The `proposed` entry that asked for the run; null for a run proposed
+  /// in the airlock service's own process.
+  final EntryId? proposed;
 }
 
 /// What a driver reported, [progress], while the run doing [reach] was

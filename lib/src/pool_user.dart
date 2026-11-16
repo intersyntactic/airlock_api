@@ -2,15 +2,15 @@ part of 'run.dart';
 
 // The OS users loop_launcher hands out, one from each pool, made ahead of
 // time on the box by infra, never by loop_launcher (Nick, 16 Nov: "a pool
-// made ahead of time"). Here, not in loop_launcher, since the airlock
-// service reads them in every [PathStarted] and checks a [Proposal]'s
-// sender against one: both sides need the one type.
+// made ahead of time"). Here, not in loop_launcher, since loop_launcher
+// records them in each path's `assigned` entry and the airlock service reads
+// them from it: both sides need the one type.
 
 /// A user from the loop pool, `loop-<n>`: a journey path's agent loop runs
-/// as it, holding the path's token and the model sign-ins its rules allow.
-/// It owns no files (Nick, 16 Nov: "a loop user of its own, one per running
-/// loop, from a second pool"). The airlock service takes a path's proposals
-/// only from the path's loop user, as the kernel reports the socket's peer.
+/// as it, holding the model sign-ins its rules allow. It owns no files
+/// (Nick, 16 Nov: "a loop user of its own, one per running loop, from a
+/// second pool"). The journal takes the entries on a path's chain, its
+/// proposals among them, only from the path's loop user.
 final class LoopUser extends _PoolUser {
   LoopUser._(super.n);
 
