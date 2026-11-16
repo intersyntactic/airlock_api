@@ -1,5 +1,5 @@
 /// The airlock's contract: what a tool returns for a call, the runs of
-/// programs it describes, the journey path each run is carried out on, and
+/// programs it describes, the journey path each run is proposed on, and
 /// the [Airlock] that decides and records each one.
 ///
 /// The airlock itself, which decides and records, is not here: this library
