@@ -14,7 +14,7 @@
 Breaking.
 
 - `JourneyPathId` is `is_shapes`'s: a journey path is named by the hash of
-  the record entry that started it, which the host writes
+  the record entry that started it, which whoever starts it writes
   (`JourneyPathId.of(entryBytes)`), the way a `JourneyId` names a journey.
   This package's own `JourneyPathId`, whose `parse` took any non-blank
   string, is gone, and it re-exports `is_shapes`'s.
@@ -35,7 +35,7 @@ Breaking.
 Added to this entry with 0.3.0: the 0.2.0 release also made these changes,
 which its own changelog left out.
 
-- Every entry is at a host-supplied place `P` in a turn:
+- Every entry is at a place `P` in a turn, which the agent loop supplies:
   `JourneyPath<R, P>`, `Airlock<R, P>`, and a `place` on each entry and on
   `Underway`.
 - `journeyPath.at(place)` gives an `Apex`, and a run is carried out with
@@ -56,8 +56,8 @@ The changes it did list:
   `is_effects` alone and sees no run, journey path or decision. This package
   depends on `is_effects` and nothing else of ours.
 - `Tool`, `answeredBy`, `Reply` and `ExecResult.output` move to `is_tool`
-  (as `Answer`, `answeredBy`, `Reply` and `execResultOutput`), so a host can
-  take this up before its tools move to `is_tools_api` 0.2.
+  (as `Answer`, `answeredBy`, `Reply` and `execResultOutput`), so a
+  consumer can take this up before its tools move to `is_tools_api` 0.2.
 - `Executable` wraps an `is_effects` `ProgramName`, compares by it, and has
   `Executable.parse`; `Starts.program` is the `ProgramName`.
 - `Allow` and `Deny` take `by: DecidedBy.rules` or `DecidedBy.person`, so

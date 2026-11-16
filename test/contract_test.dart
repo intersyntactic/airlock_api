@@ -122,8 +122,8 @@ Future<String> follow(Result<String> result, Apex apex) async {
   };
 }
 
-/// The id of a journey path started by the entry [startedBy], as a host
-/// names it: by that entry's hash.
+/// The id of a journey path started by the entry [startedBy], as whoever
+/// starts it names it: by that entry's hash.
 JourneyPathId idOf(String startedBy) =>
     JourneyPathId.of(utf8.encode(startedBy));
 

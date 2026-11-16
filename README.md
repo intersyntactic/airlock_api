@@ -18,7 +18,7 @@ Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrRefusal(
       dart.runOrRefusal(Args(['format', file.path.value]), then: Done.new),
 );
 
-// The host, which holds the drivers:
+// The service that starts a journey path, which holds the drivers:
 final journeyPath = JourneyPath.start(
   id: JourneyPathId.of(startEntry), // the hash of the entry that started it
   drivers: [files, programs],
@@ -69,12 +69,12 @@ is sent and recorded is not this contract's.
 
 One agent's own journey: its id, its rules `R`, and its airlock and
 drivers. Its drivers act as the journey's user, each wherever it runs.
-Every entry it records is at a place `P` in a turn, which the host supplies
-and the airlock records; nothing here computes one.
+Every entry it records is at a place `P` in a turn, which the agent loop
+supplies and the airlock records; nothing here computes one.
 
-- `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the host. Holding
-  the drivers is already the power to touch the world, so starting a journey
-  path grants nothing new.
+- `JourneyPath.start(id:, drivers:, airlock:, rules:)`: by the service that
+  starts a journey path. Holding the drivers is already the power to touch
+  the world, so starting a journey path grants nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
   agent loop and airlock carry out the next run. The journey path checks
   the place's type, so whatever follows a tool's result takes an `Apex` and
@@ -82,7 +82,7 @@ and the airlock records; nothing here computes one.
   two tool calls are two apexes of one journey path, at two places.
 - `JourneyPathId`, from `is_shapes`: a journey path is named by the hash of
   the record entry that started it (`JourneyPathId.of(entryBytes)`), which
-  the host writes, the way a `JourneyId` names a journey. So no two journey
+  whoever starts it writes, the way a `JourneyId` names a journey. So no two journey
   paths share an id, after a restart too, and nothing here mints one. Every
   entry carries it.
 - `run.next(apex)`, the only way to carry out a run: the airlock
@@ -108,8 +108,8 @@ https://github.com/enspyrco/intersyntactic/issues/1049), the plan is that
 it would be started with fewer rules, its starting entry naming its parent
 and its rules, so the airlock could check they are no wider. It would still
 be named by that entry's hash: a child names its parent, the way a git
-commit does, never the other way round. None of that is built: today a
-host starts each journey path with whatever rules it gives it.
+commit does, never the other way round. None of that is built: today the
+service that starts a journey path gives it whatever rules it likes.
 
 ## What the contract does not promise
 
