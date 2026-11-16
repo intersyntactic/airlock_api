@@ -8,6 +8,7 @@ import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
 part 'path_started.dart';
+part 'pool_user.dart';
 part 'send_entries.dart';
 part 'proposal.dart';
 
@@ -526,7 +527,8 @@ final class Sends extends Reach {
 /// the world, so setting up a side grants nothing new.
 final class JourneyPath<R, P> {
   /// The side of the journey path named [id], on [drivers], decided and
-  /// recorded by [airlock], under [rules].
+  /// recorded by [airlock], under [rules], whose loop runs as [loopUser]
+  /// and whose programs run as [journeyUser].
   ///
   /// [id] is the hash of the record entry that started the path, which the
   /// docking port writes, so no two journey paths share one and nothing here
@@ -536,11 +538,23 @@ final class JourneyPath<R, P> {
     required Iterable<Driver> drivers,
     required this._airlock,
     required this.rules,
+    required this._loopUser,
+    required this.journeyUser,
   }) : _drivers = List.unmodifiable(drivers);
 
   /// Names this journey path in every entry it records.
   final JourneyPathId id;
   final R rules;
+
+  /// The user this path's programs run as: the airlock service gives the
+  /// path a program driver that runs as it. Kept for the path's life, since
+  /// it owns the journey's working tree.
+  final JourneyUser journeyUser;
+
+  /// The user this path's loop runs as: the only user [consider] takes the
+  /// path's proposals from.
+  LoopUser get loopUser => _loopUser;
+  LoopUser _loopUser;
   final Airlock<R, P> _airlock;
   final List<Driver> _drivers;
   final _entries = StreamController<Entry<P>>.broadcast(sync: true);
@@ -554,10 +568,14 @@ final class JourneyPath<R, P> {
   PathToken _token = PathToken._mint();
 
   /// A new [token], in place of the old one, which is rejected from then
-  /// on: for a [PathStarted] naming a path whose side is already set up,
-  /// when loop_launcher has restarted and lost the token. Only one loop
+  /// on, and [loopUser], the user the path's loop now runs as: for a
+  /// [PathStarted] naming a path whose side is already set up, when
+  /// loop_launcher has restarted and launched the loop again. Only one loop
   /// holds a path's token.
-  PathToken reissue() => _token = PathToken._mint();
+  PathToken reissue({required LoopUser loopUser}) {
+    _loopUser = loopUser;
+    return _token = PathToken._mint();
+  }
 
   /// This journey path's tip at [place], where its runs are proposed in this
   /// process.
@@ -623,16 +641,25 @@ final class JourneyPath<R, P> {
   }
 
   /// [proposal] considered at [place], as a run proposed at [at]'s apex
-  /// would be, once it shows this path's [token]: decided and recorded, and
-  /// carried out by a driver if it is allowed. A proposal of another journey
-  /// path, or with another token, is [Rejected] and recorded in no journey
-  /// path's record.
+  /// would be, once it comes [from] this path's [loopUser] and shows its
+  /// [token]: decided and recorded, and carried out by a driver if it is
+  /// allowed. A proposal of another journey path, from another user, or
+  /// with another token, is [Rejected] and recorded in no journey path's
+  /// record.
   ///
-  /// [place] is [Proposal.place] read as a [P] by the service, which knows
-  /// [P].
-  Future<ProposalAnswer> consider(Proposal proposal, P place) async {
+  /// [from] is the socket peer's user as the kernel reports it, which the
+  /// sender cannot choose (Nick, 16 Nov). [place] is [Proposal.place] read
+  /// as a [P] by the service, which knows [P].
+  Future<ProposalAnswer> consider(
+    Proposal proposal,
+    P place, {
+    required LoopUser from,
+  }) async {
     if (proposal.journeyPath != id) {
       return const Rejected('another journey path');
+    }
+    if (from != loopUser) {
+      return Rejected("not this journey path's loop user: $from");
     }
     if (!token._matches(proposal.token)) {
       return const Rejected("not this journey path's token");

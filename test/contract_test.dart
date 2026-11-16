@@ -182,7 +182,13 @@ JourneyPath<Set<String>, int> start(
   drivers: drivers,
   airlock: airlock,
   rules: rules,
+  loopUser: loop1,
+  journeyUser: journey1,
 );
+
+/// The users loop_launcher hands a path in these tests.
+final loop1 = LoopUser.parse('loop-1')!;
+final journey1 = JourneyUser.parse('journey-1')!;
 
 final hart = SignIn.parse('hart-bot')!;
 final teams = Origin.parse('https://smba.trafficmanager.net')!;
@@ -465,6 +471,8 @@ void main() {
       drivers: [RecordedWeb()],
       airlock: airlock,
       rules: {'$teams as $hart'},
+      loopUser: loop1,
+      journeyUser: journey1,
     );
     final decided = <Decided<int>>[];
     path.entries.listen((e) {
@@ -505,6 +513,8 @@ void main() {
         drivers: [RecordedWeb()],
         airlock: airlock,
         rules: const {},
+        loopUser: loop1,
+        journeyUser: journey1,
       ).at(1),
     );
     expect(answer, 'failed: not in the rules');

@@ -49,6 +49,8 @@ void main() {
         drivers: [files],
         airlock: airlock,
         rules: 'all',
+        loopUser: LoopUser.parse('loop-1')!,
+        journeyUser: JourneyUser.parse('journey-1')!,
       ).at(7);
       final path = RelativePath('notes.txt');
       var applied = 0;

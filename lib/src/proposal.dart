@@ -5,9 +5,12 @@ part of 'run.dart';
 ///
 /// The airlock service mints one when it sets up its side of a journey path
 /// ([JourneyPath.token]) and hands it to loop_launcher, which gives it to
-/// the loop it launches for that path, and to nothing else. The OS user on the socket
-/// cannot tell one journey path from another, since every path of one agent
-/// runs as that agent's user, so the token is what does.
+/// the loop it launches for that path, and to nothing else.
+///
+/// A check beside the main one, not instead of it. Each path's loop runs as
+/// a loop user of its own, so [JourneyPath.consider] first takes a proposal
+/// only from that user, as the kernel reports the socket's peer, which the
+/// sender cannot choose (Nick, 16 Nov). The token is kept as well, for now.
 ///
 /// Never recorded: no [Reach] holds it, and [toString] does not show it.
 /// Never compared with `==`, which would stop at the first byte that differs

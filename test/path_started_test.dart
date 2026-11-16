@@ -22,12 +22,18 @@ final class AirlockService {
   Object? told(Object? message) {
     final PathStartedAnswer answer = switch (PathStarted.read(_wire(message))) {
       final Rejected rejected => rejected,
-      PathStarted(:final journeyPath, :final rules, :final stopped) =>
+      PathStarted(
+        :final journeyPath,
+        :final rules,
+        :final loopUser,
+        :final journeyUser,
+        :final stopped,
+      ) =>
         switch (rules) {
           final List<Object?> names when names.every((n) => n is String) => () {
             final path = link.paths[journeyPath];
             if (path != null) {
-              path.reissue();
+              path.reissue(loopUser: loopUser);
             }
             final side =
                 path ??
@@ -36,6 +42,8 @@ final class AirlockService {
                   drivers: [files],
                   airlock: airlock,
                   rules: {...names.cast<String>()},
+                  loopUser: loopUser,
+                  journeyUser: journeyUser,
                 ));
             if (stopped) side.stop();
             return Ready.of(side);
@@ -56,9 +64,18 @@ Apex loopLauncherLaunches(
   AirlockService service,
   JourneyPathId id, {
   List<String> rules = const ['write'],
+  String loopUser = 'loop-1',
   bool stopped = false,
 }) => switch (PathStartedAnswer.read(
-  service.told(PathStarted(id, rules: rules, stopped: stopped).toJson()),
+  service.told(
+    PathStarted(
+      id,
+      rules: rules,
+      loopUser: LoopUser.parse(loopUser)!,
+      journeyUser: JourneyUser.parse('journey-1')!,
+      stopped: stopped,
+    ).toJson(),
+  ),
 )) {
   Ready(:final token) => Apex.through(
     service.link,
@@ -96,6 +113,28 @@ void main() {
     );
     expect(await follow(write('b'), after), 'wrote');
     expect(service.files.files.keys, ['b']);
+  });
+
+  test('a loop launched again may run as another user, and the old one is '
+      'rejected even with the new token', () async {
+    final service = AirlockService(LogAirlock(), MemoryFiles());
+    loopLauncherLaunches(service, thread);
+    final again = loopLauncherLaunches(service, thread, loopUser: 'loop-2');
+    final path = service.link.paths[thread]!;
+    expect(path.loopUser, LoopUser.parse('loop-2'));
+    expect(path.journeyUser, JourneyUser.parse('journey-1'));
+    expect(await follow(write('a'), again), 'wrote');
+    final oldUser = Apex.through(
+      ServiceLink([path], peer: LoopUser.parse('loop-1')),
+      journeyPath: thread,
+      token: path.token,
+      place: 1,
+    );
+    expect(
+      await follow(write('b'), oldUser),
+      contains("not this journey path's loop user: loop-1"),
+    );
+    expect(service.files.files.keys, ['a']);
   });
 
   test('after the airlock service restarts, being told again sets up the '
@@ -138,14 +177,22 @@ void main() {
   test('what is not a path started is rejected, and loop_launcher reads '
       'why', () {
     final service = AirlockService(LogAirlock(), MemoryFiles());
+    final good = {
+      'pathStarted': thread.hex,
+      'rules': ['write'],
+      'loopUser': 'loop-1',
+      'journeyUser': 'journey-1',
+      'stopped': false,
+    };
     for (final (message, why) in [
       (null, 'not a path started'),
       ({'pathStarted': thread.hex}, 'not a path started'),
-      ({'pathStarted': 'nope', 'stopped': false}, 'not a journey path: nope'),
-      (
-        {'pathStarted': thread.hex, 'rules': 'write', 'stopped': false},
-        'rules: not a list of names',
-      ),
+      ({...good}..remove('loopUser'), 'not a path started'),
+      ({...good, 'pathStarted': 'nope'}, 'not a journey path: nope'),
+      ({...good, 'loopUser': 'journey-1'}, 'not a loop user: journey-1'),
+      ({...good, 'loopUser': 'loop-0'}, 'not a loop user: loop-0'),
+      ({...good, 'journeyUser': 'root'}, 'not a journey user: root'),
+      ({...good, 'rules': 'write'}, 'rules: not a list of names'),
     ]) {
       expect(switch (PathStartedAnswer.read(service.told(message))) {
         Rejected(:final why) => why,

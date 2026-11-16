@@ -155,28 +155,34 @@ carries an effect out (RULINGS: "the airlock operates nothing").
   in the agent loop, over an `AirlockLink`, the transport (a socket, say),
   which this package does not have. `run.next(apex)` is the same with
   either, so a tool does not change.
-- `PathStarted(journeyPath, rules:, stopped:)`: the docking port starts
-  journey paths, and records that it did; loop_launcher follows the journal
-  for those entries and tells the airlock service, which holds the drivers
-  and so sets up its own side of the path (`JourneyPath`). The answer is
-  `Ready`, with the token loop_launcher gives the loop it launches for the
-  path, or `Rejected`. The airlock service takes this only from
-  loop_launcher's OS user. Sent again after either service restarts: a path whose
-  side the airlock service no longer holds is set up anew under the same
-  id, and one it holds gets a new token (`JourneyPath.reissue`), after
-  which the old one is rejected. `stopped` keeps the person's stop across a
-  restart, and nothing un-stops a path. A live path keeps the rules it had.
-- `PathToken`: minted when the airlock service sets up its side of a path,
-  and handed only to loop_launcher, for the loop it launches to put in
-  every `Proposal`. The OS user on the socket cannot tell one journey path from
-  another, since an agent's paths share its user; the token can. It is
-  compared in constant time, never with `==`, never recorded, and its
-  `toString` does not show it.
+- `PathStarted(journeyPath, rules:, loopUser:, journeyUser:, stopped:)`:
+  the docking port starts journey paths, and records that it did;
+  loop_launcher follows the journal for those entries and tells the airlock
+  service, which holds the drivers and so sets up its own side of the path
+  (`JourneyPath`). The answer is `Ready`, with the token loop_launcher gives
+  the loop it launches for the path, or `Rejected`. The airlock service
+  takes this only from loop_launcher's OS user. Sent again after either
+  service restarts: a path whose side the airlock service no longer holds
+  is set up anew under the same id, and one it holds gets a new token and
+  loop user (`JourneyPath.reissue`), after which the old token is rejected.
+  `stopped` keeps the person's stop across a restart, and nothing un-stops a
+  path. A live path keeps the rules and the journey user it had.
+- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`): the OS users
+  loop_launcher hands each path from pools infra makes ahead of time (Nick,
+  16 Nov). The path's loop runs as its loop user, and its programs run as
+  its journey user, which owns the journey's working tree: the airlock
+  service gives the path a program driver that runs as it.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
   every part as its type's own `parse` does, with is_effects's codecs.
-  `journeyPath.consider(proposal, place)` decides and records it as a run
-  proposed at `at(place)` would be, once it shows the path's token, giving
-  `Considered` or `Rejected`.
+  `journeyPath.consider(proposal, place, from: peer)` decides and records it
+  as a run proposed at `at(place)` would be, once it comes from the path's
+  loop user, as the kernel reports the socket's peer, and shows the path's
+  token, giving `Considered` or `Rejected`.
+- `PathToken`: minted when the airlock service sets up its side of a path,
+  and handed only to loop_launcher, for the loop it launches to put in
+  every `Proposal`. A check beside the loop user, kept for now: the kernel's
+  report of the peer is the main one. It is compared in constant time,
+  never with `==`, never recorded, and its `toString` does not show it.
 - A `Rejected` request is in no journey path's record, so a stranger cannot
   write into one. The service records it in the airlock's own chain, with
   the journey path it claimed and the socket peer's OS user, never the

@@ -25,21 +25,29 @@ by the airlock
   the same arguments: it is the airlock service's side of a journey path,
   and the airlock starts nothing; the docking port starts journey paths
   (Nick, 16 Nov).
-- `PathToken`, minted with each `JourneyPath` as `JourneyPath.token`: what
-  shows a proposal is from that journey path's loop (Nick, 16 Nov: a token
-  per path). Compared in constant time, never recorded, hidden by
-  `toString`.
+- `LoopUser` (`loop-<n>`) and `JourneyUser` (`journey-<n>`), moved here
+  from loop_launcher so both services read one type: the OS users
+  loop_launcher hands each path from pools made ahead of time. A path's
+  loop runs as its loop user and its programs as its journey user (Nick,
+  16 Nov).
 - `PathStarted`: loop_launcher, following the docking port's entries that
   start a journey path, tells the airlock service the path has started,
-  under its id and rules, and is answered `Ready` with the token for the
-  loop it launches, or `Rejected` (Nick, 16 Nov). Sent again after either service restarts: same id,
-  new token, with `JourneyPath.reissue` for a path whose side is still
-  set up; `stopped` keeps the person's stop across, and nothing un-stops a
-  path. `JourneyPath.token` is now a getter.
+  under its id, rules, `loopUser` and `journeyUser`, and is answered
+  `Ready` with the token for the loop it launches, or `Rejected` (Nick, 16
+  Nov). Sent again after either service restarts: same id, new token, with
+  `JourneyPath.reissue(loopUser:)` for a path whose side is still set up,
+  since a loop launched again may run as another user; `stopped` keeps the
+  person's stop across, and nothing un-stops a path. `JourneyPath` takes
+  `loopUser` and `journeyUser`; `JourneyPath.token` is now a getter.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected`;
-  `JourneyPath.consider(proposal, place)` gives `Considered` or `Rejected`.
-  A rejected request is in no journey path's record; the service records
-  it in the airlock's own chain.
+  `JourneyPath.consider(proposal, place, from:)` gives `Considered` or
+  `Rejected`. It takes a path's proposals only from the path's loop user,
+  as the kernel reports the socket's peer (Nick, 16 Nov), and with its
+  token. A rejected request is in no journey path's record; the service
+  records it in the airlock's own chain.
+- `PathToken`, minted with each `JourneyPath` as `JourneyPath.token`: a
+  check beside the loop user, kept for now (Nick, 16 Nov). Compared in
+  constant time, never recorded, hidden by `toString`.
 - `Post` is now `Send`, and `WebPost` is `WebSend`; `Sends` holds `send`
   where it held `post` (Nick, 16 Nov: "post" is ambiguous, beside the HTTP
   method `Method.post` and a chat's posts). So the family reads `Send`,
