@@ -239,8 +239,7 @@ final class Executable extends Program<Args, ExecResult> {
   );
 }
 
-/// Sends a request out of the home, through the sign-in it names, to a
-/// site.
+/// Sends a request to a site, through the sign-in it names.
 ///
 /// An effect, decided like any other: what a tool posts to a chat, an issue
 /// tracker or an API. Not a prompt, which is the agent planning and is not
@@ -287,7 +286,7 @@ final class Starts extends Reach {
   final Args args;
 }
 
-/// Leaves the home: a request goes to [origin], as [signIn], or under no
+/// Reaches the world: a request goes to [origin], as [signIn], or under no
 /// sign-in when null.
 ///
 /// Null means no sign-in, never any: it is null exactly when the request
