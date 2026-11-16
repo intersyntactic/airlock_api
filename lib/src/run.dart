@@ -8,6 +8,7 @@ import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
 part 'carry.dart';
+part 'start.dart';
 
 /// What a tool's code returns for a call: a run whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -528,7 +529,14 @@ final class JourneyPath<R, P> {
 
   /// What this journey path's agent loop puts in each [Carry], to show it is
   /// that loop: minted here, and handed only to whoever started the path.
-  final PathToken token = PathToken._mint();
+  PathToken get token => _token;
+  PathToken _token = PathToken._mint();
+
+  /// A new [token], in place of the old one, which no longer carries out
+  /// anything: for a [StartPath] naming a path that is already live, when
+  /// whoever started it has restarted and lost the token. Only one loop
+  /// holds a path's token.
+  PathToken reissue() => _token = PathToken._mint();
 
   /// This journey path's tip at [place], where its runs are carried out in
   /// this process.
@@ -538,7 +546,8 @@ final class JourneyPath<R, P> {
   Apex at(P place) => _AtPath(this, place);
 
   /// Refuses every run not yet carried out on this journey path. A run whose
-  /// driver has already been reached is not interrupted.
+  /// driver has already been reached is not interrupted. Never undone: a
+  /// [StartPath] that says the path is not stopped leaves it stopped.
   void stop() => _stopped = true;
 
   bool get stopped => _stopped;

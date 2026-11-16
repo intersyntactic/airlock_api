@@ -140,6 +140,16 @@ and input go to the airlock as a `Carry`, and the outcome comes back.
   in the agent loop, over an `AirlockLink`, the transport (a socket, say),
   which this package does not have. `run.next(apex)` is the same with
   either, so a tool does not change.
+- `StartPath(journeyPath, rules:, stopped:)`: what the service that starts
+  journey paths sends the airlock service, which holds the drivers and so
+  is where `JourneyPath.start` runs. The answer is `Started`, with the
+  token the starter gives the path's loop, or `Rejected`. The airlock
+  service takes a start only from that service's OS user. Sent again after
+  either service restarts: a path the airlock service no longer holds is
+  started anew under the same id, and one it holds gets a new token
+  (`JourneyPath.reissue`), after which the old one carries out nothing.
+  `stopped` carries the person's stop across a restart, and a start never
+  un-stops a path. A live path keeps the rules it started under.
 - `PathToken`: minted by `JourneyPath.start` and handed by the airlock
   service only to whoever started the path, for its loop to put in every
   `Carry`. The OS user on the socket cannot tell one journey path from

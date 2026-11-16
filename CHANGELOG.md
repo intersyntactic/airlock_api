@@ -23,6 +23,12 @@ by the airlock
   what shows a carry is from that journey path's loop (Nick, 16 Nov: a
   token per path). Compared in constant time, never recorded, hidden by
   `toString`.
+- `StartPath`: the service that starts a journey path asks the airlock
+  service to start it, under its id and rules, and is answered `Started`
+  with the token, or `Rejected`. Sent again after a restart: same id, new
+  token, with `JourneyPath.reissue` for a path still live; `stopped`
+  carries the person's stop across, and a start never un-stops a path.
+  `JourneyPath.token` is now a getter.
 - `Carry.read(json)` gives a `Carry` or `Rejected`;
   `JourneyPath.carryOut(carry, place)` gives `Carried` or `Rejected`. A
   rejected request is in no journey path's record; the service records it

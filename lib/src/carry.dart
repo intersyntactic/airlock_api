@@ -257,19 +257,21 @@ final class Carried implements CarryAnswer {
 }
 
 /// The request was not carried out, and is in no journey path's record,
-/// because [why]: it was not a carry, named no journey path the service
-/// holds, or did not show that path's token.
+/// because [why]: it was not a carry or a start, named no journey path the
+/// service holds, or did not show that path's token.
 ///
 /// Recorded by the service in the airlock's own chain, with the journey path
 /// it claimed and the OS user of the socket's peer, and never the token: a
 /// wrong token is the one attack the token is there to stop, and a refusal
 /// with no trace would leave nobody able to see it happened.
-final class Rejected implements Received, CarryAnswer {
+final class Rejected
+    implements Received, CarryAnswer, StartReceived, StartAnswer {
   const Rejected(this.why);
 
   final String why;
 
-  /// The loop is told it was refused, with [why].
+  /// The sender is told it was refused, with [why], in the form of a
+  /// refused outcome, which a loop and a starter both read.
   @override
   Object? get json => encodeOutcome(Refused(why), (Never _) => null);
 }
