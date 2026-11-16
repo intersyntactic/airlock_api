@@ -1,18 +1,20 @@
 part of 'run.dart';
 
-/// What the docking port tells the airlock service: the journey path
+/// What loop_launcher tells the airlock service: the journey path
 /// [journeyPath] has started, under [rules], so the airlock service can set
 /// up its own side of it, or hand over a new token for it when that side is
 /// already set up.
 ///
 /// The docking port starts journey paths: it decides which journey path an
-/// outside conversation belongs to, and a journey starts with its first
-/// thread. The airlock starts nothing. Its side of a path, a [JourneyPath],
-/// holds the drivers, so it lives in the airlock service, and the docking
-/// port builds the path's loop with the token this is answered with
-/// ([Ready]). The airlock service takes this only from the docking port's OS
-/// user on the socket: one fixed service, unlike a loop, whose agent's paths
-/// all share its user, so the user is enough here.
+/// outside conversation belongs to, and records that decision; a journey
+/// starts with its first thread. loop_launcher follows the journal for the
+/// docking port's entries that start a path, sends this, and launches the
+/// path's loop with the token this is answered with ([Ready]). The airlock
+/// starts nothing. Its side of a path, a [JourneyPath], holds the drivers,
+/// so it lives in the airlock service. The airlock service takes this only
+/// from loop_launcher's OS user on the socket: one fixed service, unlike a
+/// loop, whose agent's paths all share its user, so the user is enough
+/// here.
 ///
 /// Sent again after either service restarts: for a path the airlock service
 /// no longer holds, it sets up its side anew under the same id, so it is the
@@ -22,7 +24,7 @@ part of 'run.dart';
 /// memory and a restart would otherwise undo it; nothing here un-stops a
 /// path.
 final class PathStarted implements PathStartedReceived {
-  /// The message, for the docking port to send as [toJson]. [rules] is
+  /// The message, for loop_launcher to send as [toJson]. [rules] is
   /// already the JSON the airlock service reads the path's rules from: the
   /// two services agree their type between them.
   const PathStarted(
@@ -69,7 +71,7 @@ sealed class PathStartedReceived {}
 /// What the airlock service answers a [PathStarted] with: [Ready], or
 /// [Rejected].
 sealed class PathStartedAnswer {
-  /// [json], the airlock service's answer, read by the docking port. Throws
+  /// [json], the airlock service's answer, read by loop_launcher. Throws
   /// a [FormatException] when it is neither answer.
   static PathStartedAnswer read(Object? json) => switch (json) {
     {'kind': 'ready', 'token': final String token} => switch (PathToken.parse(

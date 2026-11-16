@@ -502,8 +502,9 @@ final class Sends extends Reach {
 /// wherever it runs. They are reached only by a [Run] proposed at one of its
 /// apexes, so every such run passes its airlock.
 ///
-/// This is the airlock service's side of a journey path, set up when the
-/// docking port says the path has started ([PathStarted]). The airlock
+/// This is the airlock service's side of a journey path, set up when
+/// loop_launcher says the docking port has started the path
+/// ([PathStarted]). The airlock
 /// starts nothing. Whoever holds the drivers already has the power to touch
 /// the world, so setting up a side grants nothing new.
 final class JourneyPath<R, P> {
@@ -530,14 +531,14 @@ final class JourneyPath<R, P> {
   bool _stopped = false;
 
   /// What this journey path's agent loop puts in each [Proposal], to show it
-  /// is that loop: minted here, and handed only to the docking port, which
-  /// builds the loop.
+  /// is that loop: minted here, and handed only to loop_launcher, which
+  /// launches the loop.
   PathToken get token => _token;
   PathToken _token = PathToken._mint();
 
   /// A new [token], in place of the old one, which is rejected from then
   /// on: for a [PathStarted] naming a path whose side is already set up,
-  /// when the docking port has restarted and lost the token. Only one loop
+  /// when loop_launcher has restarted and lost the token. Only one loop
   /// holds a path's token.
   PathToken reissue() => _token = PathToken._mint();
 

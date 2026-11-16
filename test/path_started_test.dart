@@ -17,7 +17,7 @@ final class AirlockService {
   final MemoryFiles files;
   final link = ServiceLink([]);
 
-  /// The answer to [message], a [PathStarted] from the docking port,
+  /// The answer to [message], a [PathStarted] from loop_launcher,
   /// through JSON text both ways.
   Object? told(Object? message) {
     final PathStartedAnswer answer = switch (PathStarted.read(_wire(message))) {
@@ -49,10 +49,10 @@ final class AirlockService {
   Object? _wire(Object? json) => jsonDecode(jsonEncode(json));
 }
 
-/// What the docking port does when it starts a journey path: tells the
-/// airlock service, and builds the loop's apex from the token it is
-/// answered with.
-Apex dockingPortStarts(
+/// What loop_launcher does when the docking port has started a journey
+/// path: tells the airlock service, and launches the loop with an apex
+/// built from the token it is answered with.
+Apex loopLauncherLaunches(
   AirlockService service,
   JourneyPathId id, {
   List<String> rules = const ['write'],
@@ -78,9 +78,9 @@ Result<String> write(String path) => Program.write.runOrRefusal(
 
 void main() {
   test("a path's loop proposes runs with the token the airlock service "
-      'answered the docking port with', () async {
+      'answered loop_launcher with', () async {
     final service = AirlockService(LogAirlock(), MemoryFiles());
-    final apex = dockingPortStarts(service, thread);
+    final apex = loopLauncherLaunches(service, thread);
     expect(await follow(write('a'), apex), 'wrote');
     expect(service.files.files.keys, ['a']);
   });
@@ -88,8 +88,8 @@ void main() {
   test('told again of a path whose side is set up, the airlock service gives '
       'a new token, and the old one is rejected from then on', () async {
     final service = AirlockService(LogAirlock(), MemoryFiles());
-    final before = dockingPortStarts(service, thread);
-    final after = dockingPortStarts(service, thread);
+    final before = loopLauncherLaunches(service, thread);
+    final after = loopLauncherLaunches(service, thread);
     expect(
       await follow(write('a'), before),
       contains("not this journey path's token"),
@@ -102,10 +102,10 @@ void main() {
       'same path with a new token', () async {
     final files = MemoryFiles();
     final first = AirlockService(LogAirlock(), files);
-    dockingPortStarts(first, thread);
+    loopLauncherLaunches(first, thread);
     final oldToken = first.link.paths[thread]!.token;
     final restarted = AirlockService(LogAirlock(), files);
-    final again = dockingPortStarts(restarted, thread);
+    final again = loopLauncherLaunches(restarted, thread);
     expect(restarted.link.paths.keys, [thread]);
     expect(await follow(write('a'), again), 'wrote');
     // A loop still holding the token from before the restart reaches the
@@ -127,15 +127,15 @@ void main() {
     'a stop survives a restart, and being told again never un-stops a path',
     () async {
       final service = AirlockService(LogAirlock(), MemoryFiles());
-      final stopped = dockingPortStarts(service, thread, stopped: true);
+      final stopped = loopLauncherLaunches(service, thread, stopped: true);
       expect(await follow(write('a'), stopped), 'failed: stopped');
-      final unstopped = dockingPortStarts(service, thread);
+      final unstopped = loopLauncherLaunches(service, thread);
       expect(await follow(write('b'), unstopped), 'failed: stopped');
       expect(service.files.files, isEmpty);
     },
   );
 
-  test('what is not a path started is rejected, and the docking port reads '
+  test('what is not a path started is rejected, and loop_launcher reads '
       'why', () {
     final service = AirlockService(LogAirlock(), MemoryFiles());
     for (final (message, why) in [

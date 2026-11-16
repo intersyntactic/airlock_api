@@ -29,9 +29,10 @@ by the airlock
   shows a proposal is from that journey path's loop (Nick, 16 Nov: a token
   per path). Compared in constant time, never recorded, hidden by
   `toString`.
-- `PathStarted`: the docking port tells the airlock service a journey path
-  has started, under its id and rules, and is answered `Ready` with the
-  token, or `Rejected`. Sent again after either service restarts: same id,
+- `PathStarted`: loop_launcher, following the docking port's entries that
+  start a journey path, tells the airlock service the path has started,
+  under its id and rules, and is answered `Ready` with the token for the
+  loop it launches, or `Rejected` (Nick, 16 Nov). Sent again after either service restarts: same id,
   new token, with `JourneyPath.reissue` for a path whose side is still
   set up; `stopped` keeps the person's stop across, and nothing un-stops a
   path. `JourneyPath.token` is now a getter.

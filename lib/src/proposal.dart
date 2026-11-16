@@ -4,8 +4,8 @@ part of 'run.dart';
 /// journey path it names.
 ///
 /// The airlock service mints one when it sets up its side of a journey path
-/// ([JourneyPath.token]) and hands it to the docking port, which started the
-/// path and gives it to that path's loop, and to nothing else. The OS user on the socket
+/// ([JourneyPath.token]) and hands it to loop_launcher, which gives it to
+/// the loop it launches for that path, and to nothing else. The OS user on the socket
 /// cannot tell one journey path from another, since every path of one agent
 /// runs as that agent's user, so the token is what does.
 ///
@@ -286,7 +286,7 @@ final class Rejected
   final String why;
 
   /// The sender is told it was refused, with [why], in the form of a
-  /// refused outcome, which a loop and the docking port both read.
+  /// refused outcome, which a loop and loop_launcher both read.
   @override
   Object? get json => encodeOutcome(Refused(why), (Never _) => null);
 }
