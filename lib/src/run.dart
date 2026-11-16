@@ -395,6 +395,13 @@ abstract interface class Renderers {
   /// An entry the journal does not hold, or that fails either check,
   /// refuses the post. The renderer runs as its own program, with no
   /// network and no secrets: entries in, body out.
+  ///
+  /// The executable reports the source it was built from, the `FileSetId`
+  /// it was given as a define at compile time (as is_journal's
+  /// `Journal.builtDefine` gives a journal its code hash), and a render
+  /// whose executable reports anything other than [renderer]'s id is
+  /// refused. That rules out a stale or mis-built executable being recorded
+  /// as this renderer, not someone building one that lies.
   Future<Outcome<String>> render(Renderer renderer, List<EntryId> entries);
 }
 

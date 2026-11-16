@@ -16,7 +16,10 @@ exactly.
   passes to `JourneyPath.start(renderers:)`: `find` resolves a
   `RendererName` to an exact `Renderer` (its `RendererId` and the `ObjectId`
   of the executable run); `render` reads and checks each entry and runs the
-  renderer, giving the body or why there is none.
+  renderer, giving the body or why there is none. A render is refused
+  when the executable reports being built from source other than the
+  renderer's id, which rules out a stale or mis-built executable, not one
+  built to lie.
 - A post's renderer is resolved before the decision, and `Sends` holds the
   whole `Post` and that `Renderer`, so the `Decided` entry records which
   code will write the words. A name that resolves to nothing, or a journey
