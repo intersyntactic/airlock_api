@@ -6,8 +6,16 @@ Breaking. "Send" is retired (Nick, 17 Nov 13:31: no tiny words for
 complex things), and an interface is named for what it can do, so
 `implements` reads as a true sentence (Nick, 17 Nov 13:55: "\"What it can
 do\", yes naming rule";
-https://github.com/enspyrco/intersyntactic/pull/1164).
+https://github.com/enspyrco/intersyntactic/pull/1164). A journey is now a
+mission, and a journey path a trajectory (Nick, 17 Nov 19:07 and 19:09;
+19:15: "Rename tonight, before any real write").
 
+- `JourneyPath<R, P>` is `Trajectory<R, P>`, and `JourneyPathId` is
+  is_shapes 0.5.0's `TrajectoryId` (it hashes as before). Every
+  `journeyPath` field is `trajectory`, on the wire too: `WaitingToStart`
+  is `{"trajectory": <hex>}`, and `DecidedWebRequest` writes `trajectory`.
+  `Apex` is kept: the trajectory's tip at one place, so one trajectory has
+  many. Depends on is_shapes ^0.5.0.
 - `Airlock<R, P>` is `DecidesAndRecordsActions<R, P>`, and `RecordLink` is
   `ProposesActionsThroughTheRecord`. The airlock and its drivers are still
   called that: only the interfaces are renamed, since a noun is kept for

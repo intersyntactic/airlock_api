@@ -1,7 +1,7 @@
 part of 'action.dart';
 
 // A proposal is an entry in the record (Nick, 16 Nov, 20:15): an agent loop
-// writes a `proposed` entry on its journey path's chain, which the journal
+// writes a `proposed` entry on its trajectory's chain, which the journal
 // takes only from that path's loop user; the airlock reads it, decides,
 // records, and writes a `returned` entry naming it, with what came back
 // (20:45: "what an action returns is in the record, once"). loop_launcher
@@ -11,8 +11,8 @@ part of 'action.dart';
 /// recorded for it, as JSON: the transport, which this package does not
 /// have.
 ///
-/// For an agent loop: write a [Proposal.kind] entry on the loop's journey
-/// path's chain, wait for the [ReturnedProposal] that names it, and give
+/// For an agent loop: write a [Proposal.kind] entry on the loop's
+/// trajectory's chain, wait for the [ReturnedProposal] that names it, and give
 /// back its [ReturnedProposal.outcome].
 abstract interface class ProposesActionsThroughTheRecord {
   Future<Object?> propose(Object? proposal);
@@ -115,7 +115,7 @@ sealed class Received {}
 /// An action an agent loop proposes, not yet decided: its program and
 /// input, read from a [kind] entry and checked.
 ///
-/// It names no journey path: the airlock takes the path from the chain the
+/// It names no trajectory: the airlock takes the path from the chain the
 /// entry is on, whose entries the journal takes only from that path's loop
 /// user. So a loop cannot claim another path, since there is no claim to
 /// make.
@@ -145,7 +145,7 @@ final class Proposal implements Received {
   }
 
   /// The place in a turn, as the loop wrote it; the airlock service reads
-  /// it as its journey path's `P`.
+  /// it as its trajectory's `P`.
   final Object? place;
 
   final _Work<Object?, Object?> _work;
@@ -160,10 +160,10 @@ final class _Work<I, O> {
   final I input;
 
   Future<void> on<P>(
-    JourneyPath<Object?, P> journeyPath,
+    Trajectory<Object?, P> trajectory,
     P place,
     EntryId proposed,
-  ) => journeyPath._consider(program, input, place, proposed: proposed);
+  ) => trajectory._consider(program, input, place, proposed: proposed);
 }
 
 /// The program [name] names, with [executable] the program's name when it

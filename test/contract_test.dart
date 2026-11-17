@@ -67,7 +67,7 @@ String reachOf(Reach reach) => switch (reach) {
         '${renderer == null ? ' with no renderer' : ''}',
 };
 
-/// Rules: what a journey path may do, by name, and the sites it may make requests to
+/// Rules: what a trajectory may do, by name, and the sites it may make requests to
 /// as `<origin> as <sign-in>`. Places are step numbers. Keeps a line per
 /// entry, and can be told to fail writing one kind of entry.
 ///
@@ -174,18 +174,17 @@ Future<String> answerOf(Result<String> result, Apex apex) async {
   };
 }
 
-/// The id of a journey path started by the entry [startedBy], as the
+/// The id of a trajectory started by the entry [startedBy], as the
 /// docking station names it: by that entry's hash.
-JourneyPathId idOf(String startedBy) =>
-    JourneyPathId.of(utf8.encode(startedBy));
+TrajectoryId idOf(String startedBy) => TrajectoryId.of(utf8.encode(startedBy));
 
-/// A journey path as the docking station starts one, with the airlock's side
+/// A trajectory as the docking station starts one, with the airlock's side
 /// of it set up in this process.
-JourneyPath<Set<String>, int> start(
+Trajectory<Set<String>, int> start(
   LogAirlock airlock,
   List<CarriesOutActions> drivers, {
   Set<String> rules = const {'read', 'write', 'dart'},
-}) => JourneyPath(
+}) => Trajectory(
   id: idOf('started root'),
   drivers: drivers,
   airlock: airlock,
@@ -322,7 +321,7 @@ void main() {
     expect(programs.started, isEmpty);
   });
 
-  test('stopping a journey path refuses what it has not yet run', () async {
+  test('stopping a trajectory refuses what it has not yet run', () async {
     final files = MemoryFiles();
     final airlock = LogAirlock();
     final path = start(airlock, [files])..stop();
@@ -351,12 +350,12 @@ void main() {
     expect(decided, ['Allow by rules', 'Allow by rules', 'Deny by person']);
   });
 
-  test('each entry reaches the journey path, naming it', () async {
+  test('each entry reaches the trajectory, naming it', () async {
     final path = start(LogAirlock(), [MemoryFiles()], rules: {'write'});
     final seen = <String>[];
     path.entries.listen(
       (e) => seen.add(
-        '${e.journeyPathId == path.id} ${e.runtimeType} at ${e.place}',
+        '${e.trajectoryId == path.id} ${e.runtimeType} at ${e.place}',
       ),
     );
     await answerOf(
@@ -483,7 +482,7 @@ void main() {
       'what the airlock reads the body for', () async {
     final airlock = _ReadingAirlock();
     final turn = airlock.remember('done');
-    final path = JourneyPath<Set<String>, int>(
+    final path = Trajectory<Set<String>, int>(
       id: idOf('started root'),
       drivers: [RecordedWeb()],
       airlock: airlock,
@@ -525,7 +524,7 @@ void main() {
     final airlock = _ReadingAirlock();
     final answer = await answerOf(
       webRequest(teams, hart),
-      JourneyPath<Set<String>, int>(
+      Trajectory<Set<String>, int>(
         id: idOf('started root'),
         drivers: [RecordedWeb()],
         airlock: airlock,

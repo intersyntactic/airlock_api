@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart'
-    show DecidedBy, EntryId, JourneyPathId, RendererId;
+    show DecidedBy, EntryId, RendererId, TrajectoryId;
 
 part 'pool_user.dart';
 part 'web_request_entries.dart';
@@ -15,7 +15,7 @@ part 'waiting_to_start.dart';
 /// type of the answer, the tool's output type.
 ///
 /// A tool holds no driver and touches nothing. Its result is carried through
-/// at an [Apex], whose journey path has each action decided and recorded, and
+/// at an [Apex], whose trajectory has each action decided and recorded, and
 /// reached by a driver if it is allowed, and gives what became of it to the
 /// action's continuation. So a tool can describe nothing an action cannot
 /// express.
@@ -60,9 +60,9 @@ abstract final class Action<A> extends Result<A> {
   /// This action proposed at [apex], and the result it leads to.
   ///
   /// The only way an action reaches the world. What it would do, its
-  /// [Reach], is worked out first; the journey path's airlock decides it,
+  /// [Reach], is worked out first; the trajectory's airlock decides it,
   /// and records the decision, at the apex's place, before any driver is
-  /// reached; a driver of the journey path carries out an allowed action;
+  /// reached; a driver of the trajectory carries out an allowed action;
   /// the airlock records what became of it before the continuation sees it.
   /// If either record cannot be written, its error ends the call: no driver
   /// is reached without a recorded decision, and no outcome flows on
@@ -126,7 +126,7 @@ final class Failed extends Result<Never> {
 /// drivers and the airlock; a new kind of action is a new driver and program
 /// here.
 ///
-/// A journey path's prompts are not programs: the model is the agent
+/// A trajectory's prompts are not programs: the model is the agent
 /// planning, so a prompt is not decided, and no tool is in it. How it
 /// reaches the model and is recorded is not this contract's.
 sealed class Program<I, O> {
@@ -172,11 +172,11 @@ sealed class Program<I, O> {
   _Work<I, O> _work(Object? json) =>
       _Work(this, _wire.inputFromJson(json, 'input'));
 
-  /// [input], whose reach is [reach], performed by [journeyPath]'s driver
+  /// [input], whose reach is [reach], performed by [trajectory]'s driver
   /// for this program, reporting to [report] while it runs, or null when it
   /// has none. Only a web request waits on [rendered], for its body.
   Future<Outcome<O>>? _on(
-    JourneyPath<Object?, Object?> journeyPath,
+    Trajectory<Object?, Object?> trajectory,
     I input,
     Reach reach,
     _Rendered rendered,
@@ -213,12 +213,12 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
 
   @override
   Future<Outcome<ReadResult>>? _on(
-    JourneyPath<Object?, Object?> journeyPath,
+    Trajectory<Object?, Object?> trajectory,
     RelativePath path,
     Reach reach,
     _Rendered rendered,
     Report report,
-  ) => journeyPath._driver<ReadsAndWritesFiles>()?.read(path);
+  ) => trajectory._driver<ReadsAndWritesFiles>()?.read(path);
 }
 
 /// Writes a file, creating its folder.
@@ -243,12 +243,12 @@ final class WriteFile extends Program<FileText, Wrote> {
 
   @override
   Future<Outcome<Wrote>>? _on(
-    JourneyPath<Object?, Object?> journeyPath,
+    Trajectory<Object?, Object?> trajectory,
     FileText file,
     Reach reach,
     _Rendered rendered,
     Report report,
-  ) => journeyPath._driver<ReadsAndWritesFiles>()?.write(file);
+  ) => trajectory._driver<ReadsAndWritesFiles>()?.write(file);
 }
 
 /// A program started as a process, such as `git`: its input is plain
@@ -291,12 +291,12 @@ final class Executable extends Program<Args, ExecResult> {
 
   @override
   Future<Outcome<ExecResult>>? _on(
-    JourneyPath<Object?, Object?> journeyPath,
+    Trajectory<Object?, Object?> trajectory,
     Args args,
     Reach reach,
     _Rendered rendered,
     Report report,
-  ) => journeyPath._driver<RunsPrograms>()?.runProgram(
+  ) => trajectory._driver<RunsPrograms>()?.runProgram(
     program,
     args,
     report: report,
@@ -338,12 +338,12 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
 
   @override
   Future<Outcome<WebRequestOutcome>>? _on(
-    JourneyPath<Object?, Object?> journeyPath,
+    Trajectory<Object?, Object?> trajectory,
     WebRequest request,
     covariant MakesWebRequest reach,
     _Rendered rendered,
     Report report,
-  ) => switch ((journeyPath._driver<CarriesOutWebRequests>(), reach.renderer)) {
+  ) => switch ((trajectory._driver<CarriesOutWebRequests>(), reach.renderer)) {
     (null, _) => null,
     (final web?, _?) => _make(web, rendered(), request),
     // Decided as a denial before any driver, so not reached.
@@ -493,11 +493,11 @@ final class Starts extends Reach {
 /// Null means no sign-in, never any: it is null exactly when the request
 /// has none. So a rule granting a site under no sign-in must not match
 /// a request that has one, or a grant to fetch a page anonymously would let
-/// a journey path make requests there as a bot.
+/// a trajectory make requests there as a bot.
 ///
 /// A rule grants the origin and the sign-in together, never the origin
 /// alone: every bot of a kind makes requests to the same sites, so a grant
-/// by origin would let a journey path go as any sign-in the web driver
+/// by origin would let a trajectory go as any sign-in the web driver
 /// holds.
 ///
 /// Holds the whole [request] and the [renderer] its name resolved to, never
@@ -518,7 +518,7 @@ final class MakesWebRequest extends Reach {
   SignIn? get signIn => request.signIn;
 }
 
-/// One agent's own journey: the thread its actions are proposed on, with
+/// One agent's own trajectory: the line its actions are proposed on, with
 /// rules [R] that say what it may do, and places [P] that say where in a
 /// turn each entry happened.
 ///
@@ -526,19 +526,19 @@ final class MakesWebRequest extends Reach {
 /// it runs. They are reached only by an [Action] proposed at one of its
 /// apexes, so every such action passes its airlock.
 ///
-/// This is the airlock service's side of a journey path, set up when the
+/// This is the airlock service's side of a trajectory, set up when the
 /// record shows the docking station started the path (its rules, in
 /// `admitted`) and loop_launcher handed it users (`assigned`). The airlock
 /// starts nothing. Whoever holds the drivers already has the power to touch
 /// the world, so setting up a side grants nothing new.
-final class JourneyPath<R, P> {
-  /// The side of the journey path named [id], on [drivers], decided and
+final class Trajectory<R, P> {
+  /// The side of the trajectory named [id], on [drivers], decided and
   /// recorded by [airlock], under [rules], whose programs run as [suit].
   ///
   /// [id] is the hash of the record entry that started the path, which the
-  /// docking station writes, so no two journey paths share one and nothing here
+  /// docking station writes, so no two trajectories share one and nothing here
   /// mints one.
-  JourneyPath({
+  Trajectory({
     required this.id,
     required Iterable<CarriesOutActions> drivers,
     required this._airlock,
@@ -546,8 +546,8 @@ final class JourneyPath<R, P> {
     required this.suit,
   }) : _drivers = List.unmodifiable(drivers);
 
-  /// Names this journey path in every entry it records.
-  final JourneyPathId id;
+  /// Names this trajectory in every entry it records.
+  final TrajectoryId id;
   final R rules;
 
   /// The OS user this path's programs run as: the airlock service gives the
@@ -561,14 +561,14 @@ final class JourneyPath<R, P> {
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
 
-  /// This journey path's tip at [place], where its actions are proposed in
+  /// This trajectory's tip at [place], where its actions are proposed in
   /// this process.
   ///
   /// Here, where [P] is known, so a place of another type does not compile;
   /// whoever is handed the apex never sees [P].
   Apex at(P place) => _AtPath(this, place);
 
-  /// Refuses every action on this journey path whose driver has not yet been
+  /// Refuses every action on this trajectory whose driver has not yet been
   /// reached. An action whose driver has been reached is not interrupted.
   /// Never undone.
   void stop() => _stopped = true;
@@ -653,24 +653,24 @@ final class JourneyPath<R, P> {
   }) => proposal._work.on(this, place, proposed);
 }
 
-/// A journey path's tip at one place in a turn: where its agent loop
+/// A trajectory's tip at one place in a turn: where its agent loop
 /// proposes the next action and its airlock decides it, recording each
 /// entry at that place.
 ///
-/// Made by [JourneyPath.at] where the journey path is, in the airlock
+/// Made by [Trajectory.at] where the trajectory is, in the airlock
 /// service, and by [Apex.through] in the agent loop, which is another
 /// process: there an action's program and input go into the record as a
 /// [Proposal], and its continuation stays behind, since it is the tool's own
 /// code. Either
 /// way, what comes after a tool's result takes an apex and never handles
 /// the place. Two agents on one machine have two apexes; one step's two tool
-/// calls are two apexes of one journey path, at two places.
+/// calls are two apexes of one trajectory, at two places.
 sealed class Apex {
   const Apex();
 
-  /// The apex at [place] on the journey path whose chain [link] writes to.
+  /// The apex at [place] on the trajectory whose chain [link] writes to.
   ///
-  /// [place] is already the JSON its journey path reads places from, since
+  /// [place] is already the JSON its trajectory reads places from, since
   /// the loop and the airlock service agree its type between them.
   const factory Apex.through(
     ProposesActionsThroughTheRecord link, {
@@ -681,20 +681,20 @@ sealed class Apex {
 }
 
 final class _AtPath<P> extends Apex {
-  const _AtPath(this._journeyPath, this._place);
+  const _AtPath(this._trajectory, this._place);
 
-  final JourneyPath<Object?, P> _journeyPath;
+  final Trajectory<Object?, P> _trajectory;
   final P _place;
 
   @override
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) =>
-      _journeyPath._consider(program, input, _place);
+      _trajectory._consider(program, input, _place);
 }
 
-/// Decides each action on a journey path, and records it.
+/// Decides each action on a trajectory, and records it.
 ///
 /// What intersyntactic's airlock implements. It guards the drivers it is
-/// given, not the journey: an agent that joins a journey with its own
+/// given, not the mission: an agent that joins a mission with its own
 /// drivers is decided, or not, by its own.
 abstract interface class DecidesAndRecordsActions<R, P> {
   /// Whether a driver may carry out an action that would do [reach], under
@@ -763,7 +763,7 @@ final class Deny extends Decision {
   final String why;
 }
 
-/// One entry in a journey path's record: [Decided] before an action goes out,
+/// One entry in a trajectory's record: [Decided] before an action goes out,
 /// and [Returned] when it comes back.
 ///
 /// Each is at a [place] in a turn, of type [P], which the agent loop
@@ -774,10 +774,10 @@ final class Deny extends Decision {
 /// exhaustive: a kind with a type parameter its parent does not have cannot
 /// be covered by a case.
 sealed class Entry<P> {
-  const Entry(this.journeyPathId, this.place);
+  const Entry(this.trajectoryId, this.place);
 
-  /// The journey path this entry is of.
-  final JourneyPathId journeyPathId;
+  /// The trajectory this entry is of.
+  final TrajectoryId trajectoryId;
 
   /// Where in a turn this entry happened.
   final P place;
@@ -788,7 +788,7 @@ sealed class Entry<P> {
 /// action was cut short.
 final class Decided<P> extends Entry<P> {
   const Decided(
-    super.journeyPathId,
+    super.trajectoryId,
     super.place,
     this.reach,
     this.decision, {
@@ -804,12 +804,12 @@ final class Decided<P> extends Entry<P> {
 }
 
 /// The action that would do [reach] came back, with its [outcome], whether
-/// it ran or was refused. Made only by a journey path, which knows the
+/// it ran or was refused. Made only by a trajectory, which knows the
 /// action's program, so [ReturnedProposal.of] can write what came back in
 /// full.
 final class Returned<P> extends Entry<P> {
   const Returned._(
-    super.journeyPathId,
+    super.trajectoryId,
     super.place,
     this.reach,
     this.outcome,
@@ -829,11 +829,11 @@ final class Returned<P> extends Entry<P> {
 }
 
 /// What a driver reported, [progress], while the action doing [reach] was
-/// underway at [place] on the journey path named [journeyPathId].
+/// underway at [place] on the trajectory named [trajectoryId].
 final class Underway<P> {
-  const Underway(this.journeyPathId, this.place, this.reach, this.progress);
+  const Underway(this.trajectoryId, this.place, this.reach, this.progress);
 
-  final JourneyPathId journeyPathId;
+  final TrajectoryId trajectoryId;
   final P place;
   final Reach reach;
   final Progress progress;

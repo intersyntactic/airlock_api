@@ -44,8 +44,8 @@ void main() {
     () async {
       final airlock = _KeepingAirlock();
       final files = _FileDriver();
-      final apex = JourneyPath<String, int>(
-        id: JourneyPathId.of(utf8.encode('started a')),
+      final apex = Trajectory<String, int>(
+        id: TrajectoryId.of(utf8.encode('started a')),
         drivers: [files],
         airlock: airlock,
         rules: 'all',

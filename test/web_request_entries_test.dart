@@ -20,10 +20,10 @@ import 'contract_test.dart'
 /// [json] as the journal would hold it and give it back: JSON text.
 Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
 
-/// The [Decided] entries recorded while [run] is carried through on a journey path
+/// The [Decided] entries recorded while [run] is carried through on a trajectory
 /// with [rules].
 Future<List<Decided<int>>> decidedWhile(
-  Future<void> Function(JourneyPath<Set<String>, int> path) run, {
+  Future<void> Function(Trajectory<Set<String>, int> path) run, {
   Set<String> rules = const {},
 }) async {
   final airlock = LogAirlock();
@@ -46,7 +46,7 @@ void main() {
     );
     final written = DecidedWebRequest.of(decided.single, (int place) => place)!;
     final read = DecidedWebRequest.fromJson(throughText(written.toJson()));
-    expect(read.journeyPath, written.journeyPath);
+    expect(read.trajectory, written.trajectory);
     expect(read.place, 4);
     expect(read.request.origin, teams);
     expect(read.request.signIn, hart);
@@ -160,10 +160,7 @@ void main() {
       whyNot(change('renderer', {'id': 'x', 'executable': 'y'})),
       startsWith('decided.renderer.id'),
     );
-    expect(
-      whyNot(change('journeyPath', 'x')),
-      startsWith('decided.journeyPath'),
-    );
+    expect(whyNot(change('trajectory', 'x')), startsWith('decided.trajectory'));
     expect(
       () => Rendered.fromJson({
         'decided': 'x',

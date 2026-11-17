@@ -17,7 +17,7 @@ import 'contract_test.dart'
         webRequest,
         writeAndFormat;
 
-/// A journey path's chain and the airlock's, in memory: each `proposed`
+/// A trajectory's chain and the airlock's, in memory: each `proposed`
 /// entry the loop writes goes through `jsonEncode` and back, as the journal
 /// would keep it, and is named by the hash of its bytes; the airlock service
 /// considers it on [path], and the loop is handed the `returned` entry that
@@ -26,7 +26,7 @@ import 'contract_test.dart'
 final class RecordedLink implements ProposesActionsThroughTheRecord {
   RecordedLink(this.path, this.airlock);
 
-  final JourneyPath<Set<String>, int> path;
+  final Trajectory<Set<String>, int> path;
   final LogAirlock airlock;
   final rejected = <String>[];
 

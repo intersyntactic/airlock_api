@@ -6,7 +6,7 @@ part of 'action.dart';
 // records them in each path's `assigned` entry and the airlock service reads
 // them from it: both sides need the one type.
 
-/// A user from the loop pool, `loop-<n>`: a journey path's agent loop runs
+/// A user from the loop pool, `loop-<n>`: a trajectory's agent loop runs
 /// as it, holding the model sign-ins its rules allow. It owns no files
 /// (Nick, 16 Nov: "a loop user of its own, one per running loop, from a
 /// second pool"). The journal takes the entries on a path's chain, its
@@ -24,7 +24,7 @@ final class LoopUser extends _PoolUser {
   String get name => 'loop-$n';
 }
 
-/// A user from the suit pool, `suit-<n>`: the identity one journey path
+/// A user from the suit pool, `suit-<n>`: the identity one trajectory
 /// wears, contained or open (Nick, 16 Nov: "suit";
 /// https://github.com/enspyrco/intersyntactic/pull/1158). The path's
 /// programs run as it, through the airlock's program driver. Nothing of

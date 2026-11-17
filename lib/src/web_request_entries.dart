@@ -16,7 +16,7 @@ part of 'action.dart';
 /// renderer subscribes to the record for, and reads to know what to draw.
 final class DecidedWebRequest {
   const DecidedWebRequest._(
-    this.journeyPath,
+    this.trajectory,
     this.place,
     this.request,
     this.renderer,
@@ -33,7 +33,7 @@ final class DecidedWebRequest {
     Object? Function(P place) placeToJson,
   ) => switch (decided.reach) {
     MakesWebRequest(:final request, :final renderer) => DecidedWebRequest._(
-      decided.journeyPathId,
+      decided.trajectoryId,
       placeToJson(decided.place),
       request,
       renderer,
@@ -47,8 +47,8 @@ final class DecidedWebRequest {
   static DecidedWebRequest fromJson(Object? json, [String field = 'decided']) {
     final map = _object(field, json);
     return DecidedWebRequest._(
-      JourneyPathId.parse(_string('$field.journeyPath', map['journeyPath'])) ??
-          (throw FormatException('$field.journeyPath: not a journey path')),
+      TrajectoryId.parse(_string('$field.trajectory', map['trajectory'])) ??
+          (throw FormatException('$field.trajectory: not a trajectory')),
       map['place'],
       _webRequestFromJson(map['request'], '$field.request'),
       switch (map['renderer']) {
@@ -59,9 +59,9 @@ final class DecidedWebRequest {
     );
   }
 
-  final JourneyPathId journeyPath;
+  final TrajectoryId trajectory;
 
-  /// The place in a turn, as its journey path writes places.
+  /// The place in a turn, as its trajectory writes places.
   final Object? place;
   final WebRequest request;
 
@@ -71,7 +71,7 @@ final class DecidedWebRequest {
   final Decision decision;
 
   Object? toJson() => {
-    'journeyPath': journeyPath.hex,
+    'trajectory': trajectory.hex,
     'place': place,
     'request': _webRequestToJson(request),
     'renderer': switch (renderer) {
