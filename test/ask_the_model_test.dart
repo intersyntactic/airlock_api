@@ -207,14 +207,21 @@ void main() {
     Object? wire(Object? input) => jsonDecode(
       jsonEncode({'program': 'model', 'place': 1, 'input': input}),
     );
-    expect(Proposal.read(wire(input)), isA<Proposal>());
+    expect(
+      ActionProposedByAgentLoop.read(wire(input)),
+      isA<ActionProposedByAgentLoop>(),
+    );
     for (final bad in <Object?>[
       {...input, 'request': 'nope'},
       {...input, 'signIn': 'Nick Team'},
       {...input, 'body': 'words of its own'},
       {'signIn': 'nick-claude-team', 'model': 'claude-opus-5-5'},
     ]) {
-      expect(Proposal.read(wire(bad)), isA<Rejected>(), reason: '$bad');
+      expect(
+        ActionProposedByAgentLoop.read(wire(bad)),
+        isA<Rejected>(),
+        reason: '$bad',
+      );
     }
   });
 }

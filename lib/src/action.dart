@@ -192,8 +192,8 @@ sealed class Program<I, O> {
 /// The renderer a name names, or null: [DecidesAndRecordsActions.renderer].
 typedef _FindRenderer = Future<Renderer?> Function(RendererName name);
 
-/// The body a renderer recorded for this action's [Decided] entry, or why
-/// there is none: [DecidesAndRecordsActions.rendered].
+/// The body a renderer recorded for this action's decision, or why there
+/// is none: [DecidesAndRecordsActions.rendered].
 typedef _Rendered = Future<Outcome<String>> Function();
 
 /// Reads the file at a path under the file driver's root.
@@ -315,8 +315,8 @@ final class Executable extends Program<Args, ExecResult> {
 /// issue tracker or an API. A call to the model is not one of these: it is
 /// [AskTheModel], through the model driver.
 ///
-/// The renderer is named exactly before the decision, so the [Decided]
-/// entry says which code will write the words. The renderer subscribes to
+/// The renderer is named exactly before the decision, so the decision says
+/// which code will write the words. The renderer subscribes to
 /// the record for that entry, draws the body, and records it; the web driver
 /// carries the request out with what was recorded. So the words exist only
 /// once the decision is kept, the exact bytes that went out are in the
@@ -351,7 +351,7 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
   ) => switch ((trajectory._driver<CarriesOutWebRequests>(), reach.renderer)) {
     (null, _) => null,
     (final web?, _?) => _make(web, rendered(), request),
-    // Decided as a denial before any driver, so not reached.
+    // AirlockDecisionOnAction as a denial before any driver, so not reached.
     (_, null) => Future.value(Refused('no renderer named ${request.renderer}')),
   };
 
@@ -381,7 +381,8 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
 /// intent in the model's reply: the loop holds no sign-in and has no
 /// network, so this is its only way to reach the model
 /// (https://github.com/enspyrco/intersyntactic/pull/1168). The airlock
-/// allows it only as a sign-in the trajectory's rules give the loop.
+/// allows it only as a sign-in the trajectory's rules let a model call go
+/// out as.
 ///
 /// Once allowed, the airlock reads the [ModelRequest] and each of its
 /// pieces from this trajectory's own chain, joins each text, checks it
@@ -593,8 +594,8 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// with [id] as a define, which it reports in [Rendered.renderer]. Since
 /// the define is compiled in, each renderer's render runner has its own
 /// build, and that build is what the logbook service approves. Both are
-/// recorded in the [Decided] entry, so an old request can be rebuilt from
-/// the logbook and checked
+/// recorded in the decision, so an old request can be rebuilt from the
+/// logbook and checked
 /// (https://github.com/enspyrco/intersyntactic/issues/1147).
 final class Renderer {
   const Renderer(this.id, {required this.executable});
@@ -664,7 +665,7 @@ final class MakesWebRequest extends Reach {
 
 /// Reaches the model: [call] goes out as its sign-in, to its model, with the
 /// texts its [ModelRequest] entry holds. A rule grants it by the sign-in,
-/// one the trajectory's rules give the loop.
+/// one the trajectory's rules let a model call go out as.
 final class CallsTheModel extends Reach {
   const CallsTheModel(this.call);
 
@@ -713,7 +714,13 @@ final class Trajectory<R, P> {
 
   final DecidesAndRecordsActions<R, P> _airlock;
   final List<CarriesOutActions> _drivers;
-  final _entries = StreamController<Entry<P>>.broadcast(sync: true);
+  final _decisions = StreamController<AirlockDecisionOnAction<P>>.broadcast(
+    sync: true,
+  );
+  final _results =
+      StreamController<
+        ({AirlockDecisionOnAction<P> decision, Outcome<Object?> result})
+      >.broadcast(sync: true);
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
 
@@ -731,8 +738,13 @@ final class Trajectory<R, P> {
 
   bool get stopped => _stopped;
 
-  /// Each entry once the airlock has recorded it.
-  Stream<Entry<P>> get entries => _entries.stream;
+  /// Each decision once the airlock has recorded it.
+  Stream<AirlockDecisionOnAction<P>> get decisions => _decisions.stream;
+
+  /// Each action's result, or why it was refused, once the airlock has
+  /// recorded it, with the decision it follows.
+  Stream<({AirlockDecisionOnAction<P> decision, Outcome<Object?> result})>
+  get results => _results.stream;
 
   /// What drivers report while actions are underway: for a live view, and
   /// not recorded.
@@ -762,9 +774,16 @@ final class Trajectory<R, P> {
       CallsTheModel() => await _airlock.decide(reach, rules),
     };
     if (stopped) decision = stoppedByPerson;
-    final decided = Decided(id, place, reach, decision, proposed: proposed);
-    await _record(decided);
-    final Outcome<O> outcome = switch (decision) {
+    final decided = AirlockDecisionOnAction(
+      id,
+      place,
+      reach,
+      decision,
+      proposed: proposed,
+    );
+    await _airlock.recordDecision(decided);
+    _decisions.add(decided);
+    final Outcome<O> result = switch (decision) {
       Deny(:final why) => Refused(why),
       Allow() =>
         await program._on(
@@ -776,34 +795,26 @@ final class Trajectory<R, P> {
             ) ??
             Refused('this machine cannot run ${program.name}'),
     };
-    await _record(
-      Returned._(
-        id,
-        place,
-        reach,
-        outcome,
-        encodeOutcome(outcome, program._wire.outputToJson),
-        proposed,
-      ),
+    await _airlock.recordResult(
+      decided,
+      result,
+      resultAsJson: encodeOutcome(result, program._wire.outputToJson),
     );
-    return outcome;
+    _results.add((decision: decided, result: result));
+    return result;
   }
 
-  Future<void> _record(Entry<P> entry) async {
-    await _airlock.record(entry);
-    _entries.add(entry);
-  }
-
-  /// [proposal], the `proposed` entry [proposed] on this path's chain,
+  /// [proposal], the logbook entry [proposed] on this path's chain,
   /// considered at [place] as an action proposed at [at]'s crux would be:
   /// decided and recorded, and carried out by a driver if it is allowed. Its
-  /// [Decided] and [Returned] entries name [proposed].
+  /// decision and its result both name [proposed].
   ///
   /// Only for an entry on this path's own chain, which the logbook service
-  /// takes only from this path's loop user. [place] is [Proposal.place] read
-  /// as a [P] by the airlock service, which knows [P].
+  /// takes only from this path's loop user. [place] is
+  /// [ActionProposedByAgentLoop.place] read as a [P] by the airlock service,
+  /// which knows [P].
   Future<void> consider(
-    Proposal proposal,
+    ActionProposedByAgentLoop proposal,
     P place, {
     required EntryId proposed,
   }) => proposal._work.on(this, place, proposed);
@@ -816,12 +827,12 @@ final class Trajectory<R, P> {
 ///
 /// Made by [Trajectory.at] where the trajectory is, in the airlock
 /// service, and by [Crux.through] in the agent loop, which is another
-/// process: there an action's program and input go into the record as a
-/// [Proposal], and its continuation stays behind, since it is the tool's own
-/// code. Either
-/// way, what comes after a tool's result takes a crux and never handles
-/// the place. Two agents on one machine have two cruxes; one step's two tool
-/// calls go through one trajectory's crux, at two places.
+/// process: there an action's program and input go into the logbook as an
+/// [ActionProposedByAgentLoop], and its continuation stays behind, since it
+/// is the tool's own code. Either way, what comes after a tool's result
+/// takes a crux and never handles the place. Two agents on one machine have
+/// two cruxes; one step's two tool calls go through one trajectory's crux,
+/// at two places.
 sealed class Crux {
   const Crux();
 
@@ -861,33 +872,59 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// recorded: for a web request, the renderer its name resolved to.
   Future<Decision> decide(Reach reach, R rules);
 
-  /// Keeps [entry]. An action's driver is reached only once its [Decided] entry
-  /// is kept, and its outcome flows on only once its [Returned] entry is; an
-  /// error thrown here ends the call.
+  /// Keeps [decision] in the logbook. An action's driver is reached only
+  /// once its decision is kept; an error thrown here ends the call.
   ///
   /// Kept means it survives the logbook service crashing or being killed,
   /// not a power cut: the logbook service answers before forcing the entry
   /// to disk, and a power cut can leave an entry with missing bytes, which
-  /// its `check()` reports. So "no driver is reached without a recorded [Decided]" holds
-  /// across crashes (https://github.com/intersyntactic/logbook/pull/12).
-  Future<void> record(Entry<P> entry);
+  /// its `check()` reports. So "no driver is reached without a recorded
+  /// decision" holds across crashes
+  /// (https://github.com/intersyntactic/logbook/pull/12).
+  ///
+  /// A decision starts a chain of its own in the logbook (previous `-`):
+  /// the chain a proposal is on is its loop user's, which the airlock may not
+  /// extend. A web request's is an [AirlockDecisionOnWebRequest]; any other's
+  /// body is the airlock's to choose, under
+  /// [AirlockDecisionOnAction.kind]. No two may be byte-identical, since the
+  /// logbook service refuses a repeated chain start, so one made for a
+  /// proposal names it.
+  Future<void> recordDecision(AirlockDecisionOnAction<P> decision);
 
-  /// The renderer called [name], or null when there is none, so the
-  /// [Decided] entry for a web request names its renderer exactly.
+  /// Keeps in the logbook what the action [decision] was about came to:
+  /// [result], what it ran to or why it was refused, which [resultAsJson]
+  /// holds as its program's codec writes it. The action's continuation sees
+  /// [result] only once it is kept; an error thrown here ends the call. Kept
+  /// as [recordDecision] keeps.
+  ///
+  /// It extends [decision]'s chain: a web request's result follows the
+  /// [Rendered] entry the airlock accepted, or the decision itself when the
+  /// renderer did not answer in time. When [decision] answers a proposal,
+  /// its body is [resultOfActionOrWhyRefusedToJson] of
+  /// [AirlockDecisionOnAction.proposed] and [resultAsJson], under
+  /// [resultOfActionOrWhyRefusedKind]: the one copy of what the action
+  /// returned, which the loop that proposed it is waiting for.
+  Future<void> recordResult(
+    AirlockDecisionOnAction<P> decision,
+    Outcome<Object?> result, {
+    required Object? resultAsJson,
+  });
+
+  /// The renderer called [name], or null when there is none, so a web
+  /// request's decision names its renderer exactly.
   Future<Renderer?> renderer(RendererName name);
 
   /// The body the renderer recorded for [decided], an allowed web request's
-  /// [Decided] entry, once the airlock has read it from the record; or
-  /// [Refused] with why there is none.
+  /// decision, once the airlock has read it from the logbook; or [Refused]
+  /// with why there is none.
   ///
   /// Called only after [decided] is kept. The renderer subscribes to the
-  /// record for it, reads the entries the request draws from, and records the
-  /// body, or a refusal when an entry is missing or fails its checks, in an
-  /// entry of its own whose previous is [decided]. The airlock never talks
+  /// logbook for it, reads the entries the request draws from, and records
+  /// the body, or a refusal when an entry is missing or fails its checks, in
+  /// a [Rendered] entry whose previous is [decided]. The airlock never talks
   /// to a renderer: it reads that entry, and accepts it only from the
   /// renderer [decided] names. A renderer that does not answer in time is
-  /// the airlock's to refuse, and its [Returned] entry's previous is then
-  /// [decided] instead.
+  /// the airlock's to refuse, and the result's previous is then [decided].
   ///
   /// The render runner reports the renderer it was built with, the
   /// archive hash its `pubspec.lock` records, given as a define at compile
@@ -896,7 +933,7 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// whose renderer reports anything other than the id [decided] names is
   /// refused. That rules out a stale or mis-built renderer being taken for
   /// this one, not someone building one that lies.
-  Future<Outcome<String>> rendered(Decided<P> decided);
+  Future<Outcome<String>> rendered(AirlockDecisionOnAction<P> decided);
 
   /// The content of [entry], as text, when the record holds it on
   /// [trajectory]'s own chain; or [Refused] with why not.
@@ -930,68 +967,35 @@ final class Deny extends Decision {
   final String why;
 }
 
-/// One entry in a trajectory's record: [Decided] before an action goes out,
-/// and [Returned] when it comes back.
-///
-/// Each is at a [place] in a turn, of type [P], which the agent loop
-/// supplies, since it knows where in the turn it is, and the airlock
-/// records; nothing here computes one.
-///
-/// Every kind takes [P] and nothing more, so a switch over the kinds is
-/// exhaustive: a kind with a type parameter its parent does not have cannot
-/// be covered by a case.
-sealed class Entry<P> {
-  const Entry(this.trajectoryId, this.place);
-
-  /// The trajectory this entry is of.
-  final TrajectoryId trajectoryId;
-
-  /// Where in a turn this entry happened.
-  final P place;
-}
-
-/// An action that would do [reach] was decided, and no driver has been
-/// reached yet. Without a [Returned] entry after it, the record shows the
+/// What the airlock decided about an action that would do [reach], on the
+/// trajectory named [trajectoryId], at [place] in a turn, before any driver
+/// is reached. With no result recorded after it, the logbook shows the
 /// action was cut short.
-final class Decided<P> extends Entry<P> {
-  const Decided(
-    super.trajectoryId,
-    super.place,
+///
+/// [place] is of type [P], which the agent loop supplies, since it knows
+/// where in the turn it is, and the airlock records; nothing here computes
+/// one.
+final class AirlockDecisionOnAction<P> {
+  const AirlockDecisionOnAction(
+    this.trajectoryId,
+    this.place,
     this.reach,
     this.decision, {
     this.proposed,
   });
 
+  /// The kind of the logbook entry the airlock keeps it as, unless it is a
+  /// web request's, which is an [AirlockDecisionOnWebRequest].
+  static const kind = 'airlock-decision-on-action';
+
+  final TrajectoryId trajectoryId;
+  final P place;
   final Reach reach;
   final Decision decision;
 
-  /// The `proposed` entry that asked for the action; null for an action
-  /// proposed in the airlock service's own process.
-  final EntryId? proposed;
-}
-
-/// The action that would do [reach] came back, with its [outcome], whether
-/// it ran or was refused. Made only by a trajectory, which knows the
-/// action's program, so [ReturnedProposal.of] can write what came back in
-/// full.
-final class Returned<P> extends Entry<P> {
-  const Returned._(
-    super.trajectoryId,
-    super.place,
-    this.reach,
-    this.outcome,
-    this._outcomeJson,
-    this.proposed,
-  );
-
-  final Reach reach;
-  final Outcome<Object?> outcome;
-
-  /// [outcome] as its program's codec writes it.
-  final Object? _outcomeJson;
-
-  /// The `proposed` entry that asked for the action; null for an action
-  /// proposed in the airlock service's own process.
+  /// The [ActionProposedByAgentLoop] logbook entry that asked for the
+  /// action; null for an action proposed in the airlock service's own
+  /// process.
   final EntryId? proposed;
 }
 

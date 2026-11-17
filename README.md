@@ -78,27 +78,29 @@ renderer the record names exactly
   `Renderer`: its `RendererId` (the sha256 of the renderer's published pub archive, as
   `pubspec.lock` records it) and the `ObjectId` of the render runner built
   with it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
-  `Decided` holds the whole `WebRequest` and the exact `Renderer`, never a body,
-  which does not exist yet. A name that resolves to nothing is denied
+  the `AirlockDecisionOnAction` holds the whole `WebRequest` and the exact
+  `Renderer`, never a body, which does not exist yet. A name that resolves to nothing is denied
   before the rules are asked.
 - The airlock never talks to a renderer
   (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
-  A renderer subscribes to the record for `Decided` entries naming it,
-  reads the entries the request draws from, and records the body, or a
-  refusal when an entry is missing, in an entry of its own after the
-  `Decided`. `DecidesAndRecordsActions.rendered(decided)` is the airlock
-  reading that entry from the record; it is called only once `Decided` is
-  kept, and what it gives is the body the web driver carries out. So the exact bytes that
+  A renderer subscribes to the logbook for web request decisions naming
+  it, reads the entries the request draws from, and records the body, or a
+  refusal when an entry is missing, in a `Rendered` logbook entry after the
+  decision. `DecidesAndRecordsActions.rendered(decided)` is the airlock
+  reading that entry from the logbook; it is called only once the decision
+  is kept, and what it gives is the body the web driver carries out. So the exact bytes that
   went out are in the record.
-- A web request's chain in the logbook: `DecidedWebRequest` (kind
-  `web-request-decided`), then
-  the renderer's `Rendered` (kind `rendered`), then the airlock's
-  `Returned`, each naming the one before as its previous, so the logbook
-  service's tip check lets each be written once. When the renderer does not answer
-  in time, `Returned` (refused) names the `DecidedWebRequest` as its previous and
-  a late `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
-  What came back from any proposed action is recorded in full, in a
-  `ReturnedProposal` (below).
+- A web request's chain in the logbook: `AirlockDecisionOnWebRequest`
+  (kind `airlock-decision-on-web-request`) starts it, since the proposal's
+  chain is its loop user's alone; then the renderer's `Rendered` (kind
+  `rendered`), then the airlock's `result-of-action-or-why-refused`, each
+  naming the one before as its previous, so the logbook service's tip check
+  lets each be written once. When the renderer does not answer in time, the
+  result (refused) names the decision as its previous and a late
+  `Rendered` is turned away. The decision names its proposal, so no two
+  start byte-identical chains, which the logbook service refuses. Each has
+  `toJson` and a checking `fromJson`. What came back from any proposed
+  action is recorded in full, in its result (below).
 
 A web request is an action, decided like any other: a request a tool makes
 to a chat or an API.
@@ -166,10 +168,10 @@ supplies and the airlock records; nothing here computes one.
   one. Every entry names it.
 - `action.next(crux)`, the only way an action reaches the world: it is
   proposed at the crux, and the airlock decides it; the airlock records the
-  decision (`Decided`) and only then is a driver reached; the action comes
-  back and the airlock records it (`Returned`), and only then does the
-  continuation see it. A record that cannot be written ends the call. A
-  `Decided` with no `Returned` is an action cut short. Recorded means it
+  decision (`AirlockDecisionOnAction`) and only then is a driver reached;
+  the airlock records the action's result, or why it was refused, and only
+  then does the continuation see it. A record that cannot be written ends
+  the call. A decision with no result after it is an action cut short. Recorded means it
   survives the logbook service crashing, not a power cut
   (https://github.com/intersyntactic/logbook/pull/12).
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
@@ -178,11 +180,13 @@ supplies and the airlock records; nothing here computes one.
 - `stop()`: refuses every action on this trajectory whose driver has not
   yet been reached. An action whose driver has been reached is not
   interrupted.
-- `entries`: each entry once recorded, at its place. `underway`: what
-  drivers report while an action is underway, for a live view, and not
-  recorded. Each names its trajectory and place.
+- `decisions`: each decision once recorded. `results`: each result, with
+  the decision it follows, once recorded. `underway`: what drivers report
+  while an action is underway, for a live view, and not recorded. Each
+  names its trajectory and place.
 - `DecidesAndRecordsActions<R, P>`: `decide`, given an action's `Reach`,
-  and `record`, implemented by intersyntactic's airlock. An interface is
+  then `recordDecision(decision)` and `recordResult(decision, result,
+  resultAsJson:)`, implemented by intersyntactic's airlock. An interface is
   named for what it can do, so `implements` reads as a true sentence
   (https://github.com/enspyrco/intersyntactic/pull/1164).
 
@@ -192,7 +196,8 @@ The agent loop and the airlock are separate services, and the record is
 the only channel between them: the airlock has no door of its own
 (https://github.com/enspyrco/intersyntactic/pull/1156). An action's
 continuation is the tool's own code, so it stays in the loop; its program
-and input go into the record as a `Proposal`, an action not yet decided,
+and input go into the logbook as an `ActionProposedByAgentLoop`, an action
+not yet decided,
 and what came back returns through the record
 (https://github.com/enspyrco/intersyntactic/pull/1157). The airlock decides
 and records, and only a driver carries an action out.
@@ -200,27 +205,33 @@ and records, and only a driver carries an action out.
 - `Trajectory.at(place)` is a crux where the trajectory is, in the
   airlock service. `Crux.through(link, place:)` is one in the agent loop,
   where `link`, which `ProposesActionsThroughTheRecord`, is the transport,
-  which this package does not have: it writes a `proposed` entry on the loop's trajectory's chain and waits
-  for the `returned` entry that names it, which loop_launcher hands the
-  loop. `action.next(crux)` is the same with either, so a tool does not
+  which this package does not have: it writes an
+  `action-proposed-by-agent-loop` logbook entry on the loop's trajectory's
+  chain and waits for the `result-of-action-or-why-refused` logbook entry
+  that names it, which loop_launcher hands the loop. `action.next(crux)` is the same with either, so a tool does not
   change.
-- A `Proposal` (kind `proposed`) names no trajectory. The logbook service
+- An `ActionProposedByAgentLoop` (kind `action-proposed-by-agent-loop`)
+  names no trajectory. The logbook service
   takes the entries on a path's chain only from that path's loop user, so
   the airlock takes the path from the chain the entry is on, and a loop has
   no claim to make about another path.
-- `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
-  every part as its type's own `parse` does, with is_effects's codecs.
+- `ActionProposedByAgentLoop.read(json)` gives an
+  `ActionProposedByAgentLoop` or `Rejected(why)`, checking every part as
+  its type's own `parse` does, with is_effects's codecs.
   `trajectory.consider(proposal, place, proposed: entryId)` decides and
-  records it as an action proposed at `at(place)` would be; its `Decided` and
-  `Returned` name the `proposed` entry.
-- `ReturnedProposal` (kind `returned`): what came back from a proposed action,
-  in full, as the program's codec writes it, or the refusal, naming the
-  `proposed` entry it answers. It is the one copy of what an action
-  returned: a read's text, a program's output, a site's answer. The airlock
-  writes it on its own chain, never the path's, which only the loop user
-  writes. `ReturnedProposal.of(returned)` makes one from a `Returned` entry;
-  `ReturnedProposal.refused(entryId, why)` answers a `proposed` entry that
-  was `Rejected`, so its loop is answered and no other path is stalled.
+  records it as an action proposed at `at(place)` would be; its decision
+  and its result both name the proposal.
+- A result (kind `result-of-action-or-why-refused`, body
+  `{"proposed": <hex>, "result": <outcome>}`): what came back from a
+  proposed action, in full, as the program's codec writes it, or why it was
+  refused. It is the one copy of what an action returned: a read's text, a
+  program's output, a site's answer, a model's reply. The airlock writes it
+  on the decision's chain, never the path's, which only the loop user
+  writes. `resultOfActionOrWhyRefusedToJson(proposed, resultAsJson)` writes
+  one, `proposalRejectedToJson(proposed, why)` answers a proposal that was
+  `Rejected`, so its loop is answered and no other path is stalled, and
+  `readResultOfActionOrWhyRefused(json)` reads one back as
+  `(proposed:, result:)`, or null when it is not one.
 - `WaitingToStart` (kind `waiting-to-start`, `{"trajectory": <hex>}`,
   read strictly): loop_launcher records it once, on a chain of its own,
   when a path that has no `assigned` entry yet has to wait for room. Its

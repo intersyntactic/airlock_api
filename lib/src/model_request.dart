@@ -115,7 +115,8 @@ final class RecordedText {
 /// turns they were rendered from.
 ///
 /// Written by the loop on its trajectory's chain, which only its loop user
-/// writes, so it names no trajectory, as a [Proposal] names none.
+/// writes, so it names no trajectory, as an [ActionProposedByAgentLoop]
+/// names none.
 final class ModelRequest {
   ModelRequest({
     required this.systemPrompt,

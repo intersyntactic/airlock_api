@@ -20,32 +20,35 @@ import 'contract_test.dart'
 /// [json] as the logbook would hold it and give it back: JSON text.
 Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
 
-/// The [Decided] entries recorded while [run] is carried through on a trajectory
+/// The [AirlockDecisionOnAction] entries recorded while [run] is carried through on a trajectory
 /// with [rules].
-Future<List<Decided<int>>> decidedWhile(
+Future<List<AirlockDecisionOnAction<int>>> decidedWhile(
   Future<void> Function(Trajectory<Set<String>, int> path) run, {
   Set<String> rules = const {},
 }) async {
   final airlock = LogAirlock();
   final path = start(airlock, [RecordedWeb(), MemoryFiles()], rules: rules);
-  final decided = <Decided<int>>[];
-  path.entries.listen((e) {
-    if (e case final Decided<int> d) decided.add(d);
-  });
+  final decided = <AirlockDecisionOnAction<int>>[];
+  path.decisions.listen(decided.add);
   await run(path);
   return decided;
 }
 
 void main() {
-  test("a web request's Decided entry reads back as it was written", () async {
-    expect(DecidedWebRequest.kind, 'web-request-decided');
+  test("a web request's AirlockDecisionOnAction entry reads back as it was written", () async {
+    expect(AirlockDecisionOnWebRequest.kind, 'airlock-decision-on-web-request');
     final turn = EntryId.of(utf8.encode('done'));
     final decided = await decidedWhile(
       (path) => answerOf(webRequest(teams, hart, entries: [turn]), path.at(4)),
       rules: {'$teams as $hart'},
     );
-    final written = DecidedWebRequest.of(decided.single, (int place) => place)!;
-    final read = DecidedWebRequest.fromJson(throughText(written.toJson()));
+    final written = AirlockDecisionOnWebRequest.of(
+      decided.single,
+      (int place) => place,
+    )!;
+    final read = AirlockDecisionOnWebRequest.fromJson(
+      throughText(written.toJson()),
+    );
     expect(read.trajectory, written.trajectory);
     expect(read.place, 4);
     expect(read.request.origin, teams);
@@ -58,6 +61,42 @@ void main() {
     expect(read.renderer?.executable, teamsReply.renderer.executable);
     expect(read.decision, isA<Allow>());
     expect(read.decision.by, DecidedBy.rules);
+    expect(read.proposed, isNull);
+  });
+
+  test('a web request decided for a proposal names it, so no two such '
+      'decisions are byte-identical', () async {
+    final turn = EntryId.of(utf8.encode('done'));
+    final [d] = await decidedWhile(
+      (path) => answerOf(webRequest(teams, hart, entries: [turn]), path.at(4)),
+      rules: {'$teams as $hart'},
+    );
+    Object? asProposed(String proposal) => AirlockDecisionOnWebRequest.of(
+      AirlockDecisionOnAction(
+        d.trajectoryId,
+        d.place,
+        d.reach,
+        d.decision,
+        proposed: EntryId.of(utf8.encode(proposal)),
+      ),
+      (int place) => place,
+    )!.toJson();
+    final read = AirlockDecisionOnWebRequest.fromJson(
+      throughText(asProposed('one')),
+    );
+    expect(read.proposed, EntryId.of(utf8.encode('one')));
+    expect(jsonEncode(asProposed('one')), isNot(jsonEncode(asProposed('two'))));
+    final json = asProposed('one');
+    expect(json, isA<Map<String, Object?>>());
+    if (json case final Map<String, Object?> written) {
+      expect(
+        () => AirlockDecisionOnWebRequest.fromJson({
+          ...written,
+          'proposed': 'nope',
+        }),
+        throwsFormatException,
+      );
+    }
   });
 
   test('a denied web request, and one whose renderer named nothing, read back with '
@@ -68,8 +107,10 @@ void main() {
     });
     final [denied, unnamed] = [
       for (final d in decided)
-        DecidedWebRequest.fromJson(
-          throughText(DecidedWebRequest.of(d, (int place) => place)!.toJson()),
+        AirlockDecisionOnWebRequest.fromJson(
+          throughText(
+            AirlockDecisionOnWebRequest.of(d, (int place) => place)!.toJson(),
+          ),
         ),
     ];
     expect(denied.decision, isA<Deny>());
@@ -87,7 +128,9 @@ void main() {
         rules: {'write', 'dart'},
       );
       expect(
-        decided.map((d) => DecidedWebRequest.of(d, (int place) => place)),
+        decided.map(
+          (d) => AirlockDecisionOnWebRequest.of(d, (int place) => place),
+        ),
         everyElement(isNull),
       );
     },
@@ -130,7 +173,10 @@ void main() {
     );
     final json =
         throughText(
-              DecidedWebRequest.of(decided.single, (int p) => p)!.toJson(),
+              AirlockDecisionOnWebRequest.of(
+                decided.single,
+                (int p) => p,
+              )!.toJson(),
             )!
             as Map<String, Object?>;
     Map<String, Object?> change(String key, Object? value) => {
@@ -140,7 +186,7 @@ void main() {
     final request = json['request']! as Map<String, Object?>;
     String? whyNot(Object? entry) {
       try {
-        DecidedWebRequest.fromJson(entry);
+        AirlockDecisionOnWebRequest.fromJson(entry);
         return null;
       } on FormatException catch (e) {
         return e.message;

@@ -76,15 +76,18 @@ String reachOf(Reach reach) => switch (reach) {
 /// test [remember]s, and its renderer draws a body by joining the texts of
 /// the entries a request names, logging `render <n>` when the airlock reads
 /// what it recorded.
-final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
-  LogAirlock({this.failOn});
+/// Which of the airlock's two writes a [LogAirlock] fails.
+enum FailWriting { decision, result }
 
-  final Type? failOn;
+final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
+  LogAirlock({this.failWriting});
+
+  final FailWriting? failWriting;
   final log = <String>[];
 
-  /// Each `returned` entry recorded for a proposal, by the proposal it
-  /// answers, as the airlock would write it on its own chain.
-  final returned = <EntryId, ReturnedProposal>{};
+  /// The body of each result kept for a proposal, by the proposal it
+  /// answers, as the airlock would write it on the decision's chain.
+  final results = <EntryId, Object?>{};
   final _logbook = <EntryId, String>{};
   final _chainOf = <EntryId, TrajectoryId>{};
 
@@ -112,7 +115,7 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
       name == teamsReply.name ? teamsReply.renderer : null;
 
   @override
-  Future<Outcome<String>> rendered(Decided<int> decided) async {
+  Future<Outcome<String>> rendered(AirlockDecisionOnAction<int> decided) async {
     final MakesWebRequest(:request) = decided.reach as MakesWebRequest;
     log.add('render ${request.entries.length}');
     final texts = <String>[];
@@ -137,30 +140,44 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
       : const Deny('not in the rules', by: DecidedBy.rules);
 
   @override
-  Future<void> record(Entry<int> entry) async {
-    if (entry.runtimeType == failOn) throw StateError('disk full');
-    if (entry case Returned<int>()) {
-      if (ReturnedProposal.of(entry) case final answer?) {
-        returned[answer.proposed] = answer;
-      }
+  Future<void> recordDecision(AirlockDecisionOnAction<int> decision) async {
+    if (failWriting == FailWriting.decision) throw StateError('disk full');
+    log.add(
+      '${decision.place}: ${switch (decision) {
+        AirlockDecisionOnAction(:final reach, decision: Allow()) => 'allow ${reachOf(reach)}',
+        AirlockDecisionOnAction(:final reach, decision: Deny(:final why)) => 'deny ${reachOf(reach)}: $why',
+      }}',
+    );
+  }
+
+  @override
+  Future<void> recordResult(
+    AirlockDecisionOnAction<int> decision,
+    Outcome<Object?> result, {
+    required Object? resultAsJson,
+  }) async {
+    if (failWriting == FailWriting.result) throw StateError('disk full');
+    if (decision.proposed case final proposed?) {
+      results[proposed] = resultOfActionOrWhyRefusedToJson(
+        proposed,
+        resultAsJson,
+      );
     }
     log.add(
-      '${entry.place}: ${switch (entry) {
-        Decided(:final reach, decision: Allow()) => 'allow ${reachOf(reach)}',
-        Decided(:final reach, decision: Deny(:final why)) => 'deny ${reachOf(reach)}: $why',
-        Returned(:final reach, outcome: Ran()) => 'ran ${reachOf(reach)}',
-        Returned(:final reach, outcome: Refused(:final why)) => 'refused ${reachOf(reach)}: $why',
+      '${decision.place}: ${switch (result) {
+        Ran() => 'ran ${reachOf(decision.reach)}',
+        Refused(:final why) => 'refused ${reachOf(decision.reach)}: $why',
       }}',
     );
   }
 }
 
-/// A [LogAirlock] that keeps each [Decided] entry it reads a body for.
+/// A [LogAirlock] that keeps each [AirlockDecisionOnAction] entry it reads a body for.
 final class _ReadingAirlock extends LogAirlock {
-  final readFor = <Decided<int>>[];
+  final readFor = <AirlockDecisionOnAction<int>>[];
 
   @override
-  Future<Outcome<String>> rendered(Decided<int> decided) {
+  Future<Outcome<String>> rendered(AirlockDecisionOnAction<int> decided) {
     readFor.add(decided);
     return super.rendered(decided);
   }
@@ -313,7 +330,7 @@ void main() {
     await expectLater(
       answerOf(
         writeAndFormat('lib/a.dart'),
-        start(LogAirlock(failOn: Decided<int>), [files]).at(1),
+        start(LogAirlock(failWriting: FailWriting.decision), [files]).at(1),
       ),
       throwsStateError,
     );
@@ -326,11 +343,14 @@ void main() {
     await expectLater(
       answerOf(
         writeAndFormat('lib/a.dart'),
-        start(LogAirlock(failOn: Returned<int>), [files, programs]).at(1),
+        start(LogAirlock(failWriting: FailWriting.result), [
+          files,
+          programs,
+        ]).at(1),
       ),
       throwsStateError,
     );
-    // The write reached the world; the record's Decided entry says so. The
+    // The write reached the world; the record's AirlockDecisionOnAction entry says so. The
     // continuation never saw it, so dart was never started.
     expect(files.files, {'lib/a.dart': 'void main() {}'});
     expect(programs.started, isEmpty);
@@ -354,23 +374,25 @@ void main() {
   test('the record says who decided: the rules, or the person', () async {
     final decided = <String>[];
     final root = start(LogAirlock(), [MemoryFiles(), RecordedPrograms()]);
-    root.entries.listen((e) {
-      if (e case Decided(:final decision)) {
-        decided.add('${decision.runtimeType} by ${decision.by.name}');
-      }
-    });
+    root.decisions.listen(
+      (d) => decided.add('${d.decision.runtimeType} by ${d.decision.by.name}'),
+    );
     await answerOf(writeAndFormat('a.dart'), root.at(1));
     root.stop();
     await answerOf(writeAndFormat('a.dart'), root.at(2));
     expect(decided, ['Allow by rules', 'Allow by rules', 'Deny by person']);
   });
 
-  test('each entry reaches the trajectory, naming it', () async {
+  test('each decision and result reaches the trajectory, naming it', () async {
     final path = start(LogAirlock(), [MemoryFiles()], rules: {'write'});
     final seen = <String>[];
-    path.entries.listen(
-      (e) => seen.add(
-        '${e.trajectoryId == path.id} ${e.runtimeType} at ${e.place}',
+    path.decisions.listen(
+      (d) => seen.add('${d.trajectoryId == path.id} decision at ${d.place}'),
+    );
+    path.results.listen(
+      (r) => seen.add(
+        '${r.decision.trajectoryId == path.id} '
+        '${r.result.runtimeType} at ${r.decision.place}',
       ),
     );
     await answerOf(
@@ -380,7 +402,7 @@ void main() {
       ),
       path.at(2),
     );
-    expect(seen, ['true Decided<int> at 2', 'true Returned<int> at 2']);
+    expect(seen, ['true decision at 2', 'true Ran<Wrote> at 2']);
   });
 
   test('what drivers report while running reaches the live view', () async {
@@ -453,10 +475,8 @@ void main() {
     () async {
       final path = start(LogAirlock(), [RecordedWeb()]);
       final seen = <(Origin, SignIn?)>[];
-      path.entries.listen((e) {
-        if (e case Decided(
-          reach: MakesWebRequest(:final origin, :final signIn),
-        )) {
+      path.decisions.listen((d) {
+        if (d.reach case MakesWebRequest(:final origin, :final signIn)) {
           seen.add((origin, signIn));
         }
       });
@@ -505,10 +525,8 @@ void main() {
       rules: {'$teams as $hart'},
       suit: suit1,
     );
-    final decided = <Decided<int>>[];
-    path.entries.listen((e) {
-      if (e case final Decided<int> d) decided.add(d);
-    });
+    final decided = <AirlockDecisionOnAction<int>>[];
+    path.decisions.listen(decided.add);
     await answerOf(webRequest(teams, hart, entries: [turn]), path.at(1));
     final MakesWebRequest(:renderer, :request) =
         decided.single.reach as MakesWebRequest;
@@ -571,7 +589,7 @@ void main() {
 
   test('nothing is rendered when the decision cannot be recorded', () async {
     final web = RecordedWeb();
-    final airlock = LogAirlock(failOn: Decided<int>);
+    final airlock = LogAirlock(failWriting: FailWriting.decision);
     await expectLater(
       answerOf(
         webRequest(teams, hart),
