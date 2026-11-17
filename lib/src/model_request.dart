@@ -12,8 +12,13 @@ part of 'action.dart';
 // is sent.
 
 /// One run of a model request's body, in the order [ModelRequest.pieces]
-/// names it: recorded as an entry of its own, so a piece repeated from an
-/// earlier request (the history so far) has the same id and is held once.
+/// names it: recorded as an entry of its own, and named by that entry, so
+/// the request shows each piece was recorded through the record service,
+/// by a sender it allows, before it was sent. A piece repeated from an
+/// earlier request (the history so far) is a new entry with a new id,
+/// since an entry's id hashes its previous too, but its bytes are kept
+/// once: the journal stores an entry's content as an object, by sha256,
+/// however many entries name it.
 ///
 /// Its text is a run of the exact body the loop rendered: of the API's JSON,
 /// or of the prompt a program reads. A turn's entry is never a piece, since
