@@ -5,7 +5,7 @@ import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
 /// Allows everything, and keeps each entry it is asked to record.
-final class _KeepingAirlock implements Airlock<String, int> {
+final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
   final kept = <Entry<int>>[];
 
   @override
@@ -24,7 +24,7 @@ final class _KeepingAirlock implements Airlock<String, int> {
 }
 
 /// Writes nothing, and says it wrote.
-final class _FileDriver implements FileDriver {
+final class _FileDriver implements ReadsAndWritesFiles {
   final written = <RelativePath>[];
 
   @override

@@ -14,7 +14,7 @@ part of 'action.dart';
 /// For an agent loop: write a [Proposal.kind] entry on the loop's journey
 /// path's chain, wait for the [ReturnedProposal] that names it, and give
 /// back its [ReturnedProposal.outcome].
-abstract interface class RecordLink {
+abstract interface class ProposesActionsThroughTheRecord {
   Future<Object?> propose(Object? proposal);
 }
 
@@ -23,7 +23,7 @@ abstract interface class RecordLink {
 final class _ThroughRecord extends Apex {
   const _ThroughRecord(this._link, {required this._place});
 
-  final RecordLink _link;
+  final ProposesActionsThroughTheRecord _link;
   final Object? _place;
 
   /// The outcome the airlock recorded. An answer that is not one throws a

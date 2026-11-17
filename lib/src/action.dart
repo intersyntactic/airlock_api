@@ -184,11 +184,11 @@ sealed class Program<I, O> {
   );
 }
 
-/// The renderer a name names, or null: [Airlock.renderer].
+/// The renderer a name names, or null: [DecidesAndRecordsActions.renderer].
 typedef _FindRenderer = Future<Renderer?> Function(RendererName name);
 
 /// The body a renderer recorded for this action's [Decided] entry, or why
-/// there is none: [Airlock.rendered].
+/// there is none: [DecidesAndRecordsActions.rendered].
 typedef _Rendered = Future<Outcome<String>> Function();
 
 /// Reads the file at a path under the file driver's root.
@@ -218,7 +218,7 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
     Reach reach,
     _Rendered rendered,
     Report report,
-  ) => journeyPath._driver<FileDriver>()?.read(path);
+  ) => journeyPath._driver<ReadsAndWritesFiles>()?.read(path);
 }
 
 /// Writes a file, creating its folder.
@@ -248,7 +248,7 @@ final class WriteFile extends Program<FileText, Wrote> {
     Reach reach,
     _Rendered rendered,
     Report report,
-  ) => journeyPath._driver<FileDriver>()?.write(file);
+  ) => journeyPath._driver<ReadsAndWritesFiles>()?.write(file);
 }
 
 /// A program started as a process, such as `git`: its input is plain
@@ -296,7 +296,7 @@ final class Executable extends Program<Args, ExecResult> {
     Reach reach,
     _Rendered rendered,
     Report report,
-  ) => journeyPath._driver<ProgramDriver>()?.start(
+  ) => journeyPath._driver<RunsPrograms>()?.runProgram(
     program,
     args,
     report: report,
@@ -343,7 +343,7 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
     covariant MakesWebRequest reach,
     _Rendered rendered,
     Report report,
-  ) => switch ((journeyPath._driver<WebDriver>(), reach.renderer)) {
+  ) => switch ((journeyPath._driver<CarriesOutWebRequests>(), reach.renderer)) {
     (null, _) => null,
     (final web?, _?) => _make(web, rendered(), request),
     // Decided as a denial before any driver, so not reached.
@@ -351,7 +351,7 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
   };
 
   static Future<Outcome<WebRequestOutcome>> _make(
-    WebDriver web,
+    CarriesOutWebRequests web,
     Future<Outcome<String>> rendering,
     WebRequest request,
   ) async => switch (await rendering) {
@@ -540,7 +540,7 @@ final class JourneyPath<R, P> {
   /// mints one.
   JourneyPath({
     required this.id,
-    required Iterable<Driver> drivers,
+    required Iterable<CarriesOutActions> drivers,
     required this._airlock,
     required this.rules,
     required this.suit,
@@ -555,8 +555,8 @@ final class JourneyPath<R, P> {
   /// path's life.
   final Suit suit;
 
-  final Airlock<R, P> _airlock;
-  final List<Driver> _drivers;
+  final DecidesAndRecordsActions<R, P> _airlock;
+  final List<CarriesOutActions> _drivers;
   final _entries = StreamController<Entry<P>>.broadcast(sync: true);
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
@@ -582,7 +582,8 @@ final class JourneyPath<R, P> {
   /// not recorded.
   Stream<Underway<P>> get underway => _underway.stream;
 
-  D? _driver<D extends Driver>() => _drivers.whereType<D>().firstOrNull;
+  D? _driver<D extends CarriesOutActions>() =>
+      _drivers.whereType<D>().firstOrNull;
 
   Future<Outcome<O>> _consider<I, O>(
     Program<I, O> program,
@@ -671,8 +672,10 @@ sealed class Apex {
   ///
   /// [place] is already the JSON its journey path reads places from, since
   /// the loop and the airlock service agree its type between them.
-  const factory Apex.through(RecordLink link, {required Object? place}) =
-      _ThroughRecord;
+  const factory Apex.through(
+    ProposesActionsThroughTheRecord link, {
+    required Object? place,
+  }) = _ThroughRecord;
 
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
 }
@@ -693,7 +696,7 @@ final class _AtPath<P> extends Apex {
 /// What intersyntactic's airlock implements. It guards the drivers it is
 /// given, not the journey: an agent that joins a journey with its own
 /// drivers is decided, or not, by its own.
-abstract interface class Airlock<R, P> {
+abstract interface class DecidesAndRecordsActions<R, P> {
   /// Whether a driver may carry out an action that would do [reach], under
   /// [rules].
   ///
@@ -739,7 +742,7 @@ abstract interface class Airlock<R, P> {
   Future<Outcome<String>> rendered(Decided<P> decided);
 }
 
-/// What the [Airlock] decided about one action, and [by] whom, so the record
+/// What the airlock decided about one action, and [by] whom, so the record
 /// tells "the rules let it through" from "the person said yes".
 sealed class Decision {
   const Decision({required this.by});

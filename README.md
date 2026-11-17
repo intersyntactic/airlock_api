@@ -73,8 +73,8 @@ renderer the record names exactly
   such as `teams-reply`, and the `EntryId`s of the recorded entries its
   words are drawn from. It has no body, so a tool cannot put words in. The
   path and headers are checked as is_effects's `Request` checks them.
-- `Airlock.renderer(name)` resolves a name to a `Renderer`: its
-  `RendererId` (the sha256 of the renderer's published pub archive, as
+- `DecidesAndRecordsActions.renderer(name)` resolves a name to a
+  `Renderer`: its `RendererId` (the sha256 of the renderer's published pub archive, as
   `pubspec.lock` records it) and the `ObjectId` of the render runner built
   with it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
   `Decided` holds the whole `WebRequest` and the exact `Renderer`, never a body,
@@ -85,9 +85,9 @@ renderer the record names exactly
   A renderer subscribes to the record for `Decided` entries naming it,
   reads the entries the request draws from, and records the body, or a
   refusal when an entry is missing, in an entry of its own after the
-  `Decided`. `Airlock.rendered(decided)` is the airlock reading that entry
-  from the record; it is called only once `Decided` is kept, and what it
-  gives is the body the web driver carries out. So the exact bytes that
+  `Decided`. `DecidesAndRecordsActions.rendered(decided)` is the airlock
+  reading that entry from the record; it is called only once `Decided` is
+  kept, and what it gives is the body the web driver carries out. So the exact bytes that
   went out are in the record.
 - A web request's chain in the journal: `DecidedWebRequest` (kind
   `web-request-decided`), then
@@ -145,8 +145,10 @@ supplies and the airlock records; nothing here computes one.
 - `entries`: each entry once recorded, at its place. `underway`: what
   drivers report while an action is underway, for a live view, and not
   recorded. Each names its journey path and place.
-- `Airlock<R, P>`: `decide`, given an action's `Reach`, and `record`,
-  implemented by intersyntactic's airlock.
+- `DecidesAndRecordsActions<R, P>`: `decide`, given an action's `Reach`,
+  and `record`, implemented by intersyntactic's airlock. An interface is
+  named for what it can do, so `implements` reads as a true sentence
+  (https://github.com/enspyrco/intersyntactic/pull/1164).
 
 ## Between the agent loop and the airlock
 
@@ -161,8 +163,8 @@ and records, and only a driver carries an action out.
 
 - `JourneyPath.at(place)` is an apex where the journey path is, in the
   airlock service. `Apex.through(link, place:)` is one in the agent loop,
-  over a `RecordLink`, the transport, which this package does not have: it
-  writes a `proposed` entry on the loop's journey path's chain and waits
+  where `link`, which `ProposesActionsThroughTheRecord`, is the transport,
+  which this package does not have: it writes a `proposed` entry on the loop's journey path's chain and waits
   for the `returned` entry that names it, which loop_launcher hands the
   loop. `action.next(apex)` is the same with either, so a tool does not
   change.
