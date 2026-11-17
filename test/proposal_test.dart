@@ -12,16 +12,18 @@ import 'contract_test.dart'
         RecordedWeb,
         answerOf,
         hart,
+        recordedReply,
         start,
         teams,
+        teamsMessageOf,
         webRequest,
         writeAndFormat;
 
-/// A trajectory's chain and the airlock's, in memory: each `proposed`
-/// entry the loop writes goes through `jsonEncode` and back, as the logbook
-/// would keep it, and is named by the hash of its bytes; the airlock service
-/// considers it on [path], and the loop is handed the `returned` entry that
-/// names it, through `jsonEncode` and back, as loop_launcher would hand it.
+/// A trajectory's chain and the airlock's, in memory: each proposal the
+/// loop writes goes through `jsonEncode` and back, as the logbook would keep
+/// it, and is named by the hash of its bytes; the airlock service considers
+/// it on [path], and the loop is handed the result that names it, through
+/// `jsonEncode` and back, as loop_launcher would hand it.
 /// Places are ints. Keeps why each rejected entry was rejected.
 final class RecordedLink implements ProposesActionsThroughTheRecord {
   RecordedLink(this.path, this.airlock);
@@ -38,27 +40,27 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
   Future<Object?> propose(Object? proposal) async {
     final bytes = utf8.encode(jsonEncode(proposal));
     final proposed = EntryId.of(bytes);
-    switch (Proposal.read(jsonDecode(utf8.decode(bytes)))) {
+    switch (ActionProposedByAgentLoop.read(jsonDecode(utf8.decode(bytes)))) {
       case Rejected(:final why):
         rejected.add(why);
-        airlock.returned[proposed] = ReturnedProposal.refused(proposed, why);
-      case final Proposal proposal:
+        airlock.results[proposed] = proposalRejectedToJson(proposed, why);
+      case final ActionProposedByAgentLoop proposal:
         switch (proposal.place) {
           case final int place:
             await path.consider(proposal, place, proposed: proposed);
           default:
             rejected.add('not a place');
-            airlock.returned[proposed] = ReturnedProposal.refused(
+            airlock.results[proposed] = proposalRejectedToJson(
               proposed,
               'not a place',
             );
         }
     }
-    final answer = ReturnedProposal.fromJson(
-      jsonDecode(jsonEncode(airlock.returned[proposed]!.toJson())),
-    );
+    final answer = readResultOfActionOrWhyRefused(
+      jsonDecode(jsonEncode(airlock.results[proposed])),
+    )!;
     expect(answer.proposed, proposed);
-    return answerWith(answer.outcome);
+    return answerWith(answer.result);
   }
 }
 
@@ -98,8 +100,10 @@ void main() {
     final files = MemoryFiles()..files['a.dart'] = 'the text';
     final path = start(airlock, [files]);
     final link = RecordedLink(path, airlock);
-    final entries = <Entry<int>>[];
-    path.entries.listen(entries.add);
+    final decisions = <AirlockDecisionOnAction<int>>[];
+    final results = <AirlockDecisionOnAction<int>>[];
+    path.decisions.listen(decisions.add);
+    path.results.listen((r) => results.add(r.decision));
     expect(
       await answerOf(
         Program.read.runOrRefusal(
@@ -113,32 +117,29 @@ void main() {
       ),
       'the text',
     );
-    expect(entries, hasLength(2));
-    final proposed = (entries[0] as Decided<int>).proposed;
+    expect(decisions, hasLength(1));
+    final proposed = decisions.single.proposed;
     expect(proposed, isNotNull);
-    expect((entries[1] as Returned<int>).proposed, proposed);
-    expect(airlock.returned.keys, [proposed]);
-    expect(
-      jsonEncode(airlock.returned[proposed]!.toJson()),
-      contains('the text'),
-    );
+    expect(results, [same(decisions.single)]);
+    expect(airlock.results.keys, [proposed]);
+    expect(jsonEncode(airlock.results[proposed]), contains('the text'));
   });
 
   test(
-    'a web request through the record is drawn from recorded entries',
+    'a web request proposed through the record sends a recorded reply',
     () async {
       final web = RecordedWeb();
       final airlock = LogAirlock();
-      final turn = airlock.remember('done');
+      final reply = recordedReply(airlock, 'done');
       final path = start(airlock, [web], rules: {'$teams as $hart'});
       expect(
         await answerOf(
-          webRequest(teams, hart, entries: [turn]),
+          webRequest(teams, hart, drawnFrom: reply),
           loopCrux(RecordedLink(path, airlock)),
         ),
         '201 activity-1',
       );
-      expect(web.requests.single.body, 'done');
+      expect(web.requests.single.body, teamsMessageOf('done'));
     },
   );
 
@@ -159,11 +160,12 @@ void main() {
     () async {
       final airlock = LogAirlock();
       final path = start(airlock, [MemoryFiles()]);
-      final returned = <Returned<int>>[];
-      path.entries.listen((e) => e is Returned<int> ? returned.add(e) : null);
+      final results = <AirlockDecisionOnAction<int>>[];
+      path.results.listen((r) => results.add(r.decision));
       await answerOf(writeAndFormat('a.dart'), path.at(1));
-      expect(returned, hasLength(2));
-      expect(returned.map(ReturnedProposal.of), everyElement(isNull));
+      expect(results, hasLength(2));
+      expect(results.map((d) => d.proposed), everyElement(isNull));
+      expect(airlock.results, isEmpty);
     },
   );
 
@@ -179,8 +181,9 @@ void main() {
       'path': '/v3/conversations/c/activities',
       'signIn': 'hart-bot',
       'headers': <String, String>{},
-      'renderer': 'teams-reply',
-      'entries': <String>[],
+      'body': '{"type":"message","text":"done"}',
+      'projection': 'teams-message-from-model-reply',
+      'drawnFrom': '0' * 64,
       ...change,
     };
     final answers = [
@@ -189,18 +192,18 @@ void main() {
         {
           'headers': {'Authorization': 'Bearer x'},
         },
-        {'renderer': 'Teams Reply'},
-        {
-          'entries': ['not an id'],
-        },
+        {'projection': 'teams-reply'},
+        {'drawnFrom': 'not an id'},
+        {'body': null},
       ])
         await link.propose({...proposal, 'input': requestWith(change)}),
     ];
-    expect(link.rejected, hasLength(4));
+    expect(link.rejected, hasLength(5));
     expect(link.rejected[0], startsWith('input.path'));
     expect(link.rejected[1], startsWith('input.headers'));
-    expect(link.rejected[2], startsWith('input.renderer'));
-    expect(link.rejected[3], startsWith('input.entries'));
+    expect(link.rejected[2], startsWith('input.projection'));
+    expect(link.rejected[3], startsWith('input.drawnFrom'));
+    expect(link.rejected[4], startsWith('input.body'));
     expect(
       answers.map(
         (a) => decodeOutcome<Never>(a, (_, _) => throw StateError('ran')),
@@ -243,20 +246,33 @@ void main() {
     );
   });
 
-  test('a returned entry reads back only with an entry id it answers', () {
+  test('the logbook kinds name what they hold', () {
+    expect(ActionProposedByAgentLoop.kind, 'action-proposed-by-agent-loop');
+    expect(AirlockDecisionOnAction.kind, 'airlock-decision-on-action');
+    expect(resultOfActionOrWhyRefusedKind, 'result-of-action-or-why-refused');
+  });
+
+  test('a result reads back only with the proposal it answers, exactly', () {
     final id = EntryId.of(utf8.encode('proposed'));
-    final refused = ReturnedProposal.refused(id, 'why');
-    final back = ReturnedProposal.fromJson(
-      jsonDecode(jsonEncode(refused.toJson())),
+    final refused = proposalRejectedToJson(id, 'why');
+    expect(
+      jsonEncode(refused),
+      '{"proposed":"${id.hex}","result":{"kind":"refused","why":"why"}}',
     );
+    final back = readResultOfActionOrWhyRefused(
+      jsonDecode(jsonEncode(refused)),
+    )!;
     expect(back.proposed, id);
-    expect(back.outcome, refused.outcome);
+    expect(back.result, {'kind': 'refused', 'why': 'why'});
     for (final json in [
       null,
-      {'outcome': null},
-      {'proposed': 'nope', 'outcome': null},
+      'a line a person reads',
+      {'result': null},
+      {'proposed': 'nope', 'result': null},
+      {'proposed': id.hex},
+      {'proposed': id.hex, 'result': null, 'outcome': null},
     ]) {
-      expect(() => ReturnedProposal.fromJson(json), throwsFormatException);
+      expect(readResultOfActionOrWhyRefused(json), isNull, reason: '$json');
     }
   });
 }

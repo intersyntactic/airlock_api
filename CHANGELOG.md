@@ -1,13 +1,57 @@
 # Changelog
 
-## 0.8.1 (unreleased)
+## 0.9.0
 
-- Docs only. The journal is the logbook (is_logbook, run on the box by
-  the logbook service): every doc comment and the README say so, and the
-  links and `Logbook.builtDefine` point at
-  https://github.com/intersyntactic/logbook. The note that the airlock
-  must not act on `proposed` entries until chain ownership is enforced is
-  gone: the logbook service enforces it.
+Breaking. Every name says what the thing is, and the airlock's two writes
+are two methods.
+
+- `Proposal` is `ActionProposedByAgentLoop`, kind
+  `action-proposed-by-agent-loop` (was `proposed`). Same body.
+- `Decided<P>` is `AirlockDecisionOnAction<P>`, with
+  `AirlockDecisionOnAction.kind` = `airlock-decision-on-action` for the
+  logbook entry the airlock keeps it as. It no longer extends anything.
+- `DecidedWebRequest` is `AirlockDecisionOnWebRequest`, kind
+  `airlock-decision-on-web-request` (was `web-request-decided`). It
+  carries the request's exact body, no renderer, and now `proposed`, the
+  proposal it answers, so no two decisions start byte-identical chains:
+  the logbook service refuses a repeated chain start once it names entries
+  by the hash of their text.
+- The renderer is gone: `Renderer`, `RendererName`, `Rendered` (kind
+  `rendered`), `DecidesAndRecordsActions.renderer` and `.rendered`, and
+  the `RendererId` export. A `WebRequest` carries its exact `body`, the
+  `Projection` it is drawn by, and `drawnFrom`, the recorded entry it is
+  drawn from, in place of a renderer's name and entries. Once allowed, the
+  airlock reads `drawnFrom` through `recordedOn`, draws the body by the
+  projection, and reaches the web driver only when it is byte-identical
+  to `body`. One projection: `teamsMessageFromModelReply`
+  (`teams-message-from-model-reply`), a Teams message whose text is a
+  model's reply. A web request's chain is its decision, then its result.
+- `DecidesAndRecordsActions.recordedOn` gives `({kind, body})`, the body
+  after its header, of an entry that belongs to the trajectory: on its own
+  chain, or a `result-of-action-or-why-refused` the airlock kept for one of
+  its proposals. Each reader checks the kind it expects, since a loop may
+  write a body of any shape under its own kinds: a web request draws only
+  from a `result-of-action-or-why-refused`, and a model call reads only a
+  `model-request` and its `model-request-piece`s.
+- `Entry<P>`, `Returned<P>` and `ReturnedProposal` are gone.
+  `DecidesAndRecordsActions.record(entry)` is
+  `recordDecision(decision)` and `recordResult(decision, result,
+  resultAsJson:)`; a result is handed the decision it follows, so a web
+  request's result names its decision as its previous without a lookup.
+  `Trajectory.entries` is `decisions` and `results`, the latter
+  `({decision, result})`.
+- A proposal's answer is the logbook kind
+  `result-of-action-or-why-refused` (was `returned`), body
+  `{"proposed": <hex>, "result": <outcome>}` (the `outcome` key is now
+  `result`), written by `resultOfActionOrWhyRefusedToJson` and
+  `proposalRejectedToJson` and read by `readResultOfActionOrWhyRefused`,
+  which gives `(proposed:, result:)` or null when the body is not one.
+- Docs: the journal is the logbook (is_logbook, run on the box by the
+  logbook service), and links and `Logbook.builtDefine` point at
+  https://github.com/intersyntactic/logbook. A web request's chain is
+  written out in full: the decision starts it, since the proposal's chain
+  is its loop user's alone. A model call goes out as a sign-in the rules
+  let it go out as; the loop holds none.
 
 ## 0.8.0
 

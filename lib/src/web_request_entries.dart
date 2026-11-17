@@ -1,61 +1,65 @@
 part of 'action.dart';
 
-// One web request's chain in the logbook: a [DecidedWebRequest] entry, the
-// [Rendered] entry its renderer writes after it, and the airlock's
-// `Returned` after that, each naming the one before as its previous. The
-// logbook service's tip check lets each link be written once. A renderer
-// that does not answer in time is closed by the airlock's `Returned`
-// (refused), whose previous is the `DecidedWebRequest`, after which a late
-// `Rendered` is turned away, since its previous is no longer the tip.
+// One web request's chain in the logbook. The airlock's
+// [AirlockDecisionOnWebRequest] logbook entry starts it (previous `-`): it
+// cannot follow the proposal, whose chain only the path's loop user may
+// extend. The airlock's [resultOfActionOrWhyRefusedKind] logbook entry
+// follows it, naming it as its previous.
 //
-// A renderer reads the one and writes the other, and the airlock reads what
-// it wrote. What came back from any proposed action, a web request's among
-// them, is recorded in full in a [ReturnedProposal].
+// The tip check does not stop two decisions on one proposal, since each
+// starts a chain of its own; the airlock decides each proposal once. Each
+// decision names its proposal, so no two start byte-identical chains, which
+// the logbook service refuses.
 
-/// A web request's [Decided] entry as the logbook holds it: what its
-/// renderer subscribes to the record for, and reads to know what to draw.
-final class DecidedWebRequest {
-  const DecidedWebRequest._(
+/// A web request's [AirlockDecisionOnAction] as the logbook holds it: the
+/// request, its exact body among it, and what was decided.
+final class AirlockDecisionOnWebRequest {
+  const AirlockDecisionOnWebRequest._(
     this.trajectory,
     this.place,
     this.request,
-    this.renderer,
     this.decision,
+    this.proposed,
   );
 
   /// The entry's kind in the logbook.
-  static const kind = 'web-request-decided';
+  static const kind = 'airlock-decision-on-web-request';
 
   /// [decided] as a web request's entry, its place written by
   /// [placeToJson]; null when it is not a web request's.
-  static DecidedWebRequest? of<P>(
-    Decided<P> decided,
+  static AirlockDecisionOnWebRequest? of<P>(
+    AirlockDecisionOnAction<P> decided,
     Object? Function(P place) placeToJson,
   ) => switch (decided.reach) {
-    MakesWebRequest(:final request, :final renderer) => DecidedWebRequest._(
+    MakesWebRequest(:final request) => AirlockDecisionOnWebRequest._(
       decided.trajectoryId,
       placeToJson(decided.place),
       request,
-      renderer,
       decided.decision,
+      decided.proposed,
     ),
     Reads() || Writes() || Starts() || CallsTheModel() => null,
   };
 
   /// [json] read back as a web request's entry, each part checked as its
   /// type's `parse` checks it. Throws a [FormatException] naming the part.
-  static DecidedWebRequest fromJson(Object? json, [String field = 'decided']) {
+  static AirlockDecisionOnWebRequest fromJson(
+    Object? json, [
+    String field = 'decided',
+  ]) {
     final map = _object(field, json);
-    return DecidedWebRequest._(
+    return AirlockDecisionOnWebRequest._(
       TrajectoryId.parse(_string('$field.trajectory', map['trajectory'])) ??
           (throw FormatException('$field.trajectory: not a trajectory')),
       map['place'],
       _webRequestFromJson(map['request'], '$field.request'),
-      switch (map['renderer']) {
-        null => null,
-        final renderer => _rendererFromJson(renderer, '$field.renderer'),
-      },
       _decisionFromJson(map['decision'], '$field.decision'),
+      switch (map['proposed']) {
+        null => null,
+        final hex =>
+          EntryId.parse(_string('$field.proposed', hex)) ??
+              (throw FormatException('$field.proposed: not an entry id')),
+      },
     );
   }
 
@@ -65,19 +69,16 @@ final class DecidedWebRequest {
   final Object? place;
   final WebRequest request;
 
-  /// The renderer the request named, exactly; null when its name named
-  /// none, and the request was denied.
-  final Renderer? renderer;
   final Decision decision;
+
+  /// The [ActionProposedByAgentLoop] logbook entry that asked for the
+  /// request; null for one proposed in the airlock service's own process.
+  final EntryId? proposed;
 
   Object? toJson() => {
     'trajectory': trajectory.hex,
     'place': place,
     'request': _webRequestToJson(request),
-    'renderer': switch (renderer) {
-      final r? => {'id': r.id.hex, 'executable': r.executable.hex},
-      null => null,
-    },
     'decision': switch (decision) {
       Allow(:final by) => {'allow': true, 'by': by.name},
       Deny(:final why, :final by) => {
@@ -86,69 +87,49 @@ final class DecidedWebRequest {
         'by': by.name,
       },
     },
+    'proposed': proposed?.hex,
   };
 }
 
-/// What a renderer wrote after a [DecidedWebRequest] entry: the body it
-/// drew from the entries the request names, or why it drew none, and the
-/// source it was built from.
-final class Rendered {
-  const Rendered({
-    required this.decided,
-    required this.renderer,
-    required this.body,
-  });
+/// How a [WebRequest]'s body is drawn from the recorded entry it names:
+/// one pure function each, which the loop builds the body with and the
+/// airlock checks it by, byte for byte.
+enum Projection {
+  /// A Teams message whose text is a model's reply: drawn from a
+  /// [resultOfActionOrWhyRefusedKind] body whose result ran to text, as
+  /// `{"type":"message","text":<text>}`, Dart's `jsonEncode` of those two
+  /// keys in that order, with no whitespace and the text as UTF-8.
+  teamsMessageFromModelReply('teams-message-from-model-reply');
 
-  /// The entry's kind in the logbook.
-  static const kind = 'rendered';
+  const Projection(this.wire);
 
-  /// [json] read back, each part checked. Throws a [FormatException] naming
-  /// the part.
-  static Rendered fromJson(Object? json, [String field = 'rendered']) {
-    final map = _object(field, json);
-    return Rendered(
-      decided:
-          EntryId.parse(_string('$field.decided', map['decided'])) ??
-          (throw FormatException('$field.decided: not an entry id')),
-      renderer:
-          RendererId.parse(_string('$field.renderer', map['renderer'])) ??
-          (throw FormatException('$field.renderer: not a renderer id')),
-      body: decodeOutcome(
-        map['body'],
-        (json, field) => _string(field, json),
-        '$field.body',
-      ),
-    );
+  /// Its name in a proposal.
+  final String wire;
+
+  /// [wire] read back; null when it names none.
+  static Projection? parse(String wire) =>
+      values.where((p) => p.wire == wire).firstOrNull;
+
+  /// The body drawn from [recorded], the body (after its header) of the
+  /// [resultOfActionOrWhyRefusedKind] logbook entry a request names; null
+  /// when it draws none from it. The caller checks the entry's kind.
+  String? drawnFrom(String recorded) => switch (this) {
+    teamsMessageFromModelReply => switch (readResultOfActionOrWhyRefused(
+      _jsonOrNull(recorded),
+    )) {
+      (proposed: _, result: {'kind': 'ran', 'output': final String text}) =>
+        jsonEncode({'type': 'message', 'text': text}),
+      _ => null,
+    },
+  };
+}
+
+Object? _jsonOrNull(String text) {
+  try {
+    return jsonDecode(text);
+  } on FormatException {
+    return null;
   }
-
-  /// The [DecidedWebRequest] entry this answers, its previous.
-  final EntryId decided;
-
-  /// The source the renderer was built from, as it reports it: the airlock
-  /// has the request carried out with the body only when this is the id
-  /// the [DecidedWebRequest] names.
-  final RendererId renderer;
-
-  /// The body, or [Refused] with why there is none: an entry the request
-  /// names that the logbook does not hold, or that fails its checks.
-  final Outcome<String> body;
-
-  Object? toJson() => {
-    'decided': decided.hex,
-    'renderer': renderer.hex,
-    'body': encodeOutcome(body, (String text) => text),
-  };
-}
-
-Renderer _rendererFromJson(Object? json, String field) {
-  final map = _object(field, json);
-  return Renderer(
-    RendererId.parse(_string('$field.id', map['id'])) ??
-        (throw FormatException('$field.id: not a renderer id')),
-    executable:
-        ObjectId.parse(_string('$field.executable', map['executable'])) ??
-        (throw FormatException('$field.executable: not an object id')),
-  );
 }
 
 Decision _decisionFromJson(Object? json, String field) {

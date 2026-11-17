@@ -4,26 +4,27 @@ import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
-/// Allows everything, and keeps each entry it is asked to record.
+/// Allows everything, and keeps what it is asked to record, in order.
 final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
-  final kept = <Entry<int>>[];
+  final kept = <(String, int)>[];
 
   @override
   Future<Decision> decide(Reach reach, String rules) async =>
       const Allow(by: DecidedBy.rules);
 
   @override
-  Future<void> record(Entry<int> entry) async => kept.add(entry);
+  Future<void> recordDecision(AirlockDecisionOnAction<int> decision) async =>
+      kept.add(('decision', decision.place));
 
   @override
-  Future<Renderer?> renderer(RendererName name) async => null;
+  Future<void> recordResult(
+    AirlockDecisionOnAction<int> decision,
+    Outcome<Object?> result, {
+    required Object? resultAsJson,
+  }) async => kept.add(('result', decision.place));
 
   @override
-  Future<Outcome<String>> rendered(Decided<int> decided) async =>
-      const Refused('no renderer');
-
-  @override
-  Future<Outcome<String>> recordedOn(
+  Future<Outcome<({String kind, String body})>> recordedOn(
     TrajectoryId trajectory,
     EntryId entry,
   ) async => const Refused('nothing recorded');
@@ -80,10 +81,7 @@ void main() {
       expect((result as Done<String>).value, 'created');
       expect(applied, 1);
       expect(files.written, [path]);
-      expect(airlock.kept.map((e) => (e.runtimeType, e.place)), [
-        (Decided<int>, 7),
-        (Returned<int>, 7),
-      ]);
+      expect(airlock.kept, [('decision', 7), ('result', 7)]);
     },
   );
 

@@ -13,70 +13,112 @@ import 'contract_test.dart'
         hart,
         start,
         teams,
-        teamsReply,
+        teamsMessageOf,
         webRequest,
         writeAndFormat;
 
 /// [json] as the logbook would hold it and give it back: JSON text.
 Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
 
-/// The [Decided] entries recorded while [run] is carried through on a trajectory
+/// The [AirlockDecisionOnAction] entries recorded while [run] is carried through on a trajectory
 /// with [rules].
-Future<List<Decided<int>>> decidedWhile(
+Future<List<AirlockDecisionOnAction<int>>> decidedWhile(
   Future<void> Function(Trajectory<Set<String>, int> path) run, {
   Set<String> rules = const {},
 }) async {
   final airlock = LogAirlock();
   final path = start(airlock, [RecordedWeb(), MemoryFiles()], rules: rules);
-  final decided = <Decided<int>>[];
-  path.entries.listen((e) {
-    if (e case final Decided<int> d) decided.add(d);
-  });
+  final decided = <AirlockDecisionOnAction<int>>[];
+  path.decisions.listen(decided.add);
   await run(path);
   return decided;
 }
 
 void main() {
-  test("a web request's Decided entry reads back as it was written", () async {
-    expect(DecidedWebRequest.kind, 'web-request-decided');
-    final turn = EntryId.of(utf8.encode('done'));
+  test("a web request's decision reads back as it was written, its exact "
+      'body among it', () async {
+    expect(AirlockDecisionOnWebRequest.kind, 'airlock-decision-on-web-request');
+    final reply = EntryId.of(utf8.encode('a reply'));
+    final body = teamsMessageOf('Clause 4 — monthly.');
     final decided = await decidedWhile(
-      (path) => answerOf(webRequest(teams, hart, entries: [turn]), path.at(4)),
+      (path) => answerOf(
+        webRequest(teams, hart, drawnFrom: reply, body: body),
+        path.at(4),
+      ),
       rules: {'$teams as $hart'},
     );
-    final written = DecidedWebRequest.of(decided.single, (int place) => place)!;
-    final read = DecidedWebRequest.fromJson(throughText(written.toJson()));
+    final written = AirlockDecisionOnWebRequest.of(
+      decided.single,
+      (int place) => place,
+    )!;
+    final read = AirlockDecisionOnWebRequest.fromJson(
+      throughText(written.toJson()),
+    );
     expect(read.trajectory, written.trajectory);
     expect(read.place, 4);
     expect(read.request.origin, teams);
     expect(read.request.signIn, hart);
     expect(read.request.method, Method.post);
     expect(read.request.path, written.request.path);
-    expect(read.request.renderer, teamsReply.name);
-    expect(read.request.entries, [turn]);
-    expect(read.renderer?.id, teamsReply.renderer.id);
-    expect(read.renderer?.executable, teamsReply.renderer.executable);
+    expect(read.request.body, body);
+    expect(read.request.projection, Projection.teamsMessageFromModelReply);
+    expect(read.request.drawnFrom, reply);
     expect(read.decision, isA<Allow>());
     expect(read.decision.by, DecidedBy.rules);
+    expect(read.proposed, isNull);
   });
 
-  test('a denied web request, and one whose renderer named nothing, read back with '
-      'why', () async {
-    final decided = await decidedWhile((path) async {
-      await answerOf(webRequest(teams, hart), path.at(1));
-      await answerOf(webRequest(teams, hart, renderer: 'nowhere'), path.at(2));
-    });
-    final [denied, unnamed] = [
+  test('a web request decided for a proposal names it, so no two such '
+      'decisions are byte-identical', () async {
+    final [d] = await decidedWhile(
+      (path) => answerOf(webRequest(teams, hart), path.at(4)),
+      rules: {'$teams as $hart'},
+    );
+    Object? asProposed(String proposal) => AirlockDecisionOnWebRequest.of(
+      AirlockDecisionOnAction(
+        d.trajectoryId,
+        d.place,
+        d.reach,
+        d.decision,
+        proposed: EntryId.of(utf8.encode(proposal)),
+      ),
+      (int place) => place,
+    )!.toJson();
+    final read = AirlockDecisionOnWebRequest.fromJson(
+      throughText(asProposed('one')),
+    );
+    expect(read.proposed, EntryId.of(utf8.encode('one')));
+    expect(jsonEncode(asProposed('one')), isNot(jsonEncode(asProposed('two'))));
+    final json = asProposed('one');
+    expect(json, isA<Map<String, Object?>>());
+    if (json case final Map<String, Object?> written) {
+      expect(
+        () => AirlockDecisionOnWebRequest.fromJson({
+          ...written,
+          'proposed': 'nope',
+        }),
+        throwsFormatException,
+      );
+    }
+  });
+
+  test('a denied web request reads back with why', () async {
+    final decided = await decidedWhile(
+      (path) => answerOf(webRequest(teams, hart), path.at(1)),
+    );
+    final [denied] = [
       for (final d in decided)
-        DecidedWebRequest.fromJson(
-          throughText(DecidedWebRequest.of(d, (int place) => place)!.toJson()),
+        AirlockDecisionOnWebRequest.fromJson(
+          throughText(
+            AirlockDecisionOnWebRequest.of(d, (int place) => place)!.toJson(),
+          ),
         ),
     ];
     expect(denied.decision, isA<Deny>());
-    expect((denied.decision as Deny).why, 'not in the rules');
-    expect(denied.renderer, isNotNull);
-    expect(unnamed.renderer, isNull);
-    expect((unnamed.decision as Deny).why, 'no renderer named nowhere');
+    expect(switch (denied.decision) {
+      Deny(:final why) => why,
+      Allow() => 'allowed',
+    }, 'not in the rules');
   });
 
   test(
@@ -87,41 +129,13 @@ void main() {
         rules: {'write', 'dart'},
       );
       expect(
-        decided.map((d) => DecidedWebRequest.of(d, (int place) => place)),
+        decided.map(
+          (d) => AirlockDecisionOnWebRequest.of(d, (int place) => place),
+        ),
         everyElement(isNull),
       );
     },
   );
-
-  test('a Rendered entry reads back, with a body or a refusal', () {
-    final decided = EntryId.of(utf8.encode('the decided entry'));
-    for (final body in <Outcome<String>>[
-      const Ran('the tests pass'),
-      const Refused('entry abc is not recorded'),
-    ]) {
-      final read = Rendered.fromJson(
-        throughText(
-          Rendered(
-            decided: decided,
-            renderer: teamsReply.renderer.id,
-            body: body,
-          ).toJson(),
-        ),
-      );
-      expect(read.decided, decided);
-      expect(read.renderer, teamsReply.renderer.id);
-      expect(
-        switch (read.body) {
-          Ran(:final output) => 'ran $output',
-          Refused(:final why) => 'refused $why',
-        },
-        switch (body) {
-          Ran(:final output) => 'ran $output',
-          Refused(:final why) => 'refused $why',
-        },
-      );
-    }
-  });
 
   test('a malformed entry is refused, naming the part', () async {
     final decided = await decidedWhile(
@@ -130,7 +144,10 @@ void main() {
     );
     final json =
         throughText(
-              DecidedWebRequest.of(decided.single, (int p) => p)!.toJson(),
+              AirlockDecisionOnWebRequest.of(
+                decided.single,
+                (int p) => p,
+              )!.toJson(),
             )!
             as Map<String, Object?>;
     Map<String, Object?> change(String key, Object? value) => {
@@ -140,7 +157,7 @@ void main() {
     final request = json['request']! as Map<String, Object?>;
     String? whyNot(Object? entry) {
       try {
-        DecidedWebRequest.fromJson(entry);
+        AirlockDecisionOnWebRequest.fromJson(entry);
         return null;
       } on FormatException catch (e) {
         return e.message;
@@ -157,23 +174,17 @@ void main() {
       startsWith('decided.decision.by'),
     );
     expect(
-      whyNot(change('renderer', {'id': 'x', 'executable': 'y'})),
-      startsWith('decided.renderer.id'),
+      whyNot(change('request', {...request, 'projection': 'teams-reply'})),
+      startsWith('decided.request.projection'),
+    );
+    expect(
+      whyNot(change('request', {...request, 'drawnFrom': 'x'})),
+      startsWith('decided.request.drawnFrom'),
+    );
+    expect(
+      whyNot(change('request', {...request, 'body': null})),
+      startsWith('decided.request.body'),
     );
     expect(whyNot(change('trajectory', 'x')), startsWith('decided.trajectory'));
-    expect(
-      () => Rendered.fromJson({
-        'decided': 'x',
-        'renderer': teamsReply.renderer.id.hex,
-        'body': {'kind': 'ran', 'output': ''},
-      }),
-      throwsA(
-        isA<FormatException>().having(
-          (e) => e.message,
-          'message',
-          startsWith('rendered.decided'),
-        ),
-      ),
-    );
   });
 }

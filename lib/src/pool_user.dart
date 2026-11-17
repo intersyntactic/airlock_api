@@ -7,10 +7,10 @@ part of 'action.dart';
 // them from it: both sides need the one type.
 
 /// A user from the loop pool, `loop-<n>`: a trajectory's agent loop runs
-/// as it, holding the model sign-ins its rules allow. It owns no files
-/// (Nick, 16 Nov: "a loop user of its own, one per running loop, from a
-/// second pool"). The logbook service takes the entries on a path's chain,
-/// its proposals among them, only from the path's loop user.
+/// as it, one per running loop. It holds no sign-in and owns no files: the
+/// airlock makes the loop's model calls. The logbook service takes the
+/// entries on a path's chain, its proposals among them, only from the
+/// path's loop user.
 final class LoopUser extends _PoolUser {
   LoopUser._(super.n);
 

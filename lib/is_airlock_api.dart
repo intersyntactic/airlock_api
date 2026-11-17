@@ -10,7 +10,6 @@
 library;
 
 export 'package:is_content_id/is_content_id.dart' show ObjectId;
-export 'package:is_shapes/is_shapes.dart'
-    show DecidedBy, EntryId, RendererId, TrajectoryId;
+export 'package:is_shapes/is_shapes.dart' show DecidedBy, EntryId, TrajectoryId;
 
 export 'src/action.dart';
