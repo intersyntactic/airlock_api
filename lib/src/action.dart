@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show utf8;
 
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
@@ -9,6 +10,7 @@ part 'pool_user.dart';
 part 'web_request_entries.dart';
 part 'proposal.dart';
 part 'waiting_to_start.dart';
+part 'model_request.dart';
 
 /// What a tool's code returns for a call: an action whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
