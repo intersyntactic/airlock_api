@@ -26,9 +26,13 @@ are two methods.
   to `body`. One projection: `teamsMessageFromModelReply`
   (`teams-message-from-model-reply`), a Teams message whose text is a
   model's reply. A web request's chain is its decision, then its result.
-- `DecidesAndRecordsActions.recordedOn` gives an entry that belongs to the
-  trajectory: on its own chain, or a `result-of-action-or-why-refused` the
-  airlock kept for one of its proposals.
+- `DecidesAndRecordsActions.recordedOn` gives `({kind, body})`, the body
+  after its header, of an entry that belongs to the trajectory: on its own
+  chain, or a `result-of-action-or-why-refused` the airlock kept for one of
+  its proposals. Each reader checks the kind it expects, since a loop may
+  write a body of any shape under its own kinds: a web request draws only
+  from a `result-of-action-or-why-refused`, and a model call reads only a
+  `model-request` and its `model-request-piece`s.
 - `Entry<P>`, `Returned<P>` and `ReturnedProposal` are gone.
   `DecidesAndRecordsActions.record(entry)` is
   `recordDecision(decision)` and `recordResult(decision, result,
