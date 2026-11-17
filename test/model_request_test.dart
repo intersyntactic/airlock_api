@@ -13,9 +13,10 @@ void main() {
     ',{"role":"user","content":"and again"}',
     ']}',
   ];
+  // Each piece named by its content: the object its entry points at.
   final pieceIds = [
     for (final text in texts)
-      EntryId.of(utf8.encode(jsonEncode(ModelRequestPiece(text).toJson()))),
+      ObjectId.of(utf8.encode(jsonEncode(ModelRequestPiece(text).toJson()))),
   ];
   final request = ModelRequest(
     pieces: pieceIds,
