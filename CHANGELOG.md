@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0 (unreleased)
+
+The model call is an action (Nick, 17 Nov 20:12: "shit so the model call
+should really go through the airlock hey?", 20:16: "we do it tonight";
+https://github.com/enspyrco/intersyntactic/pull/1168, replacing the
+12 Nov ruling that the model is the agent planning). Breaking.
+
+- `AskTheModel` (`Program.askTheModel`, proposed as `model`): a
+  `ModelCall` of a `ModelSignInName`, a `ModelName` and the `ModelRequest`
+  entry, answered by a `ModelReply`. Its reach is `CallsTheModel`. The one
+  action the loop proposes for itself.
+- `ModelRequest` (kind `model-request`) and `ModelRequestPiece` (kind
+  `model-request-piece`): what a step sends, recorded before it is sent,
+  its `systemPrompt` and `request` each a `RecordedText` of piece entries
+  and a sha256, with `join`.
+- `DecidesAndRecordsActions.recordedOn(trajectory, entry)`, new and
+  required: an entry's content, only from that trajectory's own chain.
+  `AskTheModel` reads its request and pieces through it, joins and checks
+  each text, and hands is_effects's `AsksTheModel` driver exactly those.
+- The reply streams as is_effects's `ReplyArriving` in `underway`, never
+  recorded. Depends on is_effects ^0.7.0.
+
 ## 0.7.1
 
 - Takes is_effects `>=0.6.0 <0.8.0`, not `^0.6.0`. is_flight_rules 0.1.0

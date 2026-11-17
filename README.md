@@ -50,9 +50,9 @@ while (result is Action<ExecResult>) {
 ## An action
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
-  (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`) and
+  (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`),
   `MakeWebRequest` (`Program.web`, a `WebRequest` to an `Origin` through a
-  named `SignIn`). Programs reach drivers, so they belong with the drivers
+  named `SignIn`) and `AskTheModel` (`Program.askTheModel`, below). Programs reach drivers, so they belong with the drivers
   and the airlock to what is trusted; a new kind of action is a new driver
   and program.
 - `Action<A>`: a program, its input and the continuation, all private. Made
@@ -60,8 +60,9 @@ while (result is Action<ExecResult>) {
   program's own type. Nothing about an action shows outside; when it is
   proposed, what it would do is worked out as its `Reach`, which the
   airlock decides and records: `Reads(path)`, `Writes(file)`,
-  `Starts(program, args)` or `MakesWebRequest(request, renderer)`. A rule
-  grants a web request by origin and sign-in together.
+  `Starts(program, args)`, `MakesWebRequest(request, renderer)` or
+  `CallsTheModel(call)`. A rule grants a web request by origin and sign-in
+  together, and a model call by its model sign-in.
 
 ## A web request
 
@@ -100,9 +101,42 @@ renderer the record names exactly
   `ReturnedProposal` (below).
 
 A web request is an action, decided like any other: a request a tool makes
-to a chat or an API. A trajectory's prompts are not: the model is the
-agent planning, so a prompt is not decided, and no tool is in it. How a
-prompt reaches the model and is recorded is not this contract's.
+to a chat or an API.
+
+## A model call
+
+The model is outside the station: the case's words leave the machine with
+every call, so a model call is an action, the one the loop proposes for
+itself rather than drawing from an intent in the model's reply
+(https://github.com/enspyrco/intersyntactic/pull/1168, replacing the ruling
+that the model is the agent planning and is not decided). The loop holds no
+sign-in and has no network; the model driver, holding every model sign-in,
+makes the call.
+
+- The loop records what it will send first: each text, the system prompt
+  and the request, as `ModelRequestPiece` entries (kind
+  `model-request-piece`, `{"text"}`), then a `ModelRequest` (kind
+  `model-request`) naming them: `systemPrompt` and `request`, each a
+  `RecordedText` (its pieces in order and the sha256 of its UTF-8 bytes),
+  and `builtFrom`, the turns they were rendered from. Pieces are named by
+  entry, so each was recorded before it is sent; repeated history is still
+  stored once, as one object under many entries.
+- `AskTheModel` (proposed as `model`) takes a `ModelCall`: the
+  `ModelSignInName` it goes as, the `ModelName`, and the `ModelRequest`
+  entry. Its reach, `CallsTheModel`, is decided by the sign-in.
+- Once allowed, the airlock reads the request and each piece with
+  `DecidesAndRecordsActions.recordedOn(trajectory, entry)`, which refuses an
+  entry on any other trajectory's chain, so no loop can have another's
+  conversation sent. It joins each text and checks its sha256
+  (`RecordedText.join`), and hands the driver (is_effects's
+  `AsksTheModel`) exactly those texts. Anything missing, elsewhere, or not
+  joining refuses the call before the driver is reached, each for its own
+  reason. The reply streams as `ReplyArriving` in `underway`, never
+  recorded; the whole `ModelReply` is the outcome, recorded once.
+- What the record proves stops at the driver: the texts it holds are the
+  texts the model driver was given. A driver that runs a program (such as
+  `claude -p`) sends what that program sends, which may add context of its
+  own on the way to the model provider.
 
 ## A trajectory
 
