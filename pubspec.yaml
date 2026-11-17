@@ -15,15 +15,6 @@ dependencies:
   is_effects: ^0.7.0
   is_shapes: ^0.5.0
 
-# Until is_effects 0.7.0 is on pub.dev: its PR head, AsksTheModel with the
-# system prompt (https://github.com/intersyntactic/effects/pull/4). Removed
-# before this merges.
-dependency_overrides:
-  is_effects:
-    git:
-      url: https://github.com/intersyntactic/effects
-      ref: b313ac87188fb553b9a07ad31407dc1de9c4a610
-
 dev_dependencies:
   analyzer: ^14.7.0
   lints: ^6.1.0
