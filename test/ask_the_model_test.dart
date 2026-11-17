@@ -158,6 +158,18 @@ void main() {
         (a) => a.remember('"hello"'),
         'not a model request',
       ),
+      (
+        // Hashed as if the piece were skipped, so only its own check refuses.
+        'a piece that is not a model request piece',
+        (a) => recordedRequest(
+          a,
+          request: RecordedText(
+            pieces: [a.remember('"hello"')],
+            sha256: ObjectId.of(utf8.encode('')),
+          ),
+        ),
+        'not a model request piece',
+      ),
     ];
     for (final (why, request, said) in cases) {
       final airlock = LogAirlock();
