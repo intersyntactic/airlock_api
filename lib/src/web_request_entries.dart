@@ -1,18 +1,18 @@
 part of 'action.dart';
 
-// One web request's chain in the journal: a [DecidedWebRequest] entry, the
+// One web request's chain in the logbook: a [DecidedWebRequest] entry, the
 // [Rendered] entry its renderer writes after it, and the airlock's
 // `Returned` after that, each naming the one before as its previous. The
-// journal's tip check lets each link be written once. A renderer that does
-// not answer in time is closed by the airlock's `Returned` (refused), whose
-// previous is the `DecidedWebRequest`, after which a late `Rendered` is
-// turned away, since its previous is no longer the tip.
+// logbook service's tip check lets each link be written once. A renderer
+// that does not answer in time is closed by the airlock's `Returned`
+// (refused), whose previous is the `DecidedWebRequest`, after which a late
+// `Rendered` is turned away, since its previous is no longer the tip.
 //
 // A renderer reads the one and writes the other, and the airlock reads what
 // it wrote. What came back from any proposed action, a web request's among
 // them, is recorded in full in a [ReturnedProposal].
 
-/// A web request's [Decided] entry as the journal holds it: what its
+/// A web request's [Decided] entry as the logbook holds it: what its
 /// renderer subscribes to the record for, and reads to know what to draw.
 final class DecidedWebRequest {
   const DecidedWebRequest._(
@@ -23,7 +23,7 @@ final class DecidedWebRequest {
     this.decision,
   );
 
-  /// The entry's kind in the journal.
+  /// The entry's kind in the logbook.
   static const kind = 'web-request-decided';
 
   /// [decided] as a web request's entry, its place written by
@@ -99,7 +99,7 @@ final class Rendered {
     required this.body,
   });
 
-  /// The entry's kind in the journal.
+  /// The entry's kind in the logbook.
   static const kind = 'rendered';
 
   /// [json] read back, each part checked. Throws a [FormatException] naming
@@ -130,7 +130,7 @@ final class Rendered {
   final RendererId renderer;
 
   /// The body, or [Refused] with why there is none: an entry the request
-  /// names that the journal does not hold, or that fails its checks.
+  /// names that the logbook does not hold, or that fails its checks.
   final Outcome<String> body;
 
   Object? toJson() => {

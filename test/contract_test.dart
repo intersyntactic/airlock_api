@@ -72,7 +72,7 @@ String reachOf(Reach reach) => switch (reach) {
 /// as `<origin> as <sign-in>`. Places are step numbers. Keeps a line per
 /// entry, and can be told to fail writing one kind of entry.
 ///
-/// Knows `teams-reply` only. Its journal holds the text of each entry a
+/// Knows `teams-reply` only. Its logbook holds the text of each entry a
 /// test [remember]s, and its renderer draws a body by joining the texts of
 /// the entries a request names, logging `render <n>` when the airlock reads
 /// what it recorded.
@@ -85,14 +85,14 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   /// Each `returned` entry recorded for a proposal, by the proposal it
   /// answers, as the airlock would write it on its own chain.
   final returned = <EntryId, ReturnedProposal>{};
-  final _journal = <EntryId, String>{};
+  final _logbook = <EntryId, String>{};
   final _chainOf = <EntryId, TrajectoryId>{};
 
-  /// Records [text], as the journal would, on [on]'s chain (by default the
+  /// Records [text], as the logbook would, on [on]'s chain (by default the
   /// trajectory [start] starts), and gives its id.
   EntryId remember(String text, {TrajectoryId? on}) {
     final id = EntryId.of(utf8.encode(text));
-    _journal[id] = text;
+    _logbook[id] = text;
     _chainOf[id] = on ?? idOf('started root');
     return id;
   }
@@ -101,7 +101,7 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   Future<Outcome<String>> recordedOn(
     TrajectoryId trajectory,
     EntryId entry,
-  ) async => switch ((_journal[entry], _chainOf[entry])) {
+  ) async => switch ((_logbook[entry], _chainOf[entry])) {
     (final text?, final chain) when chain == trajectory => Ran(text),
     (_?, _) => Refused('entry $entry is on another chain'),
     (null, _) => Refused('entry $entry is not recorded'),
@@ -117,7 +117,7 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
     log.add('render ${request.entries.length}');
     final texts = <String>[];
     for (final id in request.entries) {
-      final text = _journal[id];
+      final text = _logbook[id];
       if (text == null) return Refused('entry $id is not recorded');
       texts.add(text);
     }
@@ -552,7 +552,7 @@ void main() {
     expect(airlock.readFor, isEmpty);
   });
 
-  test('an entry the journal does not hold refuses the web request', () async {
+  test('an entry the logbook does not hold refuses the web request', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final unrecorded = EntryId.of(utf8.encode('never written'));

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1 (unreleased)
+
+- Docs only. The journal is the logbook (is_logbook, run on the box by
+  the logbook service): every doc comment and the README say so, and the
+  links and `Logbook.builtDefine` point at
+  https://github.com/intersyntactic/logbook. The note that the airlock
+  must not act on `proposed` entries until chain ownership is enforced is
+  gone: the logbook service enforces it.
+
 ## 0.8.0
 
 The model call is an action (Nick, 17 Nov 20:12: "shit so the model call

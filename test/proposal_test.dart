@@ -18,7 +18,7 @@ import 'contract_test.dart'
         writeAndFormat;
 
 /// A trajectory's chain and the airlock's, in memory: each `proposed`
-/// entry the loop writes goes through `jsonEncode` and back, as the journal
+/// entry the loop writes goes through `jsonEncode` and back, as the logbook
 /// would keep it, and is named by the hash of its bytes; the airlock service
 /// considers it on [path], and the loop is handed the `returned` entry that
 /// names it, through `jsonEncode` and back, as loop_launcher would hand it.

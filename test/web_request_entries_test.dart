@@ -17,7 +17,7 @@ import 'contract_test.dart'
         webRequest,
         writeAndFormat;
 
-/// [json] as the journal would hold it and give it back: JSON text.
+/// [json] as the logbook would hold it and give it back: JSON text.
 Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
 
 /// The [Decided] entries recorded while [run] is carried through on a trajectory

@@ -66,7 +66,7 @@ while (result is Action<ExecResult>) {
 
 ## A web request
 
-Everything a web request says is drawn from recorded journal entries, by a
+Everything a web request says is drawn from recorded logbook entries, by a
 renderer the record names exactly
 (https://github.com/enspyrco/intersyntactic/issues/1147).
 
@@ -90,11 +90,11 @@ renderer the record names exactly
   reading that entry from the record; it is called only once `Decided` is
   kept, and what it gives is the body the web driver carries out. So the exact bytes that
   went out are in the record.
-- A web request's chain in the journal: `DecidedWebRequest` (kind
+- A web request's chain in the logbook: `DecidedWebRequest` (kind
   `web-request-decided`), then
   the renderer's `Rendered` (kind `rendered`), then the airlock's
-  `Returned`, each naming the one before as its previous, so the journal's
-  tip check lets each be written once. When the renderer does not answer
+  `Returned`, each naming the one before as its previous, so the logbook
+  service's tip check lets each be written once. When the renderer does not answer
   in time, `Returned` (refused) names the `DecidedWebRequest` as its previous and
   a late `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
   What came back from any proposed action is recorded in full, in a
@@ -169,8 +169,9 @@ supplies and the airlock records; nothing here computes one.
   decision (`Decided`) and only then is a driver reached; the action comes
   back and the airlock records it (`Returned`), and only then does the
   continuation see it. A record that cannot be written ends the call. A
-  `Decided` with no `Returned` is an action cut short. Recorded means it survives the journal crashing, not a power
-  cut (https://github.com/intersyntactic/journal/pull/12).
+  `Decided` with no `Returned` is an action cut short. Recorded means it
+  survives the logbook service crashing, not a power cut
+  (https://github.com/intersyntactic/logbook/pull/12).
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped trajectory's refusal
   is the person's.
@@ -203,11 +204,10 @@ and records, and only a driver carries an action out.
   for the `returned` entry that names it, which loop_launcher hands the
   loop. `action.next(crux)` is the same with either, so a tool does not
   change.
-- A `Proposal` (kind `proposed`) names no trajectory. The journal takes
-  the entries on a path's chain only from that path's loop user, so the
-  airlock takes the path from the chain the entry is on, and a loop has no
-  claim to make about another path. Until the journal enforces that, the
-  airlock must not act on `proposed` entries.
+- A `Proposal` (kind `proposed`) names no trajectory. The logbook service
+  takes the entries on a path's chain only from that path's loop user, so
+  the airlock takes the path from the chain the entry is on, and a loop has
+  no claim to make about another path.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
   every part as its type's own `parse` does, with is_effects's codecs.
   `trajectory.consider(proposal, place, proposed: entryId)` decides and

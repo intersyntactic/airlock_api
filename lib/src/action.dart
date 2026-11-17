@@ -544,7 +544,7 @@ final class WebRequest {
 
   /// The recorded entries the body is drawn from, in the order the renderer
   /// is given them: turns, events, the airlock's own entries, chunks of a
-  /// reply. Any one the journal does not hold refuses the request.
+  /// reply. Any one the logbook does not hold refuses the request.
   final List<EntryId> entries;
 }
 
@@ -589,19 +589,19 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 ///
 /// [executable] names the render runner built with it: the one shared
 /// program that runs a renderer and writes its [Rendered] entry, reading
-/// each request's entries from the journal, compiled once per renderer
+/// each request's entries from the logbook, compiled once per renderer
 /// with [id] as a define, which it reports in [Rendered.renderer]. Since
 /// the define is compiled in, each renderer's render runner has its own
-/// build, and that build is what the journal's writer approves. Both are
+/// build, and that build is what the logbook service approves. Both are
 /// recorded in the [Decided] entry, so an old request can be rebuilt from
-/// the journal and checked
+/// the logbook and checked
 /// (https://github.com/enspyrco/intersyntactic/issues/1147).
 final class Renderer {
   const Renderer(this.id, {required this.executable});
 
   final RendererId id;
 
-  /// The journal object holding the render runner's bytes, built with
+  /// The logbook object holding the render runner's bytes, built with
   /// [id].
   final ObjectId executable;
 }
@@ -799,10 +799,9 @@ final class Trajectory<R, P> {
   /// decided and recorded, and carried out by a driver if it is allowed. Its
   /// [Decided] and [Returned] entries name [proposed].
   ///
-  /// Only for an entry on this path's own chain, which the journal takes
-  /// only from this path's loop user, and only once the journal enforces
-  /// that. [place] is [Proposal.place] read as a [P] by the airlock service,
-  /// which knows [P].
+  /// Only for an entry on this path's own chain, which the logbook service
+  /// takes only from this path's loop user. [place] is [Proposal.place] read
+  /// as a [P] by the airlock service, which knows [P].
   Future<void> consider(
     Proposal proposal,
     P place, {
@@ -866,11 +865,11 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// is kept, and its outcome flows on only once its [Returned] entry is; an
   /// error thrown here ends the call.
   ///
-  /// Kept means it survives the journal crashing or being killed, not a
-  /// power cut: the journal answers before forcing the entry to disk, and a
-  /// power cut can leave an entry with missing bytes, which its `check()`
-  /// reports. So "no driver is reached without a recorded [Decided]" holds
-  /// across crashes (https://github.com/intersyntactic/journal/pull/12).
+  /// Kept means it survives the logbook service crashing or being killed,
+  /// not a power cut: the logbook service answers before forcing the entry
+  /// to disk, and a power cut can leave an entry with missing bytes, which
+  /// its `check()` reports. So "no driver is reached without a recorded [Decided]" holds
+  /// across crashes (https://github.com/intersyntactic/logbook/pull/12).
   Future<void> record(Entry<P> entry);
 
   /// The renderer called [name], or null when there is none, so the
@@ -892,7 +891,7 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   ///
   /// The render runner reports the renderer it was built with, the
   /// archive hash its `pubspec.lock` records, given as a define at compile
-  /// time (as is_journal's `Journal.builtDefine` gives a journal its code
+  /// time (as is_logbook's `Logbook.builtDefine` gives a logbook its code
   /// hash), and an entry
   /// whose renderer reports anything other than the id [decided] names is
   /// refused. That rules out a stale or mis-built renderer being taken for

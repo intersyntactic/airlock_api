@@ -17,7 +17,7 @@ part of 'action.dart';
 /// through the record service, by a sender it allows, before it was sent. A
 /// piece repeated from an earlier request (the history so far) is a new
 /// entry with a new id, since an entry's id hashes its previous too, but its
-/// bytes are kept once: the journal stores an entry's content as an object,
+/// bytes are kept once: the logbook stores an entry's content as an object,
 /// by sha256, however many entries name it.
 ///
 /// Its text is a run of the exact text the loop rendered: of the system
@@ -27,7 +27,7 @@ part of 'action.dart';
 final class ModelRequestPiece {
   const ModelRequestPiece(this.text);
 
-  /// The entry's kind in the journal.
+  /// The entry's kind in the logbook.
   static const kind = 'model-request-piece';
 
   /// [json] read back, strictly: anything but exactly a `text` throws a
@@ -123,7 +123,7 @@ final class ModelRequest {
     Iterable<EntryId> builtFrom = const [],
   }) : builtFrom = List.unmodifiable(builtFrom);
 
-  /// The entry's kind in the journal.
+  /// The entry's kind in the logbook.
   static const kind = 'model-request';
 
   /// [json] read back, strictly: a key it does not know, or a part that is
