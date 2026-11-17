@@ -13,7 +13,7 @@ import 'contract_test.dart'
         hart,
         start,
         teams,
-        teamsReply,
+        teamsMessageOf,
         webRequest,
         writeAndFormat;
 
@@ -35,11 +35,16 @@ Future<List<AirlockDecisionOnAction<int>>> decidedWhile(
 }
 
 void main() {
-  test("a web request's AirlockDecisionOnAction entry reads back as it was written", () async {
+  test("a web request's decision reads back as it was written, its exact "
+      'body among it', () async {
     expect(AirlockDecisionOnWebRequest.kind, 'airlock-decision-on-web-request');
-    final turn = EntryId.of(utf8.encode('done'));
+    final reply = EntryId.of(utf8.encode('a reply'));
+    final body = teamsMessageOf('Clause 4 — monthly.');
     final decided = await decidedWhile(
-      (path) => answerOf(webRequest(teams, hart, entries: [turn]), path.at(4)),
+      (path) => answerOf(
+        webRequest(teams, hart, drawnFrom: reply, body: body),
+        path.at(4),
+      ),
       rules: {'$teams as $hart'},
     );
     final written = AirlockDecisionOnWebRequest.of(
@@ -55,10 +60,9 @@ void main() {
     expect(read.request.signIn, hart);
     expect(read.request.method, Method.post);
     expect(read.request.path, written.request.path);
-    expect(read.request.renderer, teamsReply.name);
-    expect(read.request.entries, [turn]);
-    expect(read.renderer?.id, teamsReply.renderer.id);
-    expect(read.renderer?.executable, teamsReply.renderer.executable);
+    expect(read.request.body, body);
+    expect(read.request.projection, Projection.teamsMessageFromModelReply);
+    expect(read.request.drawnFrom, reply);
     expect(read.decision, isA<Allow>());
     expect(read.decision.by, DecidedBy.rules);
     expect(read.proposed, isNull);
@@ -66,9 +70,8 @@ void main() {
 
   test('a web request decided for a proposal names it, so no two such '
       'decisions are byte-identical', () async {
-    final turn = EntryId.of(utf8.encode('done'));
     final [d] = await decidedWhile(
-      (path) => answerOf(webRequest(teams, hart, entries: [turn]), path.at(4)),
+      (path) => answerOf(webRequest(teams, hart), path.at(4)),
       rules: {'$teams as $hart'},
     );
     Object? asProposed(String proposal) => AirlockDecisionOnWebRequest.of(
@@ -99,13 +102,11 @@ void main() {
     }
   });
 
-  test('a denied web request, and one whose renderer named nothing, read back with '
-      'why', () async {
-    final decided = await decidedWhile((path) async {
-      await answerOf(webRequest(teams, hart), path.at(1));
-      await answerOf(webRequest(teams, hart, renderer: 'nowhere'), path.at(2));
-    });
-    final [denied, unnamed] = [
+  test('a denied web request reads back with why', () async {
+    final decided = await decidedWhile(
+      (path) => answerOf(webRequest(teams, hart), path.at(1)),
+    );
+    final [denied] = [
       for (final d in decided)
         AirlockDecisionOnWebRequest.fromJson(
           throughText(
@@ -114,10 +115,10 @@ void main() {
         ),
     ];
     expect(denied.decision, isA<Deny>());
-    expect((denied.decision as Deny).why, 'not in the rules');
-    expect(denied.renderer, isNotNull);
-    expect(unnamed.renderer, isNull);
-    expect((unnamed.decision as Deny).why, 'no renderer named nowhere');
+    expect(switch (denied.decision) {
+      Deny(:final why) => why,
+      Allow() => 'allowed',
+    }, 'not in the rules');
   });
 
   test(
@@ -135,36 +136,6 @@ void main() {
       );
     },
   );
-
-  test('a Rendered entry reads back, with a body or a refusal', () {
-    final decided = EntryId.of(utf8.encode('the decided entry'));
-    for (final body in <Outcome<String>>[
-      const Ran('the tests pass'),
-      const Refused('entry abc is not recorded'),
-    ]) {
-      final read = Rendered.fromJson(
-        throughText(
-          Rendered(
-            decided: decided,
-            renderer: teamsReply.renderer.id,
-            body: body,
-          ).toJson(),
-        ),
-      );
-      expect(read.decided, decided);
-      expect(read.renderer, teamsReply.renderer.id);
-      expect(
-        switch (read.body) {
-          Ran(:final output) => 'ran $output',
-          Refused(:final why) => 'refused $why',
-        },
-        switch (body) {
-          Ran(:final output) => 'ran $output',
-          Refused(:final why) => 'refused $why',
-        },
-      );
-    }
-  });
 
   test('a malformed entry is refused, naming the part', () async {
     final decided = await decidedWhile(
@@ -203,23 +174,17 @@ void main() {
       startsWith('decided.decision.by'),
     );
     expect(
-      whyNot(change('renderer', {'id': 'x', 'executable': 'y'})),
-      startsWith('decided.renderer.id'),
+      whyNot(change('request', {...request, 'projection': 'teams-reply'})),
+      startsWith('decided.request.projection'),
+    );
+    expect(
+      whyNot(change('request', {...request, 'drawnFrom': 'x'})),
+      startsWith('decided.request.drawnFrom'),
+    );
+    expect(
+      whyNot(change('request', {...request, 'body': null})),
+      startsWith('decided.request.body'),
     );
     expect(whyNot(change('trajectory', 'x')), startsWith('decided.trajectory'));
-    expect(
-      () => Rendered.fromJson({
-        'decided': 'x',
-        'renderer': teamsReply.renderer.id.hex,
-        'body': {'kind': 'ran', 'output': ''},
-      }),
-      throwsA(
-        isA<FormatException>().having(
-          (e) => e.message,
-          'message',
-          startsWith('rendered.decided'),
-        ),
-      ),
-    );
   });
 }

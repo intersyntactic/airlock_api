@@ -12,16 +12,18 @@ import 'contract_test.dart'
         RecordedWeb,
         answerOf,
         hart,
+        recordedReply,
         start,
         teams,
+        teamsMessageOf,
         webRequest,
         writeAndFormat;
 
-/// A trajectory's chain and the airlock's, in memory: each `proposed`
-/// entry the loop writes goes through `jsonEncode` and back, as the logbook
-/// would keep it, and is named by the hash of its bytes; the airlock service
-/// considers it on [path], and the loop is handed the `returned` entry that
-/// names it, through `jsonEncode` and back, as loop_launcher would hand it.
+/// A trajectory's chain and the airlock's, in memory: each proposal the
+/// loop writes goes through `jsonEncode` and back, as the logbook would keep
+/// it, and is named by the hash of its bytes; the airlock service considers
+/// it on [path], and the loop is handed the result that names it, through
+/// `jsonEncode` and back, as loop_launcher would hand it.
 /// Places are ints. Keeps why each rejected entry was rejected.
 final class RecordedLink implements ProposesActionsThroughTheRecord {
   RecordedLink(this.path, this.airlock);
@@ -124,20 +126,20 @@ void main() {
   });
 
   test(
-    'a web request through the record is drawn from recorded entries',
+    'a web request proposed through the record sends a recorded reply',
     () async {
       final web = RecordedWeb();
       final airlock = LogAirlock();
-      final turn = airlock.remember('done');
+      final reply = recordedReply(airlock, 'done');
       final path = start(airlock, [web], rules: {'$teams as $hart'});
       expect(
         await answerOf(
-          webRequest(teams, hart, entries: [turn]),
+          webRequest(teams, hart, drawnFrom: reply),
           loopCrux(RecordedLink(path, airlock)),
         ),
         '201 activity-1',
       );
-      expect(web.requests.single.body, 'done');
+      expect(web.requests.single.body, teamsMessageOf('done'));
     },
   );
 
@@ -179,8 +181,9 @@ void main() {
       'path': '/v3/conversations/c/activities',
       'signIn': 'hart-bot',
       'headers': <String, String>{},
-      'renderer': 'teams-reply',
-      'entries': <String>[],
+      'body': '{"type":"message","text":"done"}',
+      'projection': 'teams-message-from-model-reply',
+      'drawnFrom': '0' * 64,
       ...change,
     };
     final answers = [
@@ -189,18 +192,18 @@ void main() {
         {
           'headers': {'Authorization': 'Bearer x'},
         },
-        {'renderer': 'Teams Reply'},
-        {
-          'entries': ['not an id'],
-        },
+        {'projection': 'teams-reply'},
+        {'drawnFrom': 'not an id'},
+        {'body': null},
       ])
         await link.propose({...proposal, 'input': requestWith(change)}),
     ];
-    expect(link.rejected, hasLength(4));
+    expect(link.rejected, hasLength(5));
     expect(link.rejected[0], startsWith('input.path'));
     expect(link.rejected[1], startsWith('input.headers'));
-    expect(link.rejected[2], startsWith('input.renderer'));
-    expect(link.rejected[3], startsWith('input.entries'));
+    expect(link.rejected[2], startsWith('input.projection'));
+    expect(link.rejected[3], startsWith('input.drawnFrom'));
+    expect(link.rejected[4], startsWith('input.body'));
     expect(
       answers.map(
         (a) => decodeOutcome<Never>(a, (_, _) => throw StateError('ran')),

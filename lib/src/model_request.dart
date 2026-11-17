@@ -4,9 +4,10 @@ part of 'action.dart';
 // (https://github.com/enspyrco/intersyntactic/pull/1168; Nick, 17 Nov:
 // "shit so the model call should really go through the airlock hey?", then
 // "we do it tonight"). What a step sends is in the record before it is
-// sent: the loop records each text it rendered, the system prompt and the
-// request, as pieces (Nick, 12 Nov: byte ranges of the exact bytes sent,
-// joined and compared before sending, whole when it won't split), then a
+// sent: the loop records each text it drew from its turns, the system
+// prompt and the request, as pieces (Nick, 12 Nov: byte ranges of the
+// exact bytes sent, joined and compared before sending, whole when it
+// won't split), then a
 // [ModelRequest] naming them. The airlock joins each text's pieces, checks
 // the join against its sha256, and hands the model driver exactly those
 // bytes, so what it allows is what is sent.
@@ -20,10 +21,10 @@ part of 'action.dart';
 /// bytes are kept once: the logbook stores an entry's content as an object,
 /// by sha256, however many entries name it.
 ///
-/// Its text is a run of the exact text the loop rendered: of the system
-/// prompt, or of the request (the API's JSON, or the message a program
-/// reads). A turn's entry is never a piece, since its bytes are not the
-/// text's.
+/// Its text is a run of the exact text the loop drew from its turns: of
+/// the system prompt, or of the request (the API's JSON, or the message a
+/// program reads). A turn's entry is never a piece, since its bytes are not
+/// the text's.
 final class ModelRequestPiece {
   const ModelRequestPiece(this.text);
 
@@ -112,7 +113,7 @@ final class RecordedText {
 
 /// What a step sends the model, recorded before it is sent: its
 /// [systemPrompt] and its [request], each as a [RecordedText], and the
-/// turns they were rendered from.
+/// turns they were drawn from.
 ///
 /// Written by the loop on its trajectory's chain, which only its loop user
 /// writes, so it names no trajectory, as an [ActionProposedByAgentLoop]
@@ -153,7 +154,7 @@ final class ModelRequest {
   /// What it is asked: the API's JSON, or the one message a program reads.
   final RecordedText request;
 
-  /// The turns the texts were rendered from, in order: where they came
+  /// The turns the texts were drawn from, in order: where they came
   /// from, for a reader of the record. Not checked here: the texts are what
   /// is sent.
   final List<EntryId> builtFrom;

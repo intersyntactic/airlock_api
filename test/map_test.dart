@@ -24,14 +24,6 @@ final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
   }) async => kept.add(('result', decision.place));
 
   @override
-  Future<Renderer?> renderer(RendererName name) async => null;
-
-  @override
-  Future<Outcome<String>> rendered(
-    AirlockDecisionOnAction<int> decided,
-  ) async => const Refused('no renderer');
-
-  @override
   Future<Outcome<String>> recordedOn(
     TrajectoryId trajectory,
     EntryId entry,

@@ -73,8 +73,9 @@ Object? _webRequestToJson(WebRequest request) => {
     null => null,
   },
   'headers': encodeHeaders(request.headers),
-  'renderer': request.renderer.value,
-  'entries': [for (final entry in request.entries) entry.hex],
+  'body': request.body,
+  'projection': request.projection.wire,
+  'drawnFrom': request.drawnFrom.hex,
 };
 
 /// [json] as a web request, each part checked as its type's `parse` checks
@@ -93,20 +94,13 @@ WebRequest _webRequestFromJson(Object? json, [String field = 'request']) {
       final name => decodeSignIn(name, '$field.signIn'),
     },
     headers: decodeHeaders(json['headers'], '$field.headers'),
-    renderer:
-        switch (json['renderer']) {
-          final String name => RendererName.parse(name),
-          _ => null,
-        } ??
-        (throw FormatException('$field.renderer: not a renderer name')),
-    entries: switch (json['entries']) {
-      final List<Object?> ids => [
-        for (final id in ids)
-          (id is String ? EntryId.parse(id) : null) ??
-              (throw FormatException('$field.entries: not an entry id: $id')),
-      ],
-      _ => throw FormatException('$field.entries: not a list'),
-    },
+    body: _string('$field.body', json['body']),
+    projection:
+        Projection.parse(_string('$field.projection', json['projection'])) ??
+        (throw FormatException('$field.projection: not a projection')),
+    drawnFrom:
+        EntryId.parse(_string('$field.drawnFrom', json['drawnFrom'])) ??
+        (throw FormatException('$field.drawnFrom: not an entry id')),
   );
 }
 
