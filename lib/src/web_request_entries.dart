@@ -44,20 +44,20 @@ final class DecidedWebRequest {
 
   /// [json] read back as a web request's entry, each part checked as its
   /// type's `parse` checks it. Throws a [FormatException] naming the part.
-  static DecidedWebRequest fromJson(Object? json, [String field = 'decided']) {
-    final map = _object(field, json);
-    return DecidedWebRequest._(
-      JourneyPathId.parse(_string('$field.journeyPath', map['journeyPath'])) ??
-          (throw FormatException('$field.journeyPath: not a journey path')),
-      map['place'],
-      _webRequestFromJson(map['request'], '$field.request'),
-      switch (map['renderer']) {
-        null => null,
-        final renderer => _rendererFromJson(renderer, '$field.renderer'),
-      },
-      _decisionFromJson(map['decision'], '$field.decision'),
-    );
-  }
+  static DecidedWebRequest fromJson(
+    JsonObject json, [
+    String field = 'decided',
+  ]) => DecidedWebRequest._(
+    JourneyPathId.parse(json.string('journeyPath')) ??
+        (throw FormatException('$field.journeyPath: not a journey path')),
+    json.raw('place'),
+    _webRequestFromJson(json.object('request'), '$field.request'),
+    switch (json.objectOrNull('renderer')) {
+      null => null,
+      final renderer => _rendererFromJson(renderer, '$field.renderer'),
+    },
+    _decisionFromJson(json.object('decision'), '$field.decision'),
+  );
 
   final JourneyPathId journeyPath;
 
@@ -104,22 +104,23 @@ final class Rendered {
 
   /// [json] read back, each part checked. Throws a [FormatException] naming
   /// the part.
-  static Rendered fromJson(Object? json, [String field = 'rendered']) {
-    final map = _object(field, json);
-    return Rendered(
-      decided:
-          EntryId.parse(_string('$field.decided', map['decided'])) ??
-          (throw FormatException('$field.decided: not an entry id')),
-      renderer:
-          RendererId.parse(_string('$field.renderer', map['renderer'])) ??
-          (throw FormatException('$field.renderer: not a renderer id')),
-      body: decodeOutcome(
-        map['body'],
-        (json, field) => _string(field, json),
-        '$field.body',
-      ),
-    );
-  }
+  static Rendered fromJson(JsonObject json, [String field = 'rendered']) =>
+      Rendered(
+        decided:
+            EntryId.parse(json.string('decided')) ??
+            (throw FormatException('$field.decided: not an entry id')),
+        renderer:
+            RendererId.parse(json.string('renderer')) ??
+            (throw FormatException('$field.renderer: not a renderer id')),
+        body: decodeOutcome(
+          json.raw('body'),
+          (body, field) => switch (body) {
+            final String text => text,
+            _ => throw FormatException('$field: not a string'),
+          },
+          '$field.body',
+        ),
+      );
 
   /// The [DecidedWebRequest] entry this answers, its previous.
   final EntryId decided;
@@ -140,35 +141,31 @@ final class Rendered {
   };
 }
 
-Renderer _rendererFromJson(Object? json, String field) {
-  final map = _object(field, json);
-  return Renderer(
-    RendererId.parse(_string('$field.id', map['id'])) ??
-        (throw FormatException('$field.id: not a renderer id')),
-    executable:
-        ObjectId.parse(_string('$field.executable', map['executable'])) ??
-        (throw FormatException('$field.executable: not an object id')),
-  );
-}
+Renderer _rendererFromJson(JsonObject json, String field) => Renderer(
+  RendererId.parse(json.string('id')) ??
+      (throw FormatException('$field.id: not a renderer id')),
+  executable:
+      ObjectId.parse(json.string('executable')) ??
+      (throw FormatException('$field.executable: not an object id')),
+);
 
-Decision _decisionFromJson(Object? json, String field) {
-  final map = _object(field, json);
+Decision _decisionFromJson(JsonObject json, String field) {
   final by =
-      DecidedBy.values.asNameMap()[_string('$field.by', map['by'])] ??
+      DecidedBy.values.asNameMap()[json.string('by')] ??
       (throw FormatException('$field.by: not rules or person'));
-  return switch (map['allow']) {
-    true => Allow(by: by),
-    false => Deny(_string('$field.why', map['why']), by: by),
-    _ => throw FormatException('$field.allow: not true or false'),
-  };
+  return json.boolean('allow')
+      ? Allow(by: by)
+      : Deny(json.string('why'), by: by);
 }
 
-Map<String, Object?> _object(String field, Object? json) => switch (json) {
-  final Map<String, Object?> map => map,
-  _ => throw FormatException('$field: not an object'),
-};
-
-String _string(String field, Object? json) => switch (json) {
-  final String s => s,
-  _ => throw FormatException('$field: not a string'),
-};
+/// [json], refused with a [FormatException] naming [field] and each key it
+/// does not know, unless every key is one of [keys]. For a reader whose
+/// object must never be skimmed: a key it skipped could be one that
+/// restricts.
+JsonObject _exactly(String field, JsonObject json, Set<String> keys) {
+  final unknown = json.keys.where((key) => !keys.contains(key));
+  if (unknown.isNotEmpty) {
+    throw FormatException('$field: unexpected ${unknown.join(', ')}');
+  }
+  return json;
+}

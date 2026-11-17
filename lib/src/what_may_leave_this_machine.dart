@@ -33,39 +33,30 @@ final class WhatMayLeaveThisMachine {
   /// it does not know is never skipped, since a reader that skipped one
   /// would skip whatever it restricts.
   static WhatMayLeaveThisMachine fromJson(
-    Object? json, [
+    JsonObject json, [
     String field = 'whatMayLeaveThisMachine',
   ]) {
-    final map = _exactly(field, json, const {
+    _exactly(field, json, const {
       'modelSignInsTheLoopIsGiven',
       'sitesTheWebDriverMayReach',
       'programsNetwork',
     });
     return WhatMayLeaveThisMachine(
       modelSignInsTheLoopIsGiven: [
-        for (final (i, name) in _list(
-          '$field.modelSignInsTheLoopIsGiven',
-          map['modelSignInsTheLoopIsGiven'],
-        ).indexed)
-          ModelSignInName.parse(
-                _string('$field.modelSignInsTheLoopIsGiven[$i]', name),
-              ) ??
+        for (final (i, name)
+            in json.strings('modelSignInsTheLoopIsGiven').indexed)
+          ModelSignInName.parse(name) ??
               (throw FormatException(
                 '$field.modelSignInsTheLoopIsGiven[$i]: not a model sign-in',
               )),
       ],
       sitesTheWebDriverMayReach: [
-        for (final (i, site) in _list(
-          '$field.sitesTheWebDriverMayReach',
-          map['sitesTheWebDriverMayReach'],
-        ).indexed)
+        for (final (i, site)
+            in json.objects('sitesTheWebDriverMayReach').indexed)
           SiteAndSignIn.fromJson(site, '$field.sitesTheWebDriverMayReach[$i]'),
       ],
       programsNetwork:
-          ProgramsNetwork.values.asNameMap()[_string(
-            '$field.programsNetwork',
-            map['programsNetwork'],
-          )] ??
+          ProgramsNetwork.values.asNameMap()[json.string('programsNetwork')] ??
           (throw FormatException(
             '$field.programsNetwork: not one of '
             '${ProgramsNetwork.values.map((v) => v.name).join(', ')}',
@@ -152,11 +143,11 @@ final class SiteAndSignIn {
 
   /// [json] read back, strictly, as [fromJson] on [WhatMayLeaveThisMachine]
   /// reads its parts.
-  static SiteAndSignIn fromJson(Object? json, String field) {
-    final map = _exactly(field, json, const {'site', 'goesAs'});
+  static SiteAndSignIn fromJson(JsonObject json, String field) {
+    _exactly(field, json, const {'site', 'goesAs'});
     return SiteAndSignIn(
-      decodeOrigin(map['site'], '$field.site'),
-      GoesAs._fromJson(map['goesAs'], '$field.goesAs'),
+      decodeOrigin(json.raw('site'), '$field.site'),
+      GoesAs._fromJson(json.object('goesAs'), '$field.goesAs'),
     );
   }
 
@@ -179,14 +170,13 @@ final class SiteAndSignIn {
 sealed class GoesAs {
   const GoesAs();
 
-  static GoesAs _fromJson(Object? json, String field) {
-    final map = _object(field, json);
-    switch (_string('$field.kind', map['kind'])) {
+  static GoesAs _fromJson(JsonObject json, String field) {
+    switch (json.string('kind')) {
       case 'signIn':
-        _exactly(field, map, const {'kind', 'signIn'});
-        return GoesAsSignIn(decodeSignIn(map['signIn'], '$field.signIn'));
+        _exactly(field, json, const {'kind', 'signIn'});
+        return GoesAsSignIn(decodeSignIn(json.raw('signIn'), '$field.signIn'));
       case 'nobody':
-        _exactly(field, map, const {'kind'});
+        _exactly(field, json, const {'kind'});
         return const GoesAsNobody();
       case final kind:
         throw FormatException('$field.kind: not signIn or nobody: $kind');
@@ -226,19 +216,3 @@ final class GoesAsNobody extends GoesAs {
   @override
   Object? _toJson() => {'kind': 'nobody'};
 }
-
-/// [json] as an object holding no key outside [keys]; throws a
-/// [FormatException] naming [field] and each key it does not know.
-Map<String, Object?> _exactly(String field, Object? json, Set<String> keys) {
-  final map = _object(field, json);
-  final unknown = map.keys.where((key) => !keys.contains(key));
-  if (unknown.isNotEmpty) {
-    throw FormatException('$field: unexpected ${unknown.join(', ')}');
-  }
-  return map;
-}
-
-List<Object?> _list(String field, Object? json) => switch (json) {
-  final List<Object?> list => list,
-  _ => throw FormatException('$field: not a list'),
-};

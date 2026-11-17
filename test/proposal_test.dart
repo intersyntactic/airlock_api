@@ -38,7 +38,7 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
   Future<Object?> propose(Object? proposal) async {
     final bytes = utf8.encode(jsonEncode(proposal));
     final proposed = EntryId.of(bytes);
-    switch (Proposal.read(jsonDecode(utf8.decode(bytes)))) {
+    switch (Proposal.read(utf8.decode(bytes))) {
       case Rejected(:final why):
         rejected.add(why);
         airlock.returned[proposed] = ReturnedProposal.refused(proposed, why);
@@ -55,7 +55,7 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
         }
     }
     final answer = ReturnedProposal.fromJson(
-      jsonDecode(jsonEncode(airlock.returned[proposed]!.toJson())),
+      JsonObject.decode(jsonEncode(airlock.returned[proposed]!.toJson())),
     );
     expect(answer.proposed, proposed);
     return answerWith(answer.outcome);
@@ -247,7 +247,7 @@ void main() {
     final id = EntryId.of(utf8.encode('proposed'));
     final refused = ReturnedProposal.refused(id, 'why');
     final back = ReturnedProposal.fromJson(
-      jsonDecode(jsonEncode(refused.toJson())),
+      JsonObject.decode(jsonEncode(refused.toJson())),
     );
     expect(back.proposed, id);
     expect(back.outcome, refused.outcome);
@@ -256,7 +256,10 @@ void main() {
       {'outcome': null},
       {'proposed': 'nope', 'outcome': null},
     ]) {
-      expect(() => ReturnedProposal.fromJson(json), throwsFormatException);
+      expect(
+        () => ReturnedProposal.fromJson(JsonObject.decode(jsonEncode(json))),
+        throwsFormatException,
+      );
     }
   });
 }

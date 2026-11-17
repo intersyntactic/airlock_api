@@ -28,7 +28,7 @@ void main() {
 
   test('what may leave this machine reads back as it was written', () {
     final back = WhatMayLeaveThisMachine.fromJson(
-      jsonDecode(jsonEncode(rules.toJson())),
+      JsonObject.decode(jsonEncode(rules.toJson())),
     );
     expect(back.modelSignInsTheLoopIsGiven, rules.modelSignInsTheLoopIsGiven);
     expect(back.sitesTheWebDriverMayReach, rules.sitesTheWebDriverMayReach);
@@ -108,7 +108,9 @@ void main() {
         },
     ]) {
       expect(
-        () => WhatMayLeaveThisMachine.fromJson(json),
+        () => WhatMayLeaveThisMachine.fromJson(
+          JsonObject.decode(jsonEncode(json)),
+        ),
         throwsFormatException,
         reason: '$json',
       );

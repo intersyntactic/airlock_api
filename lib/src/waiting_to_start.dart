@@ -22,20 +22,14 @@ final class WaitingToStart {
   /// [json] read back, strictly: anything but exactly a `journeyPath` throws
   /// a [FormatException] naming the part.
   static WaitingToStart fromJson(
-    Object? json, [
+    JsonObject json, [
     String field = 'waitingToStart',
-  ]) {
-    final map = _object(field, json);
-    if (map.keys.any((key) => key != 'journeyPath')) {
-      throw FormatException(
-        '$field: unexpected ${map.keys.where((k) => k != 'journeyPath')}',
-      );
-    }
-    return WaitingToStart(
-      JourneyPathId.parse(_string('$field.journeyPath', map['journeyPath'])) ??
-          (throw FormatException('$field.journeyPath: not a journey path')),
-    );
-  }
+  ]) => WaitingToStart(
+    JourneyPathId.parse(
+          _exactly(field, json, const {'journeyPath'}).string('journeyPath'),
+        ) ??
+        (throw FormatException('$field.journeyPath: not a journey path')),
+  );
 
   final JourneyPathId journeyPath;
 

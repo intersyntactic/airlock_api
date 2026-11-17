@@ -8,7 +8,7 @@ void main() {
 
   test('a waiting-to-start entry reads back as it was written', () {
     final back = WaitingToStart.fromJson(
-      jsonDecode(jsonEncode(WaitingToStart(path).toJson())),
+      JsonObject.decode(jsonEncode(WaitingToStart(path).toJson())),
     );
     expect(back.journeyPath, path);
     expect(WaitingToStart.kind, 'waiting-to-start');
@@ -24,7 +24,7 @@ void main() {
       {'journeyPath': path.hex, 'why': 'headroom'},
     ]) {
       expect(
-        () => WaitingToStart.fromJson(json),
+        () => WaitingToStart.fromJson(JsonObject.decode(jsonEncode(json))),
         throwsFormatException,
         reason: '$json',
       );

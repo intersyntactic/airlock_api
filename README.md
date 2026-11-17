@@ -95,7 +95,9 @@ renderer the record names exactly
   `Returned`, each naming the one before as its previous, so the journal's
   tip check lets each be written once. When the renderer does not answer
   in time, `Returned` (refused) names the `DecidedWebRequest` as its previous and
-  a late `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
+  a late `Rendered` is turned away. Each has `toJson` and a checking
+  `fromJson`, given a `JsonObject` (`JsonObject.decode(text)`, from
+  `checked_json`, which this package exports).
   What came back from any proposed action is recorded in full, in a
   `ReturnedProposal` (below).
 
@@ -173,7 +175,8 @@ and records, and only a driver carries an action out.
   airlock takes the path from the chain the entry is on, and a loop has no
   claim to make about another path. Until the journal enforces that, the
   airlock must not act on `proposed` entries.
-- `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
+- `Proposal.read(text)`, given a `proposed` entry's text, gives a
+  `Proposal` or `Rejected(why)` and never throws, checking
   every part as its type's own `parse` does, with is_effects's codecs.
   `journeyPath.consider(proposal, place, proposed: entryId)` decides and
   records it as an action proposed at `at(place)` would be; its `Decided` and

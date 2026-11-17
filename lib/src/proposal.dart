@@ -78,35 +78,31 @@ Object? _webRequestToJson(WebRequest request) => {
 /// [json] as a web request, each part checked as its type's `parse` checks
 /// it. Throws a [FormatException] naming the part, as is_effects's decoders
 /// do.
-WebRequest _webRequestFromJson(Object? json, [String field = 'request']) {
-  if (json is! Map<String, Object?>) {
-    throw FormatException('$field: not an object');
-  }
-  return WebRequest(
-    decodeOrigin(json['origin'], '$field.origin'),
-    method: decodeMethod(json['method'], '$field.method'),
-    path: decodeWebPath(json['path'], '$field.path'),
-    signIn: switch (json['signIn']) {
-      null => null,
-      final name => decodeSignIn(name, '$field.signIn'),
-    },
-    headers: decodeHeaders(json['headers'], '$field.headers'),
-    renderer:
-        switch (json['renderer']) {
-          final String name => RendererName.parse(name),
-          _ => null,
-        } ??
-        (throw FormatException('$field.renderer: not a renderer name')),
-    entries: switch (json['entries']) {
-      final List<Object?> ids => [
-        for (final id in ids)
-          (id is String ? EntryId.parse(id) : null) ??
+WebRequest _webRequestFromJson(JsonObject json, [String field = 'request']) =>
+    WebRequest(
+      decodeOrigin(json.raw('origin'), '$field.origin'),
+      method: decodeMethod(json.raw('method'), '$field.method'),
+      path: decodeWebPath(json.raw('path'), '$field.path'),
+      signIn: switch (json.raw('signIn')) {
+        null => null,
+        final name => decodeSignIn(name, '$field.signIn'),
+      },
+      headers: decodeHeaders(json.raw('headers'), '$field.headers'),
+      renderer:
+          RendererName.parse(json.string('renderer')) ??
+          (throw FormatException('$field.renderer: not a renderer name')),
+      entries: [
+        for (final id in json.strings('entries'))
+          EntryId.parse(id) ??
               (throw FormatException('$field.entries: not an entry id: $id')),
       ],
-      _ => throw FormatException('$field.entries: not a list'),
-    },
-  );
-}
+    );
+
+/// [json], a program's input inside a proposal, read as a web request.
+WebRequest _webRequestInput(Object? json, String field) => _webRequestFromJson(
+  JsonObject.parse(json) ?? (throw FormatException('$field: not an object')),
+  field,
+);
 
 /// What a `proposed` entry came to, once read: a [Proposal] to consider, or
 /// [Rejected].
@@ -128,20 +124,33 @@ final class Proposal implements Received {
   /// The entry's kind in the journal.
   static const kind = 'proposed';
 
-  /// [json] read as a proposal, or [Rejected] with why it is not one. Every
-  /// part is checked here, as its type's own `parse` checks it, since a loop
-  /// is not to be trusted to have gone through it.
-  static Received read(Object? json) {
-    if (json case {'program': final String program}) {
-      final p = _programNamed(program, json['executable']);
-      if (p == null) return Rejected('not a program: $program');
-      try {
-        return Proposal._(json['place'], p._work(json['input']));
-      } on FormatException catch (e) {
-        return Rejected(e.message);
-      }
+  /// [text], a [kind] entry as the journal holds it, read as a proposal, or
+  /// [Rejected] with why it is not one. Every part is checked here, as its
+  /// type's own `parse` checks it, since a loop is not to be trusted to have
+  /// gone through it.
+  ///
+  /// Given the entry's text, not a [JsonObject], and never throws: an entry
+  /// that is not JSON, or not an object, is still answered, so the loop that
+  /// wrote it is not left waiting.
+  static Received read(String text) {
+    final JsonObject json;
+    try {
+      json = JsonObject.decode(text);
+    } on FormatException {
+      return const Rejected('not a proposal');
     }
-    return const Rejected('not a proposal');
+    final program = switch (json.raw('program')) {
+      final String program => program,
+      _ => null,
+    };
+    if (program == null) return const Rejected('not a proposal');
+    final p = _programNamed(program, json.raw('executable'));
+    if (p == null) return Rejected('not a program: $program');
+    try {
+      return Proposal._(json.raw('place'), p._work(json.raw('input')));
+    } on FormatException catch (e) {
+      return Rejected(e.message);
+    }
   }
 
   /// The place in a turn, as the loop wrote it; the airlock service reads
@@ -220,14 +229,14 @@ final class ReturnedProposal {
   /// [json] read back. Throws a [FormatException] naming the part. Reads
   /// [outcome] no further, since only the program that was proposed knows
   /// its output's type.
-  static ReturnedProposal fromJson(Object? json, [String field = 'returned']) {
-    final map = _object(field, json);
-    return ReturnedProposal._(
-      EntryId.parse(_string('$field.proposed', map['proposed'])) ??
-          (throw FormatException('$field.proposed: not an entry id')),
-      map['outcome'],
-    );
-  }
+  static ReturnedProposal fromJson(
+    JsonObject json, [
+    String field = 'returned',
+  ]) => ReturnedProposal._(
+    EntryId.parse(json.string('proposed')) ??
+        (throw FormatException('$field.proposed: not an entry id')),
+    json.raw('outcome'),
+  );
 
   /// The `proposed` entry this answers.
   final EntryId proposed;

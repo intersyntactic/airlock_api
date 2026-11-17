@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:checked_json/checked_json.dart';
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart'
@@ -332,7 +333,7 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
   _Wire<WebRequest, WebRequestOutcome> get _wire => const _Wire(
     {'program': 'web'},
     inputToJson: _webRequestToJson,
-    inputFromJson: _webRequestFromJson,
+    inputFromJson: _webRequestInput,
     outputToJson: encodeWebRequestOutcome,
     outputFromJson: decodeWebRequestOutcome,
   );

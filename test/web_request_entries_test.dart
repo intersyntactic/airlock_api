@@ -20,6 +20,9 @@ import 'contract_test.dart'
 /// [json] as the journal would hold it and give it back: JSON text.
 Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
 
+/// [json] as the journal would hold it, read back as our own wire is.
+JsonObject wire(Object? json) => JsonObject.decode(jsonEncode(json));
+
 /// The [Decided] entries recorded while [run] is carried through on a journey path
 /// with [rules].
 Future<List<Decided<int>>> decidedWhile(
@@ -45,7 +48,7 @@ void main() {
       rules: {'$teams as $hart'},
     );
     final written = DecidedWebRequest.of(decided.single, (int place) => place)!;
-    final read = DecidedWebRequest.fromJson(throughText(written.toJson()));
+    final read = DecidedWebRequest.fromJson(wire(written.toJson()));
     expect(read.journeyPath, written.journeyPath);
     expect(read.place, 4);
     expect(read.request.origin, teams);
@@ -69,7 +72,7 @@ void main() {
     final [denied, unnamed] = [
       for (final d in decided)
         DecidedWebRequest.fromJson(
-          throughText(DecidedWebRequest.of(d, (int place) => place)!.toJson()),
+          wire(DecidedWebRequest.of(d, (int place) => place)!.toJson()),
         ),
     ];
     expect(denied.decision, isA<Deny>());
@@ -100,7 +103,7 @@ void main() {
       const Refused('entry abc is not recorded'),
     ]) {
       final read = Rendered.fromJson(
-        throughText(
+        wire(
           Rendered(
             decided: decided,
             renderer: teamsReply.renderer.id,
@@ -140,7 +143,7 @@ void main() {
     final request = json['request']! as Map<String, Object?>;
     String? whyNot(Object? entry) {
       try {
-        DecidedWebRequest.fromJson(entry);
+        DecidedWebRequest.fromJson(wire(entry));
         return null;
       } on FormatException catch (e) {
         return e.message;
@@ -165,11 +168,13 @@ void main() {
       startsWith('decided.journeyPath'),
     );
     expect(
-      () => Rendered.fromJson({
-        'decided': 'x',
-        'renderer': teamsReply.renderer.id.hex,
-        'body': {'kind': 'ran', 'output': ''},
-      }),
+      () => Rendered.fromJson(
+        wire({
+          'decided': 'x',
+          'renderer': teamsReply.renderer.id.hex,
+          'body': {'kind': 'ran', 'output': ''},
+        }),
+      ),
       throwsA(
         isA<FormatException>().having(
           (e) => e.message,

@@ -8,6 +8,14 @@ complex things), and an interface is named for what it can do, so
 do\", yes naming rule";
 https://github.com/enspyrco/intersyntactic/pull/1164).
 
+- JSON is read with `checked_json` (Nick, 17 Nov 18:51: "move the
+  package over to checked_json"). Every `fromJson` takes a `JsonObject`,
+  so a reader checks an entry once, with `JsonObject.decode(text)`; both
+  types are exported. `Proposal.read` takes the entry's text instead, and
+  still never throws: text that is not a JSON object is `Rejected`, so the
+  loop is answered. A field of the wrong JSON type now says only its own
+  name (`` `journeyPath` is not a string ``), not its dotted path; a value
+  that fails its type's `parse` still names the dotted path.
 - `WhatMayLeaveThisMachine`, a journey path's rules, beside `Suit`
   (https://github.com/enspyrco/intersyntactic/pull/1163; Nick, 17 Nov
   18:42, picked the name, `noNetworkOfTheirOwn` /
