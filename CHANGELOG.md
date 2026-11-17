@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 (unreleased)
+## 0.8.0
 
 The model call is an action (Nick, 17 Nov 20:12: "shit so the model call
 should really go through the airlock hey?", 20:16: "we do it tonight";
