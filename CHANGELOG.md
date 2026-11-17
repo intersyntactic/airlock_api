@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1
+
+- Takes is_effects `>=0.6.0 <0.8.0`, not `^0.6.0`. is_flight_rules 0.1.0
+  needs is_effects 0.7.0, and below 1.0 `^0.6.0` excludes it, so nothing
+  could depend on both (loop-launcher-5b found it). is_effects 0.7.0 only
+  adds to what this package uses: its new `Progress` case,
+  `ReplyArriving`, is never switched over here. Built and tested against
+  0.7.0.
+
 ## 0.7.0
 
 Breaking. "Send" is retired (Nick, 17 Nov 13:31: no tiny words for
