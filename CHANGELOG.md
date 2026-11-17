@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 (unreleased)
+## 0.7.0
 
 Breaking. "Send" is retired (Nick, 17 Nov 13:31: no tiny words for
 complex things), and an interface is named for what it can do, so
