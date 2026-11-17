@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1
+
+- Takes the newest is_effects and is_shapes, `^0.8.0` and `^0.6.0`, not a
+  range reaching back to 0.7.0 and 0.5.0. No code changes: nothing here
+  uses `ProgramMessage`, the one thing is_effects 0.8.0 broke.
+
 ## 0.10.0
 
 Breaking.
