@@ -51,24 +51,25 @@ while (result is Action<ExecResult>) {
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
   (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`) and
-  `WebSend` (`Program.web`, a `Send` to an `Origin` through a named
-  `SignIn`). Programs reach drivers, so they belong with the drivers and the
-  airlock to what is trusted; a new kind of action is a new driver and
-  program.
+  `MakeWebRequest` (`Program.web`, a `WebRequest` to an `Origin` through a
+  named `SignIn`). Programs reach drivers, so they belong with the drivers
+  and the airlock to what is trusted; a new kind of action is a new driver
+  and program.
 - `Action<A>`: a program, its input and the continuation, all private. Made
   only by its program (`program.run(input, then:)`), so its input is the
-  program's own type. Nothing about an action shows outside; when it is proposed, what it would do is worked out
-  as its `Reach`, which the airlock decides and records: `Reads(path)`,
-  `Writes(file)`, `Starts(program, args)` or `Sends(send, renderer)`. A
-  rule grants a send by origin and sign-in together.
+  program's own type. Nothing about an action shows outside; when it is
+  proposed, what it would do is worked out as its `Reach`, which the
+  airlock decides and records: `Reads(path)`, `Writes(file)`,
+  `Starts(program, args)` or `MakesWebRequest(request, renderer)`. A rule
+  grants a web request by origin and sign-in together.
 
-## A send
+## A web request
 
-Everything a send says is drawn from recorded journal entries, by a
+Everything a web request says is drawn from recorded journal entries, by a
 renderer the record names exactly
 (https://github.com/enspyrco/intersyntactic/issues/1147).
 
-- `Send`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
+- `WebRequest`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
   such as `teams-reply`, and the `EntryId`s of the recorded entries its
   words are drawn from. It has no body, so a tool cannot put words in. The
   path and headers are checked as is_effects's `Request` checks them.
@@ -76,30 +77,32 @@ renderer the record names exactly
   `RendererId` (the sha256 of the renderer's published pub archive, as
   `pubspec.lock` records it) and the `ObjectId` of the render runner built
   with it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
-  `Decided` holds the whole `Send` and the exact `Renderer`, never a body,
+  `Decided` holds the whole `WebRequest` and the exact `Renderer`, never a body,
   which does not exist yet. A name that resolves to nothing is denied
   before the rules are asked.
 - The airlock never talks to a renderer
   (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
   A renderer subscribes to the record for `Decided` entries naming it,
-  reads the entries the send draws from, and records the body, or a
+  reads the entries the request draws from, and records the body, or a
   refusal when an entry is missing, in an entry of its own after the
   `Decided`. `Airlock.rendered(decided)` is the airlock reading that entry
-  from the record; it is called only once `Decided` is kept, and what it gives is
-  what is sent. So the exact bytes sent are in the record.
-- A send's chain in the journal: `DecidedSend` (kind `send-decided`), then
+  from the record; it is called only once `Decided` is kept, and what it
+  gives is the body the web driver carries out. So the exact bytes that
+  went out are in the record.
+- A web request's chain in the journal: `DecidedWebRequest` (kind
+  `web-request-decided`), then
   the renderer's `Rendered` (kind `rendered`), then the airlock's
   `Returned`, each naming the one before as its previous, so the journal's
   tip check lets each be written once. When the renderer does not answer
-  in time, `Returned` (refused) names the `DecidedSend` as its previous and
+  in time, `Returned` (refused) names the `DecidedWebRequest` as its previous and
   a late `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
   What came back from any proposed action is recorded in full, in a
   `ReturnedProposal` (below).
 
-A send is an action, decided like any other: what a tool sends to a chat or
-an API. A journey path's prompts are not: the model is the agent planning,
-so a prompt is not decided, and no tool is in it. How a prompt is sent and
-recorded is not this contract's.
+A web request is an action, decided like any other: a request a tool makes
+to a chat or an API. A journey path's prompts are not: the model is the
+agent planning, so a prompt is not decided, and no tool is in it. How a
+prompt reaches the model and is recorded is not this contract's.
 
 ## A journey path
 

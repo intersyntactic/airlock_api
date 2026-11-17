@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 (unreleased)
+
+Breaking. "Send" is retired (Nick, 17 Nov 13:31: no tiny words for
+complex things).
+
+- `Send` is `WebRequest` (Nick, 16 Nov 18:46), `WebSend` is
+  `MakeWebRequest`, and `Sends` is `MakesWebRequest`, whose field `send` is
+  `request`. These read with the other programs and reaches (`ReadFile`,
+  `Reads`).
+- `DecidedSend` is `DecidedWebRequest`, kind `web-request-decided`, with
+  the JSON key `request` in place of `send`. No entry was ever written with
+  the old kind. `send_entries.dart` is `web_request_entries.dart`.
+- is_effects's `WebDriver.send` and `Sent` keep their names until
+  is_effects renames them. "Renderer" is not decided and is unchanged.
+
 ## 0.6.0
 
 Breaking.
