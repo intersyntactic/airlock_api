@@ -44,8 +44,8 @@ void main() {
     () async {
       final airlock = _KeepingAirlock();
       final files = _FileDriver();
-      final apex = JourneyPath<String, int>(
-        id: JourneyPathId.of(utf8.encode('started a')),
+      final crux = Trajectory<String, int>(
+        id: TrajectoryId.of(utf8.encode('started a')),
         drivers: [files],
         airlock: airlock,
         rules: 'all',
@@ -67,7 +67,7 @@ void main() {
       expect(airlock.kept, isEmpty);
 
       while (result is Action<String>) {
-        result = await result.next(apex);
+        result = await result.next(crux);
       }
 
       expect(result, isA<Done<String>>());

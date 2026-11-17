@@ -17,7 +17,7 @@ import 'contract_test.dart'
         webRequest,
         writeAndFormat;
 
-/// A journey path's chain and the airlock's, in memory: each `proposed`
+/// A trajectory's chain and the airlock's, in memory: each `proposed`
 /// entry the loop writes goes through `jsonEncode` and back, as the journal
 /// would keep it, and is named by the hash of its bytes; the airlock service
 /// considers it on [path], and the loop is handed the `returned` entry that
@@ -26,7 +26,7 @@ import 'contract_test.dart'
 final class RecordedLink implements ProposesActionsThroughTheRecord {
   RecordedLink(this.path, this.airlock);
 
-  final JourneyPath<Set<String>, int> path;
+  final Trajectory<Set<String>, int> path;
   final LogAirlock airlock;
   final rejected = <String>[];
 
@@ -62,9 +62,9 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
   }
 }
 
-/// The agent loop's apex at [place] on [link]'s path.
-Apex loopApex(RecordedLink link, {int place = 1}) =>
-    Apex.through(link, place: place);
+/// The agent loop's crux at [place] on [link]'s path.
+Crux loopCrux(RecordedLink link, {int place = 1}) =>
+    Crux.through(link, place: place);
 
 void main() {
   test(
@@ -78,7 +78,7 @@ void main() {
         airlock,
       );
       expect(
-        await answerOf(writeAndFormat('a.dart'), loopApex(link, place: 3)),
+        await answerOf(writeAndFormat('a.dart'), loopCrux(link, place: 3)),
         'Formatted 1 file',
       );
       expect(files.files, {'a.dart': 'void main() {}'});
@@ -109,7 +109,7 @@ void main() {
             _ => 'not read',
           }),
         ),
-        loopApex(link),
+        loopCrux(link),
       ),
       'the text',
     );
@@ -134,7 +134,7 @@ void main() {
       expect(
         await answerOf(
           webRequest(teams, hart, entries: [turn]),
-          loopApex(RecordedLink(path, airlock)),
+          loopCrux(RecordedLink(path, airlock)),
         ),
         '201 activity-1',
       );
@@ -148,7 +148,7 @@ void main() {
     expect(
       await answerOf(
         writeAndFormat('a.dart'),
-        loopApex(RecordedLink(path, airlock)),
+        loopCrux(RecordedLink(path, airlock)),
       ),
       'failed: not in the rules',
     );
@@ -238,7 +238,7 @@ void main() {
     final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock)
       ..answerWith = (_) => {'kind': 'maybe'};
     await expectLater(
-      answerOf(writeAndFormat('a.dart'), loopApex(link)),
+      answerOf(writeAndFormat('a.dart'), loopCrux(link)),
       throwsFormatException,
     );
   });

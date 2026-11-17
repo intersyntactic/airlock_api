@@ -1,5 +1,5 @@
 /// The airlock's contract: what a tool returns for a call, the actions it
-/// describes, the journey path each action is proposed on, and what the
+/// describes, the trajectory each action is proposed on, and what the
 /// airlock implements to decide and record each one,
 /// [DecidesAndRecordsActions].
 ///
@@ -11,6 +11,6 @@ library;
 
 export 'package:is_content_id/is_content_id.dart' show ObjectId;
 export 'package:is_shapes/is_shapes.dart'
-    show DecidedBy, EntryId, JourneyPathId, RendererId;
+    show DecidedBy, EntryId, RendererId, TrajectoryId;
 
 export 'src/action.dart';
