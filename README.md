@@ -197,6 +197,17 @@ and records, and only a driver carries an action out.
   user, and its programs run as its suit, the identity the path wears,
   contained or open (https://github.com/enspyrco/intersyntactic/pull/1158):
   the airlock service gives the path a program driver that runs as it.
+- `WhatMayLeaveThisMachine`: a journey path's rules, which say what may
+  leave this machine, to where, and as which sign-in, never whether an
+  action reads or writes (https://github.com/enspyrco/intersyntactic/pull/1163).
+  `modelSignInsTheLoopIsGiven` (`ModelSignInName`s; loop_launcher holds the
+  credentials), `sitesTheWebDriverMayReach` (`SiteAndSignIn`: a site with
+  `GoesAsSignIn(signIn)` or `GoesAsNobody`, never a null that could be read
+  as any sign-in), and `programsNetwork` (`noNetworkOfTheirOwn` or
+  `sharesThisMachinesNetwork`, when the site list limits only the web
+  driver). Files and programs on the machine need no rule. The docking
+  station writes it into `admitted`; `allowsWebRequest(reach)` is the
+  airlock's check; `fromJson` refuses any key it does not know.
 - An answer the loop cannot read as an outcome throws a `FormatException`
   and ends the call: whether the action reached the world is then known only
   to the airlock's record.

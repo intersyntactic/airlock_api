@@ -8,6 +8,13 @@ complex things), and an interface is named for what it can do, so
 do\", yes naming rule";
 https://github.com/enspyrco/intersyntactic/pull/1164).
 
+- `WhatMayLeaveThisMachine`, a journey path's rules, beside `Suit`
+  (https://github.com/enspyrco/intersyntactic/pull/1163; Nick, 17 Nov
+  18:42, picked the name, `noNetworkOfTheirOwn` /
+  `sharesThisMachinesNetwork`, and this package). With `ModelSignInName`,
+  `SiteAndSignIn`, `GoesAs` (`GoesAsSignIn`, `GoesAsNobody`) and
+  `ProgramsNetwork`; read strictly, and `allowsWebRequest` grants a site
+  only with its sign-in. Added, not breaking.
 - `Airlock<R, P>` is `DecidesAndRecordsActions<R, P>`, and `RecordLink` is
   `ProposesActionsThroughTheRecord`. The airlock and its drivers are still
   called that: only the interfaces are renamed, since a noun is kept for

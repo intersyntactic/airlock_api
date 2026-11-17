@@ -9,6 +9,7 @@ part 'pool_user.dart';
 part 'web_request_entries.dart';
 part 'proposal.dart';
 part 'waiting_to_start.dart';
+part 'what_may_leave_this_machine.dart';
 
 /// What a tool's code returns for a call: an action whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
