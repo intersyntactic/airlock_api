@@ -5,60 +5,64 @@ import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
-part 'held.dart';
 part 'pool_user.dart';
 part 'send_entries.dart';
 part 'proposal.dart';
+part 'waiting_to_start.dart';
 
-/// What a tool's code returns for a call: a run whose outcome it needs
+/// What a tool's code returns for a call: an action whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
 /// type of the answer, the tool's output type.
 ///
-/// A tool holds no driver and touches nothing. Its result is followed at an
-/// [Apex], whose journey path has each run decided and recorded, and reached
-/// by a driver if it is allowed, and gives what became of it to the run's
-/// continuation. So a tool can
-/// describe nothing a run cannot express.
+/// A tool holds no driver and touches nothing. Its result is carried through
+/// at an [Apex], whose journey path has each action decided and recorded, and
+/// reached by a driver if it is allowed, and gives what became of it to the
+/// action's continuation. So a tool can describe nothing an action cannot
+/// express.
 ///
-/// Not an [Outcome], which is what happened to one run. A [Run] never reaches
-/// the model: [Done]'s value does, rendered by the tool's definition, and
-/// [Failed]'s reason does, as an error.
+/// Not an [Outcome], which is what happened to one action. An [Action] never
+/// reaches the model: [Done]'s value does, written out by the tool's
+/// definition, and [Failed]'s reason does, as an error.
 sealed class Result<A> {
   const Result();
 
   /// This result with its answer, once there is one, given to [f].
   ///
-  /// Reaches no driver: a run's continuation is extended, so [f] is applied
-  /// when a later [Run.next] reaches an answer, and every run on the way is
-  /// still decided and recorded. So whoever turns a tool's answer into what
-  /// the model is told can do it without following the runs.
+  /// Reaches no driver: an action's continuation is extended, so [f] is
+  /// applied when a later [Action.next] reaches an answer, and every action
+  /// on the way is still decided and recorded. So whoever turns a tool's
+  /// answer into what the model is told can do it without carrying out the
+  /// actions.
   Result<B> map<B>(B Function(A answer) f);
 }
 
-/// Run a program on an input, then continue with what became of the run.
+/// Run a program on an input, then continue with what became of it.
 ///
-/// The one effect a tool can describe. A read, a write, `git diff` and a send
-/// to a chat are all runs, of one of four programs.
+/// One round trip to the world, which the airlock decides: what a tool asks
+/// for to carry out an intent (Nick, 17 Nov: "the airlock sits between
+/// intents and action"). A read, a write, `git diff` and a send to a chat
+/// are all actions, each one of four programs on an input, and each has
+/// exactly one [Outcome].
 ///
-/// The continuation travels with the run, not in the tool, so one tool can
-/// serve concurrent calls without keeping state for any of them. It is
+/// The continuation travels with the action, not in the tool, so one tool
+/// can serve concurrent calls without keeping state for any of them. It is
 /// private: what it is given comes from [next], after the airlock's decision,
-/// never from whoever holds the run.
+/// never from whoever holds the action.
 ///
 /// Typed only by the answer it leads to, [A]. The program's input and output
-/// types stay inside, where [next] uses them, so whoever holds a run never
-/// handles either, and a switch over a [Result] covers every run with
-/// `case Run()`. Dart's generics are covariant: a caller passing an outcome
-/// to the continuation itself would be checked only when it ran.
-abstract final class Run<A> extends Result<A> {
-  const Run._();
+/// types stay inside, where [next] uses them, so whoever holds an action
+/// never handles either, and a switch over a [Result] covers every action
+/// with `case Action()`. Dart's generics are covariant: a caller passing an
+/// outcome to the continuation itself would be checked only when it ran.
+abstract final class Action<A> extends Result<A> {
+  const Action._();
 
-  /// This run proposed at [apex], and the result it leads to.
+  /// This action proposed at [apex], and the result it leads to.
   ///
-  /// The only way a run reaches the world. What it would do, its [Reach], is
-  /// worked out first; the journey path's airlock decides it, and records
-  /// the decision, at the apex's place, before any driver is reached; a
-  /// driver of the journey path carries out an allowed run;
+  /// The only way an action reaches the world. What it would do, its
+  /// [Reach], is worked out first; the journey path's airlock decides it,
+  /// and records the decision, at the apex's place, before any driver is
+  /// reached; a driver of the journey path carries out an allowed action;
   /// the airlock records what became of it before the continuation sees it.
   /// If either record cannot be written, its error ends the call: no driver
   /// is reached without a recorded decision, and no outcome flows on
@@ -66,17 +70,17 @@ abstract final class Run<A> extends Result<A> {
   Future<Result<A>> next(Apex apex);
 
   @override
-  Run<B> map<B>(B Function(A answer) f);
+  Action<B> map<B>(B Function(A answer) f);
 }
 
-/// A [Run] of a [Program] taking [I] and giving [O].
+/// An [Action] of a [Program] taking [I] and giving [O].
 ///
 /// Made only by its program ([Program.run], [Program.runOrRefusal]), so [I]
 /// is the program's own input type. Built from a program and an input side
 /// by side, inference would widen [I] to fit both, and a [WriteFile] given a
 /// `String` would compile.
-final class _Run<I, O, A> extends Run<A> {
-  const _Run(this._program, this._input, this._then) : super._();
+final class _Action<I, O, A> extends Action<A> {
+  const _Action(this._program, this._input, this._then) : super._();
 
   final Program<I, O> _program;
   final I _input;
@@ -87,12 +91,12 @@ final class _Run<I, O, A> extends Run<A> {
       _then(await apex._propose(_program, _input));
 
   @override
-  Run<B> map<B>(B Function(A answer) f) =>
-      _Run(_program, _input, (outcome) => _then(outcome).map(f));
+  Action<B> map<B>(B Function(A answer) f) =>
+      _Action(_program, _input, (outcome) => _then(outcome).map(f));
 }
 
 /// The tool's answer. [value] reaches the model as its definition's
-/// `Output` renders it.
+/// `Output` writes it out.
 final class Done<A> extends Result<A> {
   const Done(this.value);
 
@@ -114,12 +118,12 @@ final class Failed extends Result<Never> {
   Failed map<B>(B Function(Never answer) f) => this;
 }
 
-/// A program a run may be of: what it takes, [I], and what it gives
+/// A program an action may run: what it takes, [I], and what it gives
 /// back, [O].
 ///
 /// A closed set: [ReadFile], [WriteFile], [Executable] and [WebSend].
 /// Programs reach drivers, so they are part of what is trusted, with the
-/// drivers and the airlock; a new kind of effect is a new driver and program
+/// drivers and the airlock; a new kind of action is a new driver and program
 /// here.
 ///
 /// A journey path's prompts are not programs: the model is the agent
@@ -135,18 +139,18 @@ sealed class Program<I, O> {
   /// For the model and the record; an [Executable] is compared by it.
   String get name;
 
-  /// A run of this program on [input], continuing with [then].
-  Run<A> run<A>(
+  /// The action of running this program on [input], continuing with [then].
+  Action<A> run<A>(
     I input, {
     required Result<A> Function(Outcome<O> outcome) then,
-  }) => _Run(this, input, then);
+  }) => _Action(this, input, then);
 
-  /// A run whose refusal is the tool's failure: [then] is called only with
-  /// the output.
-  Run<A> runOrRefusal<A>(
+  /// An action whose refusal is the tool's failure: [then] is called only
+  /// with the output.
+  Action<A> runOrRefusal<A>(
     I input, {
     required Result<A> Function(O output) then,
-  }) => _Run(
+  }) => _Action(
     this,
     input,
     (outcome) => switch (outcome) {
@@ -183,7 +187,7 @@ sealed class Program<I, O> {
 /// The renderer a name names, or null: [Airlock.renderer].
 typedef _FindRenderer = Future<Renderer?> Function(RendererName name);
 
-/// The body a renderer recorded for this run's [Decided] entry, or why
+/// The body a renderer recorded for this action's [Decided] entry, or why
 /// there is none: [Airlock.rendered].
 typedef _Rendered = Future<Outcome<String>> Function();
 
@@ -276,7 +280,8 @@ final class Executable extends Program<Args, ExecResult> {
     outputFromJson: decodeExecResult,
   );
 
-  /// By [program], so a rule naming a program matches every run of it.
+  /// By [program], so a rule naming a program matches every action that
+  /// runs it.
   @override
   bool operator ==(Object other) =>
       other is Executable && other.program == program;
@@ -301,13 +306,13 @@ final class Executable extends Program<Args, ExecResult> {
 /// Sends a [Send] to a site, through the sign-in it names, with the body
 /// its renderer drew from recorded entries and recorded.
 ///
-/// An effect, decided like any other: what a tool sends to a chat, an issue
+/// An action, decided like any other: what a tool sends to a chat, an issue
 /// tracker or an API. Not a prompt, which is the agent planning and is not
 /// decided.
 ///
 /// The renderer is named exactly before the decision, so the [Decided]
-/// entry says which code will write the words. The renderer follows the
-/// journal for that entry, draws the body, and records it; the airlock sends
+/// entry says which code will write the words. The renderer subscribes to
+/// the record for that entry, draws the body, and records it; the airlock sends
 /// what was recorded. So the words exist only once the decision is kept,
 /// the exact bytes sent are in the record, and the airlock never talks to a
 /// renderer (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
@@ -455,8 +460,8 @@ final class Renderer {
   final ObjectId executable;
 }
 
-/// What a run would do to the world, typed, so the airlock can decide and
-/// record it without knowing the run's types: one per [Program].
+/// What an action would do to the world, typed, so the airlock can decide
+/// and record it without knowing the action's types: one per [Program].
 sealed class Reach {
   const Reach();
 }
@@ -510,13 +515,13 @@ final class Sends extends Reach {
   SignIn? get signIn => send.signIn;
 }
 
-/// One agent's own journey: the thread its runs are proposed on, with
+/// One agent's own journey: the thread its actions are proposed on, with
 /// rules [R] that say what it may do, and places [P] that say where in a
 /// turn each entry happened.
 ///
 /// Its drivers are those it was given, acting for the path, each wherever
-/// it runs. They are reached only by a [Run] proposed at one of its
-/// apexes, so every such run passes its airlock.
+/// it runs. They are reached only by an [Action] proposed at one of its
+/// apexes, so every such action passes its airlock.
 ///
 /// This is the airlock service's side of a journey path, set up when the
 /// record shows the docking station started the path (its rules, in
@@ -553,16 +558,16 @@ final class JourneyPath<R, P> {
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
 
-  /// This journey path's tip at [place], where its runs are proposed in this
-  /// process.
+  /// This journey path's tip at [place], where its actions are proposed in
+  /// this process.
   ///
   /// Here, where [P] is known, so a place of another type does not compile;
   /// whoever is handed the apex never sees [P].
   Apex at(P place) => _AtPath(this, place);
 
-  /// Refuses every run on this journey path whose driver has not yet been
-  /// reached. A run whose driver has been reached is not interrupted. Never
-  /// undone.
+  /// Refuses every action on this journey path whose driver has not yet been
+  /// reached. An action whose driver has been reached is not interrupted.
+  /// Never undone.
   void stop() => _stopped = true;
 
   bool get stopped => _stopped;
@@ -570,8 +575,8 @@ final class JourneyPath<R, P> {
   /// Each entry once the airlock has recorded it.
   Stream<Entry<P>> get entries => _entries.stream;
 
-  /// What drivers report while runs are underway: for a live view, and not
-  /// recorded.
+  /// What drivers report while actions are underway: for a live view, and
+  /// not recorded.
   Stream<Underway<P>> get underway => _underway.stream;
 
   D? _driver<D extends Driver>() => _drivers.whereType<D>().firstOrNull;
@@ -626,7 +631,7 @@ final class JourneyPath<R, P> {
   }
 
   /// [proposal], the `proposed` entry [proposed] on this path's chain,
-  /// considered at [place] as a run proposed at [at]'s apex would be:
+  /// considered at [place] as an action proposed at [at]'s apex would be:
   /// decided and recorded, and carried out by a driver if it is allowed. Its
   /// [Decided] and [Returned] entries name [proposed].
   ///
@@ -642,16 +647,16 @@ final class JourneyPath<R, P> {
 }
 
 /// A journey path's tip at one place in a turn: where its agent loop
-/// proposes the next run and its airlock decides it, recording each entry
-/// at that place.
+/// proposes the next action and its airlock decides it, recording each
+/// entry at that place.
 ///
 /// Made by [JourneyPath.at] where the journey path is, in the airlock
 /// service, and by [Apex.through] in the agent loop, which is another
-/// process: there a run's program and input go into the record as a
+/// process: there an action's program and input go into the record as a
 /// [Proposal], and its continuation stays behind, since it is the tool's own
 /// code. Either
-/// way, what follows a tool's result takes an apex and never handles the
-/// place. Two agents on one machine have two apexes; one step's two tool
+/// way, what comes after a tool's result takes an apex and never handles
+/// the place. Two agents on one machine have two apexes; one step's two tool
 /// calls are two apexes of one journey path, at two places.
 sealed class Apex {
   const Apex();
@@ -677,20 +682,20 @@ final class _AtPath<P> extends Apex {
       _journeyPath._consider(program, input, _place);
 }
 
-/// Decides each run on a journey path, and records it.
+/// Decides each action on a journey path, and records it.
 ///
 /// What intersyntactic's airlock implements. It guards the drivers it is
 /// given, not the journey: an agent that joins a journey with its own
 /// drivers is decided, or not, by its own.
 abstract interface class Airlock<R, P> {
-  /// Whether a driver may carry out a run that would do [reach], under
+  /// Whether a driver may carry out an action that would do [reach], under
   /// [rules].
   ///
-  /// Given the reach, not the run, so the decision is about exactly what is
+  /// Given the reach, not the action, so the decision is about exactly what is
   /// recorded: for a send, the renderer its name resolved to.
   Future<Decision> decide(Reach reach, R rules);
 
-  /// Keeps [entry]. A run's driver is reached only once its [Decided] entry
+  /// Keeps [entry]. An action's driver is reached only once its [Decided] entry
   /// is kept, and its outcome flows on only once its [Returned] entry is; an
   /// error thrown here ends the call.
   ///
@@ -706,16 +711,17 @@ abstract interface class Airlock<R, P> {
   Future<Renderer?> renderer(RendererName name);
 
   /// The body the renderer recorded for [decided], an allowed send's
-  /// [Decided] entry, once the airlock has followed the journal to it; or
+  /// [Decided] entry, once the airlock has read it from the record; or
   /// [Refused] with why there is none.
   ///
-  /// Called only after [decided] is kept. The renderer follows the journal
-  /// for it, reads the entries the send draws from, and records the body,
-  /// or a refusal when an entry is missing or fails its checks, in an entry
-  /// of its own following [decided]. The airlock never talks to a renderer:
-  /// it reads that entry, and accepts it only from the renderer [decided]
-  /// names. A renderer that does not answer in time is the airlock's to
-  /// refuse, and its [Returned] entry then follows [decided] instead.
+  /// Called only after [decided] is kept. The renderer subscribes to the
+  /// record for it, reads the entries the send draws from, and records the
+  /// body, or a refusal when an entry is missing or fails its checks, in an
+  /// entry of its own whose previous is [decided]. The airlock never talks
+  /// to a renderer: it reads that entry, and accepts it only from the
+  /// renderer [decided] names. A renderer that does not answer in time is
+  /// the airlock's to refuse, and its [Returned] entry's previous is then
+  /// [decided] instead.
   ///
   /// The render runner reports the renderer it was built with, the
   /// archive hash its `pubspec.lock` records, given as a define at compile
@@ -727,7 +733,7 @@ abstract interface class Airlock<R, P> {
   Future<Outcome<String>> rendered(Decided<P> decided);
 }
 
-/// What the [Airlock] decided about one run, and [by] whom, so the record
+/// What the [Airlock] decided about one action, and [by] whom, so the record
 /// tells "the rules let it through" from "the person said yes".
 sealed class Decision {
   const Decision({required this.by});
@@ -735,12 +741,12 @@ sealed class Decision {
   final DecidedBy by;
 }
 
-/// A driver may carry the run out.
+/// A driver may carry the action out.
 final class Allow extends Decision {
   const Allow({required super.by});
 }
 
-/// No driver carries the run out, because [why]; its continuation is handed
+/// No driver carries the action out, because [why]; its continuation is handed
 /// [Refused] with that reason.
 final class Deny extends Decision {
   const Deny(this.why, {required super.by});
@@ -748,7 +754,7 @@ final class Deny extends Decision {
   final String why;
 }
 
-/// One entry in a journey path's record: [Decided] before a run goes out,
+/// One entry in a journey path's record: [Decided] before an action goes out,
 /// and [Returned] when it comes back.
 ///
 /// Each is at a [place] in a turn, of type [P], which the agent loop
@@ -768,9 +774,9 @@ sealed class Entry<P> {
   final P place;
 }
 
-/// A run that would do [reach] was decided, and no driver has been reached
-/// yet. Without a [Returned] entry after it, the record shows the run was
-/// cut short.
+/// An action that would do [reach] was decided, and no driver has been
+/// reached yet. Without a [Returned] entry after it, the record shows the
+/// action was cut short.
 final class Decided<P> extends Entry<P> {
   const Decided(
     super.journeyPathId,
@@ -783,14 +789,15 @@ final class Decided<P> extends Entry<P> {
   final Reach reach;
   final Decision decision;
 
-  /// The `proposed` entry that asked for the run; null for a run proposed
-  /// in the airlock service's own process.
+  /// The `proposed` entry that asked for the action; null for an action
+  /// proposed in the airlock service's own process.
   final EntryId? proposed;
 }
 
-/// The run that would do [reach] came back, with its [outcome], whether it
-/// ran or was refused. Made only by a journey path, which knows the run's
-/// program, so [ReturnedProposal.of] can write what came back in full.
+/// The action that would do [reach] came back, with its [outcome], whether
+/// it ran or was refused. Made only by a journey path, which knows the
+/// action's program, so [ReturnedProposal.of] can write what came back in
+/// full.
 final class Returned<P> extends Entry<P> {
   const Returned._(
     super.journeyPathId,
@@ -807,12 +814,12 @@ final class Returned<P> extends Entry<P> {
   /// [outcome] as its program's codec writes it.
   final Object? _outcomeJson;
 
-  /// The `proposed` entry that asked for the run; null for a run proposed
-  /// in the airlock service's own process.
+  /// The `proposed` entry that asked for the action; null for an action
+  /// proposed in the airlock service's own process.
   final EntryId? proposed;
 }
 
-/// What a driver reported, [progress], while the run doing [reach] was
+/// What a driver reported, [progress], while the action doing [reach] was
 /// underway at [place] on the journey path named [journeyPathId].
 final class Underway<P> {
   const Underway(this.journeyPathId, this.place, this.reach, this.progress);

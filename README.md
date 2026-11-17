@@ -1,10 +1,10 @@
 # is_airlock_api
 
-The airlock's contract. Tools describe effects; the airlock decides and
+The airlock's contract. Tools describe actions; the airlock decides and
 records each one; drivers operate the world. A tool touches nothing: for
-each call it returns a `Result`, which is followed on a journey path.
+each call it returns a `Result`, which is carried through on a journey path.
 
-What an effect takes and gives back, and the drivers that carry it out, are
+What an action takes and gives back, and the drivers that carry it out, are
 `is_effects`'s, so a driver never sees this package. Joining an
 `is_tools_api` definition to what a tool does is `is_tool`'s.
 
@@ -25,11 +25,12 @@ final journeyPath = JourneyPath(
   drivers: [files, programs],
   airlock: airlock,
   rules: rules,
+  suit: suit, // the OS user its programs run as
 );
 // Its loop, for one tool call, at that call's place in the turn:
 final apex = journeyPath.at(place);
 var result = writeAndFormat(file);
-while (result is Run<ExecResult>) {
+while (result is Action<ExecResult>) {
   result = await result.next(apex);
 }
 ```
@@ -37,26 +38,26 @@ while (result is Run<ExecResult>) {
 ## A result
 
 - `Result<A>`: what a tool returns for a call, where `A` is its output type.
-  `Run` (do this, then hand what happened to the continuation),
+  `Action` (do this, then hand what happened to the continuation),
   `Done(value)` (the answer), or `Failed(why)` (it couldn't). `Failed` is a
-  `Result<Never>`, so one fits every tool. A tool may take several runs, with
-  ordinary logic between them; each is decided on its own.
+  `Result<Never>`, so one fits every tool. A tool may take several actions,
+  with ordinary logic between them; each is decided on its own.
 - `result.map(f)`: the same result with its answer, once there is one, given
-  to `f`. It reaches no driver: a run's continuation is extended, so every
-  run is still decided and recorded at an apex. Turning a tool's answer into
-  what the model is told takes no journey path.
+  to `f`. It reaches no driver: an action's continuation is extended, so
+  every action is still decided and recorded at an apex. Turning a tool's
+  answer into what the model is told takes no journey path.
 
-## A run
+## An action
 
 - `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
   (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`) and
   `WebSend` (`Program.web`, a `Send` to an `Origin` through a named
   `SignIn`). Programs reach drivers, so they belong with the drivers and the
-  airlock to what is trusted; a new kind of effect is a new driver and
+  airlock to what is trusted; a new kind of action is a new driver and
   program.
-- `Run<A>`: a program, its input and the continuation, all private. Made only
-  by its program, so its input is the program's own type. Nothing about a
-  run shows outside; when it is proposed, what it would do is worked out
+- `Action<A>`: a program, its input and the continuation, all private. Made
+  only by its program (`program.run(input, then:)`), so its input is the
+  program's own type. Nothing about an action shows outside; when it is proposed, what it would do is worked out
   as its `Reach`, which the airlock decides and records: `Reads(path)`,
   `Writes(file)`, `Starts(program, args)` or `Sends(send, renderer)`. A
   rule grants a send by origin and sign-in together.
@@ -80,22 +81,22 @@ renderer the record names exactly
   before the rules are asked.
 - The airlock never talks to a renderer
   (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
-  A renderer follows the journal for `Decided` entries naming it, reads
-  the entries the send draws from, and records the body, or a refusal when
-  an entry is missing, in an entry of its own after the `Decided`.
-  `Airlock.rendered(decided)` is the airlock following the journal to that
-  entry; it is called only once `Decided` is kept, and what it gives is
+  A renderer subscribes to the record for `Decided` entries naming it,
+  reads the entries the send draws from, and records the body, or a
+  refusal when an entry is missing, in an entry of its own after the
+  `Decided`. `Airlock.rendered(decided)` is the airlock reading that entry
+  from the record; it is called only once `Decided` is kept, and what it gives is
   what is sent. So the exact bytes sent are in the record.
 - A send's chain in the journal: `DecidedSend` (kind `send-decided`), then
   the renderer's `Rendered` (kind `rendered`), then the airlock's
-  `Returned`, each following the one before, so the journal's tip check
-  lets each be written once. When the renderer does not answer in time,
-  `Returned` (refused) follows the `DecidedSend` directly and a late
-  `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
-  What came back from any proposed run is recorded in full, in a
+  `Returned`, each naming the one before as its previous, so the journal's
+  tip check lets each be written once. When the renderer does not answer
+  in time, `Returned` (refused) names the `DecidedSend` as its previous and
+  a late `Rendered` is turned away. Each has `toJson` and a checking `fromJson`.
+  What came back from any proposed action is recorded in full, in a
   `ReturnedProposal` (below).
 
-A send is an effect, decided like any other: what a tool sends to a chat or
+A send is an action, decided like any other: what a tool sends to a chat or
 an API. A journey path's prompts are not: the model is the agent planning,
 so a prompt is not decided, and no tool is in it. How a prompt is sent and
 recorded is not this contract's.
@@ -115,8 +116,8 @@ supplies and the airlock records; nothing here computes one.
   is already the power to touch the world, so setting up a side grants
   nothing new.
 - `at(place)`: the journey path's apex at that place, its tip, where its
-  agent loop proposes the next run and its airlock decides it. The journey
-  path checks the place's type, so whatever follows a tool's result takes
+  agent loop proposes the next action and its airlock decides it. The journey
+  path checks the place's type, so whatever comes after a tool's result takes
   an `Apex` and never handles `P`. Two agents on one machine have two
   apexes; one step's two tool calls are two apexes of one journey path, at
   two places.
@@ -125,41 +126,42 @@ supplies and the airlock records; nothing here computes one.
   the docking station writes, the way a `JourneyId` names a journey. So no two
   journey paths share an id, after a restart too, and nothing here mints
   one. Every entry names it.
-- `run.next(apex)`, the only way a run reaches the world: it is proposed at
-  the apex, and the airlock decides it; the airlock records the decision (`Decided`) and only then is
-  a driver reached; the run comes back and the airlock records it
-  (`Returned`), and only then does the continuation see it. A record that
-  cannot be written ends the call. A `Decided` with no `Returned` is a run
-  cut short. Recorded means it survives the journal crashing, not a power
+- `action.next(apex)`, the only way an action reaches the world: it is
+  proposed at the apex, and the airlock decides it; the airlock records the
+  decision (`Decided`) and only then is a driver reached; the action comes
+  back and the airlock records it (`Returned`), and only then does the
+  continuation see it. A record that cannot be written ends the call. A
+  `Decided` with no `Returned` is an action cut short. Recorded means it survives the journal crashing, not a power
   cut (https://github.com/intersyntactic/journal/pull/12).
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped journey path's refusal
   is the person's.
-- `stop()`: refuses every run on this journey path whose driver has not
-  yet been reached. A run whose driver has been reached is not interrupted.
+- `stop()`: refuses every action on this journey path whose driver has not
+  yet been reached. An action whose driver has been reached is not
+  interrupted.
 - `entries`: each entry once recorded, at its place. `underway`: what
-  drivers report while a run is underway, for a live view, and not
+  drivers report while an action is underway, for a live view, and not
   recorded. Each names its journey path and place.
-- `Airlock<R, P>`: `decide`, given a run's `Reach`, and `record`,
+- `Airlock<R, P>`: `decide`, given an action's `Reach`, and `record`,
   implemented by intersyntactic's airlock.
 
 ## Between the agent loop and the airlock
 
 The agent loop and the airlock are separate services, and the record is
 the only channel between them: the airlock has no door of its own
-(https://github.com/enspyrco/intersyntactic/pull/1156). A run's
+(https://github.com/enspyrco/intersyntactic/pull/1156). An action's
 continuation is the tool's own code, so it stays in the loop; its program
-and input go into the record as a `Proposal`, an effect not yet decided,
+and input go into the record as a `Proposal`, an action not yet decided,
 and what came back returns through the record
 (https://github.com/enspyrco/intersyntactic/pull/1157). The airlock decides
-and records, and only a driver carries an effect out.
+and records, and only a driver carries an action out.
 
 - `JourneyPath.at(place)` is an apex where the journey path is, in the
   airlock service. `Apex.through(link, place:)` is one in the agent loop,
   over a `RecordLink`, the transport, which this package does not have: it
   writes a `proposed` entry on the loop's journey path's chain and waits
   for the `returned` entry that names it, which loop_launcher hands the
-  loop. `run.next(apex)` is the same with either, so a tool does not
+  loop. `action.next(apex)` is the same with either, so a tool does not
   change.
 - A `Proposal` (kind `proposed`) names no journey path. The journal takes
   the entries on a path's chain only from that path's loop user, so the
@@ -169,16 +171,21 @@ and records, and only a driver carries an effect out.
 - `Proposal.read(json)` gives a `Proposal` or `Rejected(why)`, checking
   every part as its type's own `parse` does, with is_effects's codecs.
   `journeyPath.consider(proposal, place, proposed: entryId)` decides and
-  records it as a run proposed at `at(place)` would be; its `Decided` and
+  records it as an action proposed at `at(place)` would be; its `Decided` and
   `Returned` name the `proposed` entry.
-- `ReturnedProposal` (kind `returned`): what came back from a proposed run,
+- `ReturnedProposal` (kind `returned`): what came back from a proposed action,
   in full, as the program's codec writes it, or the refusal, naming the
-  `proposed` entry it answers. It is the one copy of what an effect
+  `proposed` entry it answers. It is the one copy of what an action
   returned: a read's text, a program's output, a site's answer. The airlock
   writes it on its own chain, never the path's, which only the loop user
   writes. `ReturnedProposal.of(returned)` makes one from a `Returned` entry;
   `ReturnedProposal.refused(entryId, why)` answers a `proposed` entry that
-  was `Rejected`, so its loop is answered and no other path is held up.
+  was `Rejected`, so its loop is answered and no other path is stalled.
+- `WaitingToStart` (kind `waiting-to-start`, `{"journeyPath": <hex>}`,
+  read strictly): loop_launcher records it once, on a chain of its own,
+  when a path that has no `assigned` entry yet has to wait for room. Its
+  `assigned` ends the wait. Why it waits goes to the operator only, so the
+  entry carries no reason.
 - `LoopUser` (`loop-<n>`) and `Suit` (`suit-<n>`): the OS users
   loop_launcher hands each path from pools infra makes ahead of time, and
   records in the path's `assigned` entry. The path's loop runs as its loop
@@ -186,7 +193,7 @@ and records, and only a driver carries an effect out.
   contained or open (https://github.com/enspyrco/intersyntactic/pull/1158):
   the airlock service gives the path a program driver that runs as it.
 - An answer the loop cannot read as an outcome throws a `FormatException`
-  and ends the call: whether the run reached the world is then known only
+  and ends the call: whether the action reached the world is then known only
   to the airlock's record.
 - Progress (`underway`) stays in the airlock service; anyone who
   subscribes to the record sees the entries.
@@ -204,8 +211,8 @@ docking station gives a journey path whatever rules it likes.
 
 An airlock guards the drivers it is given, not the journey. An agent
 that joins a journey with its own drivers and its own airlock, or none, is
-outside it. So "every effect through these drivers is recorded" holds, and
-"every effect in the journey is recorded" is not this package's to promise;
+outside it. So "every action through these drivers is recorded" holds, and
+"every action in the journey is recorded" is not this package's to promise;
 the journey's rules bound our journey paths, not anyone else's.
 
 The library imports `is_effects`, `is_shapes` and `is_content_id` and

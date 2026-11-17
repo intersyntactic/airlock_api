@@ -1,18 +1,19 @@
-part of 'run.dart';
+part of 'action.dart';
 
 // One send's chain in the journal: a [DecidedSend] entry, the [Rendered]
-// entry its renderer writes following it, and the airlock's `Returned`
-// following that. The journal's tip check lets each link be written once. A
-// renderer that does not answer in time is closed by the airlock's
-// `Returned` (refused) following the `DecidedSend` directly, after which a
-// late `Rendered` is turned away, since its entry is no longer the tip.
+// entry its renderer writes after it, and the airlock's `Returned` after
+// that, each naming the one before as its previous. The journal's tip check
+// lets each link be written once. A renderer that does not answer in time
+// is closed by the airlock's `Returned` (refused), whose previous is the
+// `DecidedSend`, after which a late `Rendered` is turned away, since its
+// previous is no longer the tip.
 //
 // A renderer reads the one and writes the other, and the airlock reads what
-// it wrote. What came back from any proposed run, a send's among them, is
+// it wrote. What came back from any proposed action, a send's among them, is
 // recorded in full in a [ReturnedProposal].
 
 /// A send's [Decided] entry as the journal holds it: what its renderer
-/// follows the journal for, and reads to know what to draw.
+/// subscribes to the record for, and reads to know what to draw.
 final class DecidedSend {
   const DecidedSend._(
     this.journeyPath,
@@ -88,7 +89,7 @@ final class DecidedSend {
   };
 }
 
-/// What a renderer wrote following a [DecidedSend] entry: the body it drew
+/// What a renderer wrote after a [DecidedSend] entry: the body it drew
 /// from the entries the send names, or why it drew none, and the source it
 /// was built from.
 final class Rendered {
@@ -120,7 +121,7 @@ final class Rendered {
     );
   }
 
-  /// The [DecidedSend] entry this follows.
+  /// The [DecidedSend] entry this answers, its previous.
   final EntryId decided;
 
   /// The source the renderer was built from, as it reports it: the airlock

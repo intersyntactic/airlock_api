@@ -10,7 +10,7 @@ import 'contract_test.dart'
         MemoryFiles,
         RecordedPrograms,
         RecordedWeb,
-        follow,
+        answerOf,
         hart,
         send,
         start,
@@ -67,29 +67,32 @@ Apex loopApex(RecordedLink link, {int place = 1}) =>
     Apex.through(link, place: place);
 
 void main() {
-  test('a run proposed through the record is decided, recorded and run as '
-      'in the airlock, and its continuation runs in the loop', () async {
-    final airlock = LogAirlock();
-    final files = MemoryFiles();
-    final link = RecordedLink(
-      start(airlock, [files, RecordedPrograms()]),
-      airlock,
-    );
-    expect(
-      await follow(writeAndFormat('a.dart'), loopApex(link, place: 3)),
-      'Formatted 1 file',
-    );
-    expect(files.files, {'a.dart': 'void main() {}'});
-    expect(airlock.log, [
-      '3: allow write a.dart',
-      '3: ran write a.dart',
-      '3: allow dart format a.dart',
-      '3: ran dart format a.dart',
-    ]);
-    expect(link.rejected, isEmpty);
-  });
+  test(
+    'an action proposed through the record is decided, recorded and '
+    'carried out as in the airlock, and its continuation runs in the loop',
+    () async {
+      final airlock = LogAirlock();
+      final files = MemoryFiles();
+      final link = RecordedLink(
+        start(airlock, [files, RecordedPrograms()]),
+        airlock,
+      );
+      expect(
+        await answerOf(writeAndFormat('a.dart'), loopApex(link, place: 3)),
+        'Formatted 1 file',
+      );
+      expect(files.files, {'a.dart': 'void main() {}'});
+      expect(airlock.log, [
+        '3: allow write a.dart',
+        '3: ran write a.dart',
+        '3: allow dart format a.dart',
+        '3: ran dart format a.dart',
+      ]);
+      expect(link.rejected, isEmpty);
+    },
+  );
 
-  test("what a run returned reaches the loop from the record, in full, and "
+  test("what an action returned reaches the loop from the record, in full, and "
       'its entries name the proposal', () async {
     final airlock = LogAirlock();
     final files = MemoryFiles()..files['a.dart'] = 'the text';
@@ -98,7 +101,7 @@ void main() {
     final entries = <Entry<int>>[];
     path.entries.listen(entries.add);
     expect(
-      await follow(
+      await answerOf(
         Program.read.runOrRefusal(
           RelativePath('a.dart'),
           then: (read) => Done(switch (read) {
@@ -127,7 +130,7 @@ void main() {
     final turn = airlock.remember('done');
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
-      await follow(
+      await answerOf(
         send(teams, hart, entries: [turn]),
         loopApex(RecordedLink(path, airlock)),
       ),
@@ -140,7 +143,7 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles()], rules: {'read'});
     expect(
-      await follow(
+      await answerOf(
         writeAndFormat('a.dart'),
         loopApex(RecordedLink(path, airlock)),
       ),
@@ -149,13 +152,13 @@ void main() {
   });
 
   test(
-    'a run proposed in-process has no entry in the record to answer',
+    'an action proposed in-process has no entry in the record to answer',
     () async {
       final airlock = LogAirlock();
       final path = start(airlock, [MemoryFiles()]);
       final returned = <Returned<int>>[];
       path.entries.listen((e) => e is Returned<int> ? returned.add(e) : null);
-      await follow(writeAndFormat('a.dart'), path.at(1));
+      await answerOf(writeAndFormat('a.dart'), path.at(1));
       expect(returned, hasLength(2));
       expect(returned.map(ReturnedProposal.of), everyElement(isNull));
     },
@@ -232,7 +235,7 @@ void main() {
     final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock)
       ..answerWith = (_) => {'kind': 'maybe'};
     await expectLater(
-      follow(writeAndFormat('a.dart'), loopApex(link)),
+      answerOf(writeAndFormat('a.dart'), loopApex(link)),
       throwsFormatException,
     );
   });
