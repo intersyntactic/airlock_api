@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1
+
+- Takes is_effects `>=0.7.0 <0.9.0` and is_shapes `>=0.5.0 <0.7.0`, not
+  `^0.7.0` and `^0.5.0`, so it resolves alongside is_effects 0.8.0 and
+  is_shapes 0.6.0 (which drops `RendererId`, used nowhere here). Built and
+  tested at both ends of each range. No code changes.
+
 ## 0.9.0
 
 Breaking. Every name says what the thing is, and the airlock's two writes
