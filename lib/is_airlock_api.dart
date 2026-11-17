@@ -1,6 +1,7 @@
 /// The airlock's contract: what a tool returns for a call, the actions it
-/// describes, the journey path each action is proposed on, and the
-/// [Airlock] that decides and records each one.
+/// describes, the journey path each action is proposed on, and what the
+/// airlock implements to decide and record each one,
+/// [DecidesAndRecordsActions].
 ///
 /// The airlock itself, which decides and records, is not here: this library
 /// holds only the types it and the tools agree on. What an action takes and

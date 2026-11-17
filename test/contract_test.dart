@@ -5,7 +5,7 @@ import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
 /// Files in memory. Refuses to write under `.git/`, in its own words.
-final class MemoryFiles implements FileDriver {
+final class MemoryFiles implements ReadsAndWritesFiles {
   final files = <String, String>{};
 
   @override
@@ -28,7 +28,7 @@ final class MemoryFiles implements FileDriver {
 
 /// Starts nothing, keeps what it was asked to start, and reports while it
 /// runs.
-final class RecordedPrograms implements ProgramDriver {
+final class RecordedPrograms implements StartsPrograms {
   final started = <List<String>>[];
 
   @override
@@ -45,7 +45,7 @@ final class RecordedPrograms implements ProgramDriver {
 
 /// Makes no request, keeps each one it was asked to make, and says the
 /// destination made `activity-1`.
-final class RecordedWeb implements WebDriver {
+final class RecordedWeb implements CarriesOutWebRequests {
   final requests = <Request>[];
 
   @override
@@ -75,7 +75,7 @@ String reachOf(Reach reach) => switch (reach) {
 /// test [remember]s, and its renderer draws a body by joining the texts of
 /// the entries a request names, logging `render <n>` when the airlock reads
 /// what it recorded.
-final class LogAirlock implements Airlock<Set<String>, int> {
+final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   LogAirlock({this.failOn});
 
   final Type? failOn;
@@ -183,7 +183,7 @@ JourneyPathId idOf(String startedBy) =>
 /// of it set up in this process.
 JourneyPath<Set<String>, int> start(
   LogAirlock airlock,
-  List<Driver> drivers, {
+  List<CarriesOutActions> drivers, {
   Set<String> rules = const {'read', 'write', 'dart'},
 }) => JourneyPath(
   id: idOf('started root'),

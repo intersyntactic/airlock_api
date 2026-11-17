@@ -3,7 +3,20 @@
 ## 0.7.0 (unreleased)
 
 Breaking. "Send" is retired (Nick, 17 Nov 13:31: no tiny words for
-complex things).
+complex things), and an interface is named for what it can do, so
+`implements` reads as a true sentence (Nick, 17 Nov 13:55: "\"What it can
+do\", yes naming rule";
+https://github.com/enspyrco/intersyntactic/pull/1164).
+
+- `Airlock<R, P>` is `DecidesAndRecordsActions<R, P>`, and `RecordLink` is
+  `ProposesActionsThroughTheRecord`. The airlock and its drivers are still
+  called that: only the interfaces are renamed, since a noun is kept for
+  a thing that exists. No alias is kept.
+- Depends on is_effects ^0.4.0, which renamed its driver interfaces the
+  same way: `Driver` is `CarriesOutActions`, `FileDriver` is
+  `ReadsAndWritesFiles`, `ProgramDriver` is `StartsPrograms`, and
+  `WebDriver` is `CarriesOutWebRequests`. So `JourneyPath(drivers:)`
+  takes `Iterable<CarriesOutActions>`.
 
 - `Send` is `WebRequest` (Nick, 16 Nov 18:46), `WebSend` is
   `MakeWebRequest`, and `Sends` is `MakesWebRequest`, whose field `send` is
@@ -12,7 +25,7 @@ complex things).
 - `DecidedSend` is `DecidedWebRequest`, kind `web-request-decided`, with
   the JSON key `request` in place of `send`. No entry was ever written with
   the old kind. `send_entries.dart` is `web_request_entries.dart`.
-- Depends on is_effects ^0.3.0, which made the same change:
+- is_effects 0.3.0 made the same change:
   `WebDriver.send` is `carryOutWebRequest`, and `Sent` is
   `WebRequestOutcome`, so `MakeWebRequest` gives a `WebRequestOutcome`.
   "Renderer" is not decided and is unchanged.

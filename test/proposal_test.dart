@@ -23,7 +23,7 @@ import 'contract_test.dart'
 /// considers it on [path], and the loop is handed the `returned` entry that
 /// names it, through `jsonEncode` and back, as loop_launcher would hand it.
 /// Places are ints. Keeps why each rejected entry was rejected.
-final class RecordedLink implements RecordLink {
+final class RecordedLink implements ProposesActionsThroughTheRecord {
   RecordedLink(this.path, this.airlock);
 
   final JourneyPath<Set<String>, int> path;
