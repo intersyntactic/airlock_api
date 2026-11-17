@@ -21,6 +21,12 @@ final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
   @override
   Future<Outcome<String>> rendered(Decided<int> decided) async =>
       const Refused('no renderer');
+
+  @override
+  Future<Outcome<String>> recordedOn(
+    TrajectoryId trajectory,
+    EntryId entry,
+  ) async => const Refused('nothing recorded');
 }
 
 /// Writes nothing, and says it wrote.

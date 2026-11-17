@@ -12,9 +12,7 @@ environment:
 
 dependencies:
   is_content_id: ^0.2.0
-  # Both: 0.7.0 only adds, and nothing here switches over its new Progress
-  # case. is_flight_rules needs 0.7.0, so ^0.6.0 alone kept the two apart.
-  is_effects: ">=0.6.0 <0.8.0"
+  is_effects: ^0.7.0
   is_shapes: ^0.5.0
 
 dev_dependencies:

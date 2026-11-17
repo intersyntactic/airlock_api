@@ -173,6 +173,7 @@ Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
       ('read', null) => Program.read,
       ('write', null) => Program.write,
       ('web', null) => Program.web,
+      ('model', null) => Program.askTheModel,
       ('start', final String program) => Executable.parse(program),
       _ => null,
     };

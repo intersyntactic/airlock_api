@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show jsonDecode, utf8;
 
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
@@ -9,6 +10,7 @@ part 'pool_user.dart';
 part 'web_request_entries.dart';
 part 'proposal.dart';
 part 'waiting_to_start.dart';
+part 'model_request.dart';
 
 /// What a tool's code returns for a call: an action whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -121,20 +123,23 @@ final class Failed extends Result<Never> {
 /// A program an action may run: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile], [Executable] and [MakeWebRequest].
+/// A closed set: [ReadFile], [WriteFile], [Executable], [MakeWebRequest]
+/// and [AskTheModel].
 /// Programs reach drivers, so they are part of what is trusted, with the
 /// drivers and the airlock; a new kind of action is a new driver and program
 /// here.
 ///
-/// A trajectory's prompts are not programs: the model is the agent
-/// planning, so a prompt is not decided, and no tool is in it. How it
-/// reaches the model and is recorded is not this contract's.
+/// A model call is one too, [AskTheModel]: the model is outside the
+/// station, so the case's words leave the machine with every call
+/// (https://github.com/enspyrco/intersyntactic/pull/1168, replacing the
+/// ruling that the model is the agent planning and is not decided).
 sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
   static const write = WriteFile();
   static const web = MakeWebRequest();
+  static const askTheModel = AskTheModel();
 
   /// For the model and the record; an [Executable] is compared by it.
   String get name;
@@ -307,8 +312,8 @@ final class Executable extends Program<Args, ExecResult> {
 /// body its renderer drew from recorded entries and recorded.
 ///
 /// An action, decided like any other: a request a tool makes to a chat, an
-/// issue tracker or an API. Not a prompt, which is the agent planning and is
-/// not decided.
+/// issue tracker or an API. A call to the model is not one of these: it is
+/// [AskTheModel], through the model driver.
 ///
 /// The renderer is named exactly before the decision, so the [Decided]
 /// entry says which code will write the words. The renderer subscribes to
@@ -367,6 +372,145 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
       ),
     ),
   };
+}
+
+/// Asks the model, through the model driver, as the [ModelCall]'s sign-in,
+/// with the system prompt and request its recorded [ModelRequest] holds.
+///
+/// The one action the loop proposes for itself rather than drawing from an
+/// intent in the model's reply: the loop holds no sign-in and has no
+/// network, so this is its only way to reach the model
+/// (https://github.com/enspyrco/intersyntactic/pull/1168). The airlock
+/// allows it only as a sign-in the trajectory's rules give the loop.
+///
+/// Once allowed, the airlock reads the [ModelRequest] and each of its
+/// pieces from this trajectory's own chain, joins each text, checks it
+/// against its sha256, and hands the driver exactly those texts. Any piece
+/// missing, on another chain, or not joining to its hash refuses the call
+/// before the driver is reached. The reply streams as [ReplyArriving] in
+/// [Underway], never recorded; the whole [ModelReply] is the outcome,
+/// recorded once.
+final class AskTheModel extends Program<ModelCall, ModelReply> {
+  const AskTheModel();
+
+  @override
+  String get name => 'model';
+
+  @override
+  Future<Reach> _reach(ModelCall call, _FindRenderer findRenderer) async =>
+      CallsTheModel(call);
+
+  @override
+  _Wire<ModelCall, ModelReply> get _wire => const _Wire(
+    {'program': 'model'},
+    inputToJson: _modelCallToJson,
+    inputFromJson: _modelCallFromJson,
+    outputToJson: encodeModelReply,
+    outputFromJson: decodeModelReply,
+  );
+
+  @override
+  Future<Outcome<ModelReply>>? _on(
+    Trajectory<Object?, Object?> trajectory,
+    ModelCall call,
+    Reach reach,
+    _Rendered rendered,
+    Report report,
+  ) => switch (trajectory._driver<AsksTheModel>()) {
+    null => null,
+    final driver => _ask(driver, trajectory, call, report),
+  };
+
+  static Future<Outcome<ModelReply>> _ask(
+    AsksTheModel driver,
+    Trajectory<Object?, Object?> trajectory,
+    ModelCall call,
+    Report report,
+  ) async {
+    Future<Outcome<String>> read(EntryId entry) =>
+        trajectory._airlock.recordedOn(trajectory.id, entry);
+    final ModelRequest request;
+    switch (await read(call.request)) {
+      case Refused(:final why):
+        return Refused(why);
+      case Ran(output: final text):
+        try {
+          request = ModelRequest.fromJson(jsonDecode(text));
+        } on FormatException catch (e) {
+          return Refused('not a model request: ${e.message}');
+        }
+    }
+    Future<Outcome<String>> joined(RecordedText recorded) async {
+      final texts = <String>[];
+      for (final piece in recorded.pieces) {
+        switch (await read(piece)) {
+          case Refused(:final why):
+            return Refused(why);
+          case Ran(output: final text):
+            try {
+              texts.add(ModelRequestPiece.fromJson(jsonDecode(text)).text);
+            } on FormatException catch (e) {
+              return Refused('not a model request piece: ${e.message}');
+            }
+        }
+      }
+      return recorded.join(texts);
+    }
+
+    final systemPrompt = await joined(request.systemPrompt);
+    final asked = await joined(request.request);
+    return switch ((systemPrompt, asked)) {
+      (Refused(:final why), _) || (_, Refused(:final why)) => Refused(why),
+      (Ran(output: final system), Ran(output: final text)) =>
+        await driver.askTheModel(
+          call.signIn,
+          call.model,
+          system,
+          text,
+          report: report,
+        ),
+    };
+  }
+}
+
+/// A model call a loop proposes: as which of the person's model sign-ins,
+/// to which model, and the [ModelRequest] entry, recorded on its
+/// trajectory's chain before this, that holds exactly what is sent.
+final class ModelCall {
+  const ModelCall({
+    required this.signIn,
+    required this.model,
+    required this.request,
+  });
+
+  final ModelSignInName signIn;
+  final ModelName model;
+
+  /// The [ModelRequest] entry.
+  final EntryId request;
+}
+
+Object? _modelCallToJson(ModelCall call) => {
+  'signIn': encodeModelSignInName(call.signIn),
+  'model': encodeModelName(call.model),
+  'request': call.request.hex,
+};
+
+ModelCall _modelCallFromJson(Object? json, String field) {
+  final map = _object(field, json);
+  const keys = {'signIn', 'model', 'request'};
+  if (map.keys.any((key) => !keys.contains(key))) {
+    throw FormatException(
+      '$field: unexpected ${map.keys.where((k) => !keys.contains(k))}',
+    );
+  }
+  return ModelCall(
+    signIn: decodeModelSignInName(map['signIn'], '$field.signIn'),
+    model: decodeModelName(map['model'], '$field.model'),
+    request:
+        EntryId.parse(_string('$field.request', map['request'])) ??
+        (throw FormatException('$field.request: not an entry id')),
+  );
 }
 
 /// A web request a tool asks for: where to, as whom, and which recorded
@@ -518,6 +662,18 @@ final class MakesWebRequest extends Reach {
   SignIn? get signIn => request.signIn;
 }
 
+/// Reaches the model: [call] goes out as its sign-in, to its model, with the
+/// texts its [ModelRequest] entry holds. A rule grants it by the sign-in,
+/// one the trajectory's rules give the loop.
+final class CallsTheModel extends Reach {
+  const CallsTheModel(this.call);
+
+  final ModelCall call;
+
+  ModelSignInName get signIn => call.signIn;
+  ModelName get model => call.model;
+}
+
 /// One agent's own trajectory: the line its actions are proposed on, with
 /// rules [R] that say what it may do, and places [P] that say where in a
 /// turn each entry happened.
@@ -602,7 +758,8 @@ final class Trajectory<R, P> {
       Reads() ||
       Writes() ||
       Starts() ||
-      MakesWebRequest() => await _airlock.decide(reach, rules),
+      MakesWebRequest() ||
+      CallsTheModel() => await _airlock.decide(reach, rules),
     };
     if (stopped) decision = stoppedByPerson;
     final decided = Decided(id, place, reach, decision, proposed: proposed);
@@ -741,6 +898,16 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// refused. That rules out a stale or mis-built renderer being taken for
   /// this one, not someone building one that lies.
   Future<Outcome<String>> rendered(Decided<P> decided);
+
+  /// The content of [entry], as text, when the record holds it on
+  /// [trajectory]'s own chain; or [Refused] with why not.
+  ///
+  /// Read with the record service's `get`. An entry on any other chain is
+  /// refused, never read: entry hashes are not secret, so without this a
+  /// loop could name another trajectory's [ModelRequest] or pieces and have
+  /// that conversation sent as its own sign-in. [AskTheModel] reads its
+  /// request and every piece through here.
+  Future<Outcome<String>> recordedOn(TrajectoryId trajectory, EntryId entry);
 }
 
 /// What the airlock decided about one action, and [by] whom, so the record

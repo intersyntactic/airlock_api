@@ -65,6 +65,7 @@ String reachOf(Reach reach) => switch (reach) {
   MakesWebRequest(:final origin, :final signIn, :final renderer) =>
     'request to $origin as $signIn'
         '${renderer == null ? ' with no renderer' : ''}',
+  CallsTheModel(:final model, :final signIn) => 'ask $model as $signIn',
 };
 
 /// Rules: what a trajectory may do, by name, and the sites it may make requests to
@@ -85,13 +86,26 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   /// answers, as the airlock would write it on its own chain.
   final returned = <EntryId, ReturnedProposal>{};
   final _journal = <EntryId, String>{};
+  final _chainOf = <EntryId, TrajectoryId>{};
 
-  /// Records [text], as the journal would, and gives its id.
-  EntryId remember(String text) {
+  /// Records [text], as the journal would, on [on]'s chain (by default the
+  /// trajectory [start] starts), and gives its id.
+  EntryId remember(String text, {TrajectoryId? on}) {
     final id = EntryId.of(utf8.encode(text));
     _journal[id] = text;
+    _chainOf[id] = on ?? idOf('started root');
     return id;
   }
+
+  @override
+  Future<Outcome<String>> recordedOn(
+    TrajectoryId trajectory,
+    EntryId entry,
+  ) async => switch ((_journal[entry], _chainOf[entry])) {
+    (final text?, final chain) when chain == trajectory => Ran(text),
+    (_?, _) => Refused('entry $entry is on another chain'),
+    (null, _) => Refused('entry $entry is not recorded'),
+  };
 
   @override
   Future<Renderer?> renderer(RendererName name) async =>
@@ -117,6 +131,7 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
         Writes() => 'write',
         Starts(:final program) => program.value,
         MakesWebRequest(:final origin, :final signIn) => '$origin as $signIn',
+        CallsTheModel(:final signIn) => 'model as $signIn',
       })
       ? const Allow(by: DecidedBy.rules)
       : const Deny('not in the rules', by: DecidedBy.rules);
