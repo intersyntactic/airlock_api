@@ -4,51 +4,64 @@ import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
+/// [texts] as the record would hold them, each a piece entry, and the
+/// [RecordedText] naming them.
+RecordedText recorded(List<String> texts) => RecordedText(
+  pieces: [
+    for (final (i, text) in texts.indexed)
+      EntryId.of(utf8.encode('$i ${jsonEncode(ModelRequestPiece(text))}')),
+  ],
+  sha256: ObjectId.of(utf8.encode(texts.join())),
+);
+
 void main() {
-  // A body cut where it won't split mid-message: a fixed prefix, the
-  // history, the new turn, a fixed suffix.
-  const texts = [
-    '{"model":"m","messages":[',
-    '{"role":"user","content":"hello"}',
-    ',{"role":"user","content":"and again"}',
-    ']}',
-  ];
-  final pieceIds = [
-    for (final text in texts)
-      EntryId.of(utf8.encode(jsonEncode(ModelRequestPiece(text).toJson()))),
+  // A request cut where it won't split mid-message: the history so far,
+  // then the new turn. The system prompt is whole.
+  const system = ['You are reviewing a case file. Héllo, naïve café.'];
+  const asked = [
+    'Turn 1: what does clause 4 say?\n',
+    'Turn 2: and how does it bear on the lease?\n',
   ];
   final request = ModelRequest(
-    pieces: pieceIds,
-    body: ObjectId.of(utf8.encode(texts.join())),
+    systemPrompt: recorded(system),
+    request: recorded(asked),
     builtFrom: [EntryId.of(utf8.encode('turn 1'))],
   );
 
-  test('the pieces join to the body only as recorded, in order', () {
-    expect(request.join(texts), isA<Ran<String>>());
-    expect((request.join(texts) as Ran<String>).output, texts.join());
+  test('each text joins only as recorded, in order', () {
+    expect((request.request.join(asked) as Ran<String>).output, asked.join());
+    expect(
+      (request.systemPrompt.join(system) as Ran<String>).output,
+      system.join(),
+    );
     for (final wrong in [
-      [...texts.take(3), ']} '],
-      texts.reversed.toList(),
-      texts.take(3).toList(),
-      [...texts, ''],
+      [asked[0], '${asked[1]} '],
+      asked.reversed.toList(),
+      [asked[0]],
+      [...asked, ''],
     ]) {
-      expect(request.join(wrong), isA<Refused>(), reason: '$wrong');
+      expect(request.request.join(wrong), isA<Refused>(), reason: '$wrong');
     }
+    // Each half is checked against its own hash, never the other's.
+    expect(request.request.join(system), isA<Refused>());
+    expect(request.systemPrompt.join(asked), isA<Refused>());
   });
 
   test('a model request and its pieces read back as written', () {
     final back = ModelRequest.fromJson(
       jsonDecode(jsonEncode(request.toJson())),
     );
-    expect(back.pieces, request.pieces);
-    expect(back.body, request.body);
+    expect(back.request.pieces, request.request.pieces);
+    expect(back.request.sha256, request.request.sha256);
+    expect(back.systemPrompt.pieces, request.systemPrompt.pieces);
+    expect(back.systemPrompt.sha256, request.systemPrompt.sha256);
     expect(back.builtFrom, request.builtFrom);
-    expect(back.join(texts), isA<Ran<String>>());
+    expect(back.request.join(asked), isA<Ran<String>>());
     expect(
       ModelRequestPiece.fromJson(
-        jsonDecode(jsonEncode(ModelRequestPiece(texts[1]).toJson())),
+        jsonDecode(jsonEncode(ModelRequestPiece(asked[1]).toJson())),
       ).text,
-      texts[1],
+      asked[1],
     );
     expect(ModelRequest.kind, 'model-request');
     expect(ModelRequestPiece.kind, 'model-request-piece');
@@ -57,17 +70,24 @@ void main() {
   test('a model request and its pieces are read strictly', () {
     final good =
         jsonDecode(jsonEncode(request.toJson())) as Map<String, Object?>;
+    final text = good['request']! as Map<String, Object?>;
     for (final json in [
       null,
       <String, Object?>{},
-      {...good, 'trajectory': pieceIds.first.hex},
-      {...good, 'pieces': <Object?>[]},
-      {
-        ...good,
-        'pieces': ['nope'],
-      },
-      {...good, 'body': 'nope'},
+      {...good, 'trajectory': 'x'},
+      {...good, 'systemPrompt': null},
       {...good, 'builtFrom': null},
+      for (final bad in <Object?>[
+        {...text, 'pieces': <Object?>[]},
+        {
+          ...text,
+          'pieces': ['nope'],
+        },
+        {...text, 'sha256': 'nope'},
+        {...text, 'body': text['sha256']},
+        {'pieces': text['pieces']},
+      ])
+        {...good, 'request': bad},
     ]) {
       expect(
         () => ModelRequest.fromJson(json),
