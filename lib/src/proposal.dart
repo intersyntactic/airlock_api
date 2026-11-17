@@ -61,27 +61,28 @@ final class _Wire<I, O> {
   final O Function(Object? json, String field) outputFromJson;
 }
 
-/// [send] as a proposal holds it.
-Object? _sendToJson(Send send) => {
-  'origin': encodeOrigin(send.origin),
-  'method': encodeMethod(send.method),
-  'path': encodeWebPath(send.path),
-  'signIn': switch (send.signIn) {
+/// [request] as a proposal holds it.
+Object? _webRequestToJson(WebRequest request) => {
+  'origin': encodeOrigin(request.origin),
+  'method': encodeMethod(request.method),
+  'path': encodeWebPath(request.path),
+  'signIn': switch (request.signIn) {
     final signIn? => encodeSignIn(signIn),
     null => null,
   },
-  'headers': encodeHeaders(send.headers),
-  'renderer': send.renderer.value,
-  'entries': [for (final entry in send.entries) entry.hex],
+  'headers': encodeHeaders(request.headers),
+  'renderer': request.renderer.value,
+  'entries': [for (final entry in request.entries) entry.hex],
 };
 
-/// [json] as a send, each part checked as its type's `parse` checks it.
-/// Throws a [FormatException] naming the part, as is_effects's decoders do.
-Send _sendFromJson(Object? json, [String field = 'send']) {
+/// [json] as a web request, each part checked as its type's `parse` checks
+/// it. Throws a [FormatException] naming the part, as is_effects's decoders
+/// do.
+WebRequest _webRequestFromJson(Object? json, [String field = 'request']) {
   if (json is! Map<String, Object?>) {
     throw FormatException('$field: not an object');
   }
-  return Send(
+  return WebRequest(
     decodeOrigin(json['origin'], '$field.origin'),
     method: decodeMethod(json['method'], '$field.method'),
     path: decodeWebPath(json['path'], '$field.path'),

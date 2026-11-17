@@ -43,14 +43,14 @@ final class RecordedPrograms implements ProgramDriver {
   }
 }
 
-/// Sends nothing, keeps what it was asked to send, and says the destination
-/// made `activity-1`.
+/// Makes no request, keeps each one it was asked to make, and says the
+/// destination made `activity-1`. Its method keeps is_effects's own name.
 final class RecordedWeb implements WebDriver {
-  final sent = <Request>[];
+  final requests = <Request>[];
 
   @override
   Future<Outcome<Sent>> send(Request request) async {
-    sent.add(request);
+    requests.add(request);
     return const Ran(Sent(status: 201, created: 'activity-1'));
   }
 }
@@ -62,18 +62,18 @@ String reachOf(Reach reach) => switch (reach) {
     program.value,
     ...args.args,
   ].join(' '),
-  Sends(:final origin, :final signIn, :final renderer) =>
-    'send to $origin as $signIn'
+  MakesWebRequest(:final origin, :final signIn, :final renderer) =>
+    'request to $origin as $signIn'
         '${renderer == null ? ' with no renderer' : ''}',
 };
 
-/// Rules: what a journey path may do, by name, and the sites it may send to
+/// Rules: what a journey path may do, by name, and the sites it may make requests to
 /// as `<origin> as <sign-in>`. Places are step numbers. Keeps a line per
 /// entry, and can be told to fail writing one kind of entry.
 ///
 /// Knows `teams-reply` only. Its journal holds the text of each entry a
 /// test [remember]s, and its renderer draws a body by joining the texts of
-/// the entries a send names, logging `render <n>` when the airlock reads
+/// the entries a request names, logging `render <n>` when the airlock reads
 /// what it recorded.
 final class LogAirlock implements Airlock<Set<String>, int> {
   LogAirlock({this.failOn});
@@ -99,10 +99,10 @@ final class LogAirlock implements Airlock<Set<String>, int> {
 
   @override
   Future<Outcome<String>> rendered(Decided<int> decided) async {
-    final Sends(:send) = decided.reach as Sends;
-    log.add('render ${send.entries.length}');
+    final MakesWebRequest(:request) = decided.reach as MakesWebRequest;
+    log.add('render ${request.entries.length}');
     final texts = <String>[];
-    for (final id in send.entries) {
+    for (final id in request.entries) {
       final text = _journal[id];
       if (text == null) return Refused('entry $id is not recorded');
       texts.add(text);
@@ -116,7 +116,7 @@ final class LogAirlock implements Airlock<Set<String>, int> {
         Reads() => 'read',
         Writes() => 'write',
         Starts(:final program) => program.value,
-        Sends(:final origin, :final signIn) => '$origin as $signIn',
+        MakesWebRequest(:final origin, :final signIn) => '$origin as $signIn',
       })
       ? const Allow(by: DecidedBy.rules)
       : const Deny('not in the rules', by: DecidedBy.rules);
@@ -199,7 +199,7 @@ final suit1 = Suit.parse('suit-1')!;
 final hart = SignIn.parse('hart-bot')!;
 final teams = Origin.parse('https://smba.trafficmanager.net')!;
 
-/// The one renderer [LogAirlock] knows, as a send names it and as the
+/// The one renderer [LogAirlock] knows, as a request names it and as the
 /// airlock resolves it.
 final teamsReply = (
   name: RendererName.parse('teams-reply')!,
@@ -209,20 +209,20 @@ final teamsReply = (
   ),
 );
 
-Result<String> send(
+Result<String> webRequest(
   Origin site,
   SignIn signIn, {
   List<EntryId> entries = const [],
   String renderer = 'teams-reply',
 }) => Program.web.runOrRefusal(
-  Send(
+  WebRequest(
     site,
     path: WebPath.parse('/v3/conversations/c/activities')!,
     signIn: signIn,
     renderer: RendererName.parse(renderer)!,
     entries: entries,
   ),
-  then: (sent) => Done('${sent.status} ${sent.created}'),
+  then: (answer) => Done('${answer.status} ${answer.created}'),
 );
 
 void main() {
@@ -411,45 +411,53 @@ void main() {
     );
   });
 
-  test('a send is decided by its origin and sign-in together', () async {
+  test('a web request is decided by its origin and sign-in together', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final path = start(airlock, [web], rules: {'$teams as $hart'});
-    expect(await answerOf(send(teams, hart), path.at(1)), '201 activity-1');
     expect(
-      await answerOf(send(teams, SignIn.parse('other-bot')!), path.at(2)),
+      await answerOf(webRequest(teams, hart), path.at(1)),
+      '201 activity-1',
+    );
+    expect(
+      await answerOf(webRequest(teams, SignIn.parse('other-bot')!), path.at(2)),
       'failed: not in the rules',
     );
-    expect(web.sent.map((r) => r.signIn), [hart]);
+    expect(web.requests.map((r) => r.signIn), [hart]);
     expect(airlock.log, [
-      '1: allow send to $teams as hart-bot',
+      '1: allow request to $teams as hart-bot',
       'render 0',
-      '1: ran send to $teams as hart-bot',
-      '2: deny send to $teams as other-bot: not in the rules',
-      '2: refused send to $teams as other-bot: not in the rules',
+      '1: ran request to $teams as hart-bot',
+      '2: deny request to $teams as other-bot: not in the rules',
+      '2: refused request to $teams as other-bot: not in the rules',
     ]);
   });
 
-  test('a send shows its sign-in, and null only when it has none', () async {
-    final path = start(LogAirlock(), [RecordedWeb()]);
-    final seen = <(Origin, SignIn?)>[];
-    path.entries.listen((e) {
-      if (e case Decided(reach: Sends(:final origin, :final signIn))) {
-        seen.add((origin, signIn));
+  test(
+    'a web request shows its sign-in, and null only when it has none',
+    () async {
+      final path = start(LogAirlock(), [RecordedWeb()]);
+      final seen = <(Origin, SignIn?)>[];
+      path.entries.listen((e) {
+        if (e case Decided(
+          reach: MakesWebRequest(:final origin, :final signIn),
+        )) {
+          seen.add((origin, signIn));
+        }
+      });
+      for (final (i, signIn) in [hart, null].indexed) {
+        await Program.web
+            .run(
+              WebRequest(teams, signIn: signIn, renderer: teamsReply.name),
+              then: (_) => const Done(''),
+            )
+            .next(path.at(i));
       }
-    });
-    for (final (i, signIn) in [hart, null].indexed) {
-      await Program.web
-          .run(
-            Send(teams, signIn: signIn, renderer: teamsReply.name),
-            then: (_) => const Done(''),
-          )
-          .next(path.at(i));
-    }
-    expect(seen, [(teams, hart), (teams, null)]);
-  });
+      expect(seen, [(teams, hart), (teams, null)]);
+    },
+  );
 
-  test("a send's body is what its renderer recorded, from recorded entries, "
+  test("a web request's body is what its renderer recorded, from recorded entries, "
       'only once its decision is kept', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
@@ -457,14 +465,17 @@ void main() {
     final chunk = airlock.remember('and the build is green');
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     expect(
-      await answerOf(send(teams, hart, entries: [turn, chunk]), path.at(1)),
+      await answerOf(
+        webRequest(teams, hart, entries: [turn, chunk]),
+        path.at(1),
+      ),
       '201 activity-1',
     );
-    expect(web.sent.single.body, 'the tests pass and the build is green');
+    expect(web.requests.single.body, 'the tests pass and the build is green');
     expect(airlock.log, [
-      '1: allow send to $teams as hart-bot',
+      '1: allow request to $teams as hart-bot',
       'render 2',
-      '1: ran send to $teams as hart-bot',
+      '1: ran request to $teams as hart-bot',
     ]);
   });
 
@@ -483,36 +494,37 @@ void main() {
     path.entries.listen((e) {
       if (e case final Decided<int> d) decided.add(d);
     });
-    await answerOf(send(teams, hart, entries: [turn]), path.at(1));
-    final Sends(:renderer, send: sent) = decided.single.reach as Sends;
+    await answerOf(webRequest(teams, hart, entries: [turn]), path.at(1));
+    final MakesWebRequest(:renderer, :request) =
+        decided.single.reach as MakesWebRequest;
     expect(renderer, same(teamsReply.renderer));
-    expect(sent.renderer, teamsReply.name);
-    expect(sent.entries, [turn]);
+    expect(request.renderer, teamsReply.name);
+    expect(request.entries, [turn]);
     expect(airlock.readFor, [same(decided.single)]);
   });
 
   test('a renderer named nowhere is denied before the rules, and nothing '
-      'is rendered or sent', () async {
+      'is rendered or requested', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final answer = await answerOf(
-      send(teams, hart, renderer: 'slack-reply'),
+      webRequest(teams, hart, renderer: 'slack-reply'),
       start(airlock, [web], rules: {'$teams as $hart'}).at(1),
     );
     expect(answer, 'failed: no renderer named slack-reply');
-    expect(web.sent, isEmpty);
+    expect(web.requests, isEmpty);
     expect(airlock.log, [
-      '1: deny send to $teams as hart-bot with no renderer: '
+      '1: deny request to $teams as hart-bot with no renderer: '
           'no renderer named slack-reply',
-      '1: refused send to $teams as hart-bot with no renderer: '
+      '1: refused request to $teams as hart-bot with no renderer: '
           'no renderer named slack-reply',
     ]);
   });
 
-  test('a denied send never has a body read for it', () async {
+  test('a denied web request never has a body read for it', () async {
     final airlock = _ReadingAirlock();
     final answer = await answerOf(
-      send(teams, hart),
+      webRequest(teams, hart),
       JourneyPath<Set<String>, int>(
         id: idOf('started root'),
         drivers: [RecordedWeb()],
@@ -525,19 +537,19 @@ void main() {
     expect(airlock.readFor, isEmpty);
   });
 
-  test('an entry the journal does not hold refuses the send', () async {
+  test('an entry the journal does not hold refuses the web request', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
     final unrecorded = EntryId.of(utf8.encode('never written'));
     final answer = await answerOf(
-      send(teams, hart, entries: [unrecorded]),
+      webRequest(teams, hart, entries: [unrecorded]),
       start(airlock, [web], rules: {'$teams as $hart'}).at(1),
     );
     expect(answer, 'failed: entry $unrecorded is not recorded');
-    expect(web.sent, isEmpty);
+    expect(web.requests, isEmpty);
     expect(
       airlock.log.last,
-      '1: refused send to $teams as hart-bot: '
+      '1: refused request to $teams as hart-bot: '
       'entry $unrecorded is not recorded',
     );
   });
@@ -547,18 +559,18 @@ void main() {
     final airlock = LogAirlock(failOn: Decided<int>);
     await expectLater(
       answerOf(
-        send(teams, hart),
+        webRequest(teams, hart),
         start(airlock, [web], rules: {'$teams as $hart'}).at(1),
       ),
       throwsStateError,
     );
     expect(airlock.log, isEmpty);
-    expect(web.sent, isEmpty);
+    expect(web.requests, isEmpty);
   });
 
-  test('a send cannot hold a credential, or a path to another site', () {
+  test('a web request cannot hold a credential, or a path to another site', () {
     expect(
-      () => Send(
+      () => WebRequest(
         teams,
         renderer: teamsReply.name,
         headers: {'Authorization': 'Bearer x'},
@@ -586,10 +598,10 @@ void main() {
     expect(RendererName.parse('teams-reply'), teamsReply.name);
   });
 
-  test('a machine with no web driver cannot send', () async {
+  test('a machine with no web driver makes no web request', () async {
     expect(
       await answerOf(
-        send(teams, hart),
+        webRequest(teams, hart),
         start(LogAirlock(), [MemoryFiles()], rules: {'$teams as $hart'}).at(1),
       ),
       'failed: this machine cannot run web',

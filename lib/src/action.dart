@@ -6,7 +6,7 @@ import 'package:is_shapes/is_shapes.dart'
     show DecidedBy, EntryId, JourneyPathId, RendererId;
 
 part 'pool_user.dart';
-part 'send_entries.dart';
+part 'web_request_entries.dart';
 part 'proposal.dart';
 part 'waiting_to_start.dart';
 
@@ -40,7 +40,7 @@ sealed class Result<A> {
 ///
 /// One round trip to the world, which the airlock decides: what a tool asks
 /// for to carry out an intent (Nick, 17 Nov: "the airlock sits between
-/// intents and action"). A read, a write, `git diff` and a send to a chat
+/// intents and action"). A read, a write, `git diff` and a web request to a chat
 /// are all actions, each one of four programs on an input, and each has
 /// exactly one [Outcome].
 ///
@@ -121,20 +121,20 @@ final class Failed extends Result<Never> {
 /// A program an action may run: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile], [Executable] and [WebSend].
+/// A closed set: [ReadFile], [WriteFile], [Executable] and [MakeWebRequest].
 /// Programs reach drivers, so they are part of what is trusted, with the
 /// drivers and the airlock; a new kind of action is a new driver and program
 /// here.
 ///
 /// A journey path's prompts are not programs: the model is the agent
-/// planning, so a prompt is not decided, and no tool is in it. How it is
-/// sent and recorded is not this contract's.
+/// planning, so a prompt is not decided, and no tool is in it. How it
+/// reaches the model and is recorded is not this contract's.
 sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
   static const write = WriteFile();
-  static const web = WebSend();
+  static const web = MakeWebRequest();
 
   /// For the model and the record; an [Executable] is compared by it.
   String get name;
@@ -159,7 +159,7 @@ sealed class Program<I, O> {
     },
   );
 
-  /// What [input] would do to the world. Only a send asks [findRenderer]
+  /// What [input] would do to the world. Only a web request asks [findRenderer]
   /// for the renderer it names.
   Future<Reach> _reach(I input, _FindRenderer findRenderer);
 
@@ -174,7 +174,7 @@ sealed class Program<I, O> {
 
   /// [input], whose reach is [reach], performed by [journeyPath]'s driver
   /// for this program, reporting to [report] while it runs, or null when it
-  /// has none. Only a send waits on [rendered], for its body.
+  /// has none. Only a web request waits on [rendered], for its body.
   Future<Outcome<O>>? _on(
     JourneyPath<Object?, Object?> journeyPath,
     I input,
@@ -303,34 +303,35 @@ final class Executable extends Program<Args, ExecResult> {
   );
 }
 
-/// Sends a [Send] to a site, through the sign-in it names, with the body
-/// its renderer drew from recorded entries and recorded.
+/// Makes a [WebRequest] to a site, through the sign-in it names, with the
+/// body its renderer drew from recorded entries and recorded.
 ///
-/// An action, decided like any other: what a tool sends to a chat, an issue
-/// tracker or an API. Not a prompt, which is the agent planning and is not
-/// decided.
+/// An action, decided like any other: a request a tool makes to a chat, an
+/// issue tracker or an API. Not a prompt, which is the agent planning and is
+/// not decided.
 ///
 /// The renderer is named exactly before the decision, so the [Decided]
 /// entry says which code will write the words. The renderer subscribes to
-/// the record for that entry, draws the body, and records it; the airlock sends
-/// what was recorded. So the words exist only once the decision is kept,
-/// the exact bytes sent are in the record, and the airlock never talks to a
-/// renderer (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
-final class WebSend extends Program<Send, Sent> {
-  const WebSend();
+/// the record for that entry, draws the body, and records it; the web driver
+/// carries the request out with what was recorded. So the words exist only
+/// once the decision is kept, the exact bytes that went out are in the
+/// record, and the airlock never talks to a renderer
+/// (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
+final class MakeWebRequest extends Program<WebRequest, Sent> {
+  const MakeWebRequest();
 
   @override
   String get name => 'web';
 
   @override
-  Future<Reach> _reach(Send send, _FindRenderer findRenderer) async =>
-      Sends(send, await findRenderer(send.renderer));
+  Future<Reach> _reach(WebRequest request, _FindRenderer findRenderer) async =>
+      MakesWebRequest(request, await findRenderer(request.renderer));
 
   @override
-  _Wire<Send, Sent> get _wire => const _Wire(
+  _Wire<WebRequest, Sent> get _wire => const _Wire(
     {'program': 'web'},
-    inputToJson: _sendToJson,
-    inputFromJson: _sendFromJson,
+    inputToJson: _webRequestToJson,
+    inputFromJson: _webRequestFromJson,
     outputToJson: encodeSent,
     outputFromJson: decodeSent,
   );
@@ -338,44 +339,44 @@ final class WebSend extends Program<Send, Sent> {
   @override
   Future<Outcome<Sent>>? _on(
     JourneyPath<Object?, Object?> journeyPath,
-    Send send,
-    covariant Sends reach,
+    WebRequest request,
+    covariant MakesWebRequest reach,
     _Rendered rendered,
     Report report,
   ) => switch ((journeyPath._driver<WebDriver>(), reach.renderer)) {
     (null, _) => null,
-    (final web?, _?) => _send(web, rendered(), send),
+    (final web?, _?) => _make(web, rendered(), request),
     // Decided as a denial before any driver, so not reached.
-    (_, null) => Future.value(Refused('no renderer named ${send.renderer}')),
+    (_, null) => Future.value(Refused('no renderer named ${request.renderer}')),
   };
 
-  static Future<Outcome<Sent>> _send(
+  static Future<Outcome<Sent>> _make(
     WebDriver web,
     Future<Outcome<String>> rendering,
-    Send send,
+    WebRequest request,
   ) async => switch (await rendering) {
     Refused(:final why) => Refused(why),
     Ran(output: final body) => await web.send(
       Request(
-        send.origin,
-        method: send.method,
-        path: send.path,
-        signIn: send.signIn,
-        headers: send.headers,
+        request.origin,
+        method: request.method,
+        path: request.path,
+        signIn: request.signIn,
+        headers: request.headers,
         body: body,
       ),
     ),
   };
 }
 
-/// What a tool sends: where to, as whom, and which recorded entries the
-/// words are drawn from, by which renderer. It holds no words of its own,
-/// so a tool cannot put any in a send.
+/// A web request a tool asks for: where to, as whom, and which recorded
+/// entries the words are drawn from, by which renderer. It holds no words of
+/// its own, so a tool cannot put any in a request.
 ///
 /// [path] and [headers] are checked as is_effects's `Request` checks them:
 /// a [WebPath] cannot name another site, and [headers] hold no credential.
-final class Send {
-  Send(
+final class WebRequest {
+  WebRequest(
     this.origin, {
     required this.renderer,
     Iterable<EntryId> entries = const [],
@@ -390,7 +391,7 @@ final class Send {
   final Method method;
   final WebPath path;
 
-  /// Who it goes as; null sends under no sign-in.
+  /// Who it goes as; null goes under no sign-in.
   final SignIn? signIn;
   final Map<String, String> headers;
 
@@ -399,11 +400,11 @@ final class Send {
 
   /// The recorded entries the body is drawn from, in the order the renderer
   /// is given them: turns, events, the airlock's own entries, chunks of a
-  /// reply. Any one the journal does not hold refuses the send.
+  /// reply. Any one the journal does not hold refuses the request.
   final List<EntryId> entries;
 }
 
-/// A renderer's name, such as `teams-reply`: what a [Send] names, and the
+/// A renderer's name, such as `teams-reply`: what a [WebRequest] names, and the
 /// airlock resolves to the exact [Renderer] before deciding it.
 final class RendererName {
   const RendererName._(this.value);
@@ -437,18 +438,19 @@ final _rendererName = RegExp(r'^[a-z][a-z0-9-]*$');
 /// records and pub.dev reports as `archive_sha256` (Nick, 16 Nov). The
 /// archive does not hold the packages it depends on, so [executable], built
 /// with every one of them, is what pins the whole of the code that wrote a
-/// send's body; the two are recorded together. So the check that a [Rendered]
+/// request's body; the two are recorded together. So the check that a [Rendered]
 /// entry came from this renderer rests on [executable]; [id] is enough on
 /// its own only for a renderer with no dependencies, which `teams-reply`
 /// holds itself to with a test.
 ///
 /// [executable] names the render runner built with it: the one shared
 /// program that runs a renderer and writes its [Rendered] entry, reading
-/// each send's entries from the journal, compiled once per renderer with
-/// [id] as a define, which it reports in [Rendered.renderer]. Since the
-/// define is compiled in, each renderer's render runner has its own build,
-/// and that build is what the journal's writer approves. Both are recorded in the [Decided] entry, so an old send can be
-/// rebuilt from the journal and checked
+/// each request's entries from the journal, compiled once per renderer
+/// with [id] as a define, which it reports in [Rendered.renderer]. Since
+/// the define is compiled in, each renderer's render runner has its own
+/// build, and that build is what the journal's writer approves. Both are
+/// recorded in the [Decided] entry, so an old request can be rebuilt from
+/// the journal and checked
 /// (https://github.com/enspyrco/intersyntactic/issues/1147).
 final class Renderer {
   const Renderer(this.id, {required this.executable});
@@ -490,29 +492,30 @@ final class Starts extends Reach {
 ///
 /// Null means no sign-in, never any: it is null exactly when the request
 /// has none. So a rule granting a site under no sign-in must not match
-/// a send that has one, or a grant to fetch a page anonymously would let a
-/// journey path send there as a bot.
+/// a request that has one, or a grant to fetch a page anonymously would let
+/// a journey path make requests there as a bot.
 ///
 /// A rule grants the origin and the sign-in together, never the origin
-/// alone: every bot of a kind sends to the same sites, so a grant by origin
-/// would let a journey path send as any sign-in the web driver holds.
+/// alone: every bot of a kind makes requests to the same sites, so a grant
+/// by origin would let a journey path go as any sign-in the web driver
+/// holds.
 ///
-/// Holds the whole [send] and the [renderer] its name resolved to, never a
-/// body, which does not exist yet when this is decided: the record says
+/// Holds the whole [request] and the [renderer] its name resolved to, never
+/// a body, which does not exist yet when this is decided: the record says
 /// which entries the words were drawn from and which code drew them, so it
 /// holds no copy of what was said.
-final class Sends extends Reach {
-  const Sends(this.send, this.renderer);
+final class MakesWebRequest extends Reach {
+  const MakesWebRequest(this.request, this.renderer);
 
-  final Send send;
+  final WebRequest request;
 
-  /// The exact renderer [send] names, or null when its name named none on
-  /// this machine. A send with no renderer is denied before the rules are
-  /// asked, since there would be no way to draw its words.
+  /// The exact renderer [request] names, or null when its name named none
+  /// on this machine. A request with no renderer is denied before the rules
+  /// are asked, since there would be no way to draw its words.
   final Renderer? renderer;
 
-  Origin get origin => send.origin;
-  SignIn? get signIn => send.signIn;
+  Origin get origin => request.origin;
+  SignIn? get signIn => request.signIn;
 }
 
 /// One agent's own journey: the thread its actions are proposed on, with
@@ -591,8 +594,8 @@ final class JourneyPath<R, P> {
     final reach = await program._reach(input, _airlock.renderer);
     var decision = switch (reach) {
       _ when stopped => stoppedByPerson,
-      Sends(renderer: null, :final send) => Deny(
-        'no renderer named ${send.renderer}',
+      MakesWebRequest(renderer: null, :final request) => Deny(
+        'no renderer named ${request.renderer}',
         by: DecidedBy.rules,
       ),
       _ => await _airlock.decide(reach, rules),
@@ -692,7 +695,7 @@ abstract interface class Airlock<R, P> {
   /// [rules].
   ///
   /// Given the reach, not the action, so the decision is about exactly what is
-  /// recorded: for a send, the renderer its name resolved to.
+  /// recorded: for a web request, the renderer its name resolved to.
   Future<Decision> decide(Reach reach, R rules);
 
   /// Keeps [entry]. An action's driver is reached only once its [Decided] entry
@@ -707,15 +710,15 @@ abstract interface class Airlock<R, P> {
   Future<void> record(Entry<P> entry);
 
   /// The renderer called [name], or null when there is none, so the
-  /// [Decided] entry for a send names its renderer exactly.
+  /// [Decided] entry for a web request names its renderer exactly.
   Future<Renderer?> renderer(RendererName name);
 
-  /// The body the renderer recorded for [decided], an allowed send's
+  /// The body the renderer recorded for [decided], an allowed web request's
   /// [Decided] entry, once the airlock has read it from the record; or
   /// [Refused] with why there is none.
   ///
   /// Called only after [decided] is kept. The renderer subscribes to the
-  /// record for it, reads the entries the send draws from, and records the
+  /// record for it, reads the entries the request draws from, and records the
   /// body, or a refusal when an entry is missing or fails its checks, in an
   /// entry of its own whose previous is [decided]. The airlock never talks
   /// to a renderer: it reads that entry, and accepts it only from the

@@ -11,10 +11,10 @@ import 'contract_test.dart'
         RecordedWeb,
         answerOf,
         hart,
-        send,
         start,
         teams,
         teamsReply,
+        webRequest,
         writeAndFormat;
 
 /// [json] as the journal would hold it and give it back: JSON text.
@@ -37,38 +37,39 @@ Future<List<Decided<int>>> decidedWhile(
 }
 
 void main() {
-  test("a send's Decided entry reads back as it was written", () async {
+  test("a web request's Decided entry reads back as it was written", () async {
+    expect(DecidedWebRequest.kind, 'web-request-decided');
     final turn = EntryId.of(utf8.encode('done'));
     final decided = await decidedWhile(
-      (path) => answerOf(send(teams, hart, entries: [turn]), path.at(4)),
+      (path) => answerOf(webRequest(teams, hart, entries: [turn]), path.at(4)),
       rules: {'$teams as $hart'},
     );
-    final written = DecidedSend.of(decided.single, (int place) => place)!;
-    final read = DecidedSend.fromJson(throughText(written.toJson()));
+    final written = DecidedWebRequest.of(decided.single, (int place) => place)!;
+    final read = DecidedWebRequest.fromJson(throughText(written.toJson()));
     expect(read.journeyPath, written.journeyPath);
     expect(read.place, 4);
-    expect(read.send.origin, teams);
-    expect(read.send.signIn, hart);
-    expect(read.send.method, Method.post);
-    expect(read.send.path, written.send.path);
-    expect(read.send.renderer, teamsReply.name);
-    expect(read.send.entries, [turn]);
+    expect(read.request.origin, teams);
+    expect(read.request.signIn, hart);
+    expect(read.request.method, Method.post);
+    expect(read.request.path, written.request.path);
+    expect(read.request.renderer, teamsReply.name);
+    expect(read.request.entries, [turn]);
     expect(read.renderer?.id, teamsReply.renderer.id);
     expect(read.renderer?.executable, teamsReply.renderer.executable);
     expect(read.decision, isA<Allow>());
     expect(read.decision.by, DecidedBy.rules);
   });
 
-  test('a denied send, and one whose renderer named nothing, read back with '
+  test('a denied web request, and one whose renderer named nothing, read back with '
       'why', () async {
     final decided = await decidedWhile((path) async {
-      await answerOf(send(teams, hart), path.at(1));
-      await answerOf(send(teams, hart, renderer: 'nowhere'), path.at(2));
+      await answerOf(webRequest(teams, hart), path.at(1));
+      await answerOf(webRequest(teams, hart, renderer: 'nowhere'), path.at(2));
     });
     final [denied, unnamed] = [
       for (final d in decided)
-        DecidedSend.fromJson(
-          throughText(DecidedSend.of(d, (int place) => place)!.toJson()),
+        DecidedWebRequest.fromJson(
+          throughText(DecidedWebRequest.of(d, (int place) => place)!.toJson()),
         ),
     ];
     expect(denied.decision, isA<Deny>());
@@ -78,16 +79,19 @@ void main() {
     expect((unnamed.decision as Deny).why, 'no renderer named nowhere');
   });
 
-  test("an action that is not a send has no send entry", () async {
-    final decided = await decidedWhile(
-      (path) => answerOf(writeAndFormat('a.dart'), path.at(1)),
-      rules: {'write', 'dart'},
-    );
-    expect(
-      decided.map((d) => DecidedSend.of(d, (int place) => place)),
-      everyElement(isNull),
-    );
-  });
+  test(
+    "an action that is not a web request has no web request entry",
+    () async {
+      final decided = await decidedWhile(
+        (path) => answerOf(writeAndFormat('a.dart'), path.at(1)),
+        rules: {'write', 'dart'},
+      );
+      expect(
+        decided.map((d) => DecidedWebRequest.of(d, (int place) => place)),
+        everyElement(isNull),
+      );
+    },
+  );
 
   test('a Rendered entry reads back, with a body or a refusal', () {
     final decided = EntryId.of(utf8.encode('the decided entry'));
@@ -121,20 +125,22 @@ void main() {
 
   test('a malformed entry is refused, naming the part', () async {
     final decided = await decidedWhile(
-      (path) => answerOf(send(teams, hart), path.at(1)),
+      (path) => answerOf(webRequest(teams, hart), path.at(1)),
       rules: {'$teams as $hart'},
     );
     final json =
-        throughText(DecidedSend.of(decided.single, (int p) => p)!.toJson())!
+        throughText(
+              DecidedWebRequest.of(decided.single, (int p) => p)!.toJson(),
+            )!
             as Map<String, Object?>;
     Map<String, Object?> change(String key, Object? value) => {
       ...json,
       key: value,
     };
-    final sent = json['send']! as Map<String, Object?>;
+    final request = json['request']! as Map<String, Object?>;
     String? whyNot(Object? entry) {
       try {
-        DecidedSend.fromJson(entry);
+        DecidedWebRequest.fromJson(entry);
         return null;
       } on FormatException catch (e) {
         return e.message;
@@ -143,8 +149,8 @@ void main() {
 
     expect(whyNot(json), isNull);
     expect(
-      whyNot(change('send', {...sent, 'path': '//evil.example'})),
-      startsWith('decided.send.path'),
+      whyNot(change('request', {...request, 'path': '//evil.example'})),
+      startsWith('decided.request.path'),
     );
     expect(
       whyNot(change('decision', {'allow': true, 'by': 'robot'})),

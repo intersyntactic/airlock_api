@@ -12,9 +12,9 @@ import 'contract_test.dart'
         RecordedWeb,
         answerOf,
         hart,
-        send,
         start,
         teams,
+        webRequest,
         writeAndFormat;
 
 /// A journey path's chain and the airlock's, in memory: each `proposed`
@@ -124,20 +124,23 @@ void main() {
     );
   });
 
-  test('a send through the record is drawn from recorded entries', () async {
-    final web = RecordedWeb();
-    final airlock = LogAirlock();
-    final turn = airlock.remember('done');
-    final path = start(airlock, [web], rules: {'$teams as $hart'});
-    expect(
-      await answerOf(
-        send(teams, hart, entries: [turn]),
-        loopApex(RecordedLink(path, airlock)),
-      ),
-      '201 activity-1',
-    );
-    expect(web.sent.single.body, 'done');
-  });
+  test(
+    'a web request through the record is drawn from recorded entries',
+    () async {
+      final web = RecordedWeb();
+      final airlock = LogAirlock();
+      final turn = airlock.remember('done');
+      final path = start(airlock, [web], rules: {'$teams as $hart'});
+      expect(
+        await answerOf(
+          webRequest(teams, hart, entries: [turn]),
+          loopApex(RecordedLink(path, airlock)),
+        ),
+        '201 activity-1',
+      );
+      expect(web.requests.single.body, 'done');
+    },
+  );
 
   test('a refusal comes back through the record in its own words', () async {
     final airlock = LogAirlock();
@@ -170,7 +173,7 @@ void main() {
     final path = start(airlock, [RecordedWeb()], rules: {'$teams as $hart'});
     final link = RecordedLink(path, airlock);
     final proposal = {'place': 1, 'program': 'web'};
-    Map<String, Object?> sendWith(Map<String, Object?> change) => {
+    Map<String, Object?> requestWith(Map<String, Object?> change) => {
       'origin': '$teams',
       'method': 'post',
       'path': '/v3/conversations/c/activities',
@@ -191,7 +194,7 @@ void main() {
           'entries': ['not an id'],
         },
       ])
-        await link.propose({...proposal, 'input': sendWith(change)}),
+        await link.propose({...proposal, 'input': requestWith(change)}),
     ];
     expect(link.rejected, hasLength(4));
     expect(link.rejected[0], startsWith('input.path'));
