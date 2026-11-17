@@ -537,6 +537,17 @@ void main() {
         'the body is not teams-message-from-model-reply of',
       ),
       (
+        'a result that did not run, though it holds text',
+        teamsMessageOf('done'),
+        (a) => a.remember(
+          jsonEncode({
+            'proposed': EntryId.of(utf8.encode('p')).hex,
+            'result': {'kind': 'refused', 'output': 'done'},
+          }),
+        ),
+        'the body is not teams-message-from-model-reply of',
+      ),
+      (
         'not a result at all',
         teamsMessageOf('done'),
         (a) => a.remember('done'),
