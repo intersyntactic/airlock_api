@@ -375,6 +375,7 @@ void main() {
       (u) => seen.add(
         'at ${u.place}: ${switch (u.progress) {
           Printed(:final channel, :final text) => '${channel.name}: $text',
+          ReplyArriving(:final text) => 'reply: $text',
         }}',
       ),
     );
