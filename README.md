@@ -80,7 +80,7 @@ come from the record.
   it by. `teamsMessageFromModelReply` (`teams-message-from-model-reply`)
   draws `{"type":"message","text":<text>}` (Dart's `jsonEncode`, those two
   keys in that order, no whitespace, the text as UTF-8) from a
-  `result-of-action-or-why-refused` whose result ran to text: a model's
+  `outcome-of-proposed-action` whose result ran to text: a model's
   reply.
 - Once allowed, the airlock reads `drawnFrom` through
   `DecidesAndRecordsActions.recordedOn`, which gives it only when it
@@ -92,7 +92,7 @@ come from the record.
 - A web request's chain in the logbook: `AirlockDecisionOnWebRequest`
   (kind `airlock-decision-on-web-request`) starts it, since the proposal's
   chain is its loop user's alone, and the airlock's
-  `result-of-action-or-why-refused` follows it. The decision names its
+  `outcome-of-proposed-action` follows it. The decision names its
   proposal, so no two start byte-identical chains, which the logbook
   service refuses. It has `toJson` and a checking `fromJson`.
 
@@ -202,7 +202,7 @@ and records, and only a driver carries an action out.
   where `link`, which `ProposesActionsThroughTheRecord`, is the transport,
   which this package does not have: it writes an
   `action-proposed-by-agent-loop` logbook entry on the loop's trajectory's
-  chain and waits for the `result-of-action-or-why-refused` logbook entry
+  chain and waits for the `outcome-of-proposed-action` logbook entry
   that names it, which loop_launcher hands the loop. `action.next(crux)` is the same with either, so a tool does not
   change.
 - An `ActionProposedByAgentLoop` (kind `action-proposed-by-agent-loop`)
@@ -216,16 +216,16 @@ and records, and only a driver carries an action out.
   `trajectory.consider(proposal, place, proposed: entryId)` decides and
   records it as an action proposed at `at(place)` would be; its decision
   and its result both name the proposal.
-- A result (kind `result-of-action-or-why-refused`, body
+- A result (kind `outcome-of-proposed-action`, body
   `{"proposed": <hex>, "result": <outcome>}`): what came back from a
   proposed action, in full, as the program's codec writes it, or why it was
   refused. It is the one copy of what an action returned: a read's text, a
   program's output, a site's answer, a model's reply. The airlock writes it
   on the decision's chain, never the path's, which only the loop user
-  writes. `resultOfActionOrWhyRefusedToJson(proposed, resultAsJson)` writes
+  writes. `outcomeOfProposedActionToJson(proposed, resultAsJson)` writes
   one, `proposalRejectedToJson(proposed, why)` answers a proposal that was
   `Rejected`, so its loop is answered and no other path is stalled, and
-  `readResultOfActionOrWhyRefused(json)` reads one back as
+  `readOutcomeOfProposedAction(json)` reads one back as
   `(proposed:, result:)`, or null when it is not one.
 - `WaitingToStart` (kind `waiting-to-start`, `{"trajectory": <hex>}`,
   read strictly): loop_launcher records it once, on a chain of its own,
