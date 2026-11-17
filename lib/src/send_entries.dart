@@ -1,4 +1,4 @@
-part of 'effect.dart';
+part of 'action.dart';
 
 // One send's chain in the journal: a [DecidedSend] entry, the [Rendered]
 // entry its renderer writes after it, and the airlock's `Returned` after
@@ -9,7 +9,7 @@ part of 'effect.dart';
 // previous is no longer the tip.
 //
 // A renderer reads the one and writes the other, and the airlock reads what
-// it wrote. What came back from any proposed effect, a send's among them, is
+// it wrote. What came back from any proposed action, a send's among them, is
 // recorded in full in a [ReturnedProposal].
 
 /// A send's [Decided] entry as the journal holds it: what its renderer

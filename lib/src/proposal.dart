@@ -1,10 +1,10 @@
-part of 'effect.dart';
+part of 'action.dart';
 
 // A proposal is an entry in the record (Nick, 16 Nov, 20:15): an agent loop
 // writes a `proposed` entry on its journey path's chain, which the journal
 // takes only from that path's loop user; the airlock reads it, decides,
 // records, and writes a `returned` entry naming it, with what came back
-// (20:45: "what an effect returns is in the record, once"). loop_launcher
+// (20:45: "what an action returns is in the record, once"). loop_launcher
 // hands that entry to the path's loop. The airlock has no door of its own.
 
 /// Records a [Proposal], as JSON, and brings back the outcome the airlock
@@ -18,7 +18,7 @@ abstract interface class RecordLink {
   Future<Object?> propose(Object? proposal);
 }
 
-/// An apex in the agent loop: proposes each effect's program and input through
+/// An apex in the agent loop: proposes each action's program and input through
 /// the record, and keeps the continuation.
 final class _ThroughRecord extends Apex {
   const _ThroughRecord(this._link, {required this._place});
@@ -27,7 +27,7 @@ final class _ThroughRecord extends Apex {
   final Object? _place;
 
   /// The outcome the airlock recorded. An answer that is not one throws a
-  /// [FormatException], ending the call: whether the effect reached the world
+  /// [FormatException], ending the call: whether the action reached the world
   /// is then not known here, and the airlock's record says.
   @override
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) async =>
@@ -111,7 +111,7 @@ Send _sendFromJson(Object? json, [String field = 'send']) {
 /// [Rejected].
 sealed class Received {}
 
-/// An effect an agent loop proposes, not yet decided: its program and
+/// An action an agent loop proposes, not yet decided: its program and
 /// input, read from a [kind] entry and checked.
 ///
 /// It names no journey path: the airlock takes the path from the chain the
@@ -120,7 +120,7 @@ sealed class Received {}
 /// make.
 ///
 /// What leaves the loop is a proposal; the airlock decides it, and only a
-/// driver carries an effect out.
+/// driver carries an action out.
 final class Proposal implements Received {
   Proposal._(this.place, this._work);
 
@@ -186,10 +186,10 @@ final class Rejected implements Received {
 }
 
 /// A proposal's [Returned] entry as the journal holds it: what came back
-/// from the effect the `proposed` entry [proposed] asked for, as that program's
+/// from the action the `proposed` entry [proposed] asked for, as that program's
 /// codec writes it, or the refusal.
 ///
-/// The one copy of what an effect returned (Nick, 16 Nov, 20:45): a read's
+/// The one copy of what an action returned (Nick, 16 Nov, 20:45): a read's
 /// text, a program's output, a site's answer. The airlock writes it on its
 /// own chain, never the path's, which only the loop user writes.
 /// loop_launcher hands it to the loop whose path's chain holds [proposed],
@@ -201,7 +201,7 @@ final class ReturnedProposal {
   static const kind = 'returned';
 
   /// [returned] as the journal holds it; null when no proposal asked for
-  /// its effect.
+  /// its action.
   static ReturnedProposal? of<P>(Returned<P> returned) =>
       switch (returned.proposed) {
         final proposed? => ReturnedProposal._(proposed, returned._outcomeJson),
@@ -209,7 +209,7 @@ final class ReturnedProposal {
       };
 
   /// The answer to [proposed], a `proposed` entry that was [Rejected]
-  /// because [why]: refused, with no effect decided.
+  /// because [why]: refused, with no action decided.
   factory ReturnedProposal.refused(EntryId proposed, String why) =>
       ReturnedProposal._(
         proposed,

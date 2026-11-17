@@ -51,7 +51,7 @@ bool _allowed(String target) {
 }
 
 void main() {
-  test('the contract imports no runner, tool, client or effect', () {
+  test('the contract imports no runner, tool, client or driver', () {
     final violations = <String>[];
     for (final file in Directory(
       'lib',
@@ -68,7 +68,7 @@ void main() {
     expect(
       violations,
       isEmpty,
-      reason: 'is_airlock_api is a contract: it describes effects and reaches no driver',
+      reason: 'is_airlock_api is a contract: it describes actions and reaches no driver',
     );
   });
 }

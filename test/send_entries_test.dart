@@ -78,7 +78,7 @@ void main() {
     expect((unnamed.decision as Deny).why, 'no renderer named nowhere');
   });
 
-  test("an effect that is not a send has no send entry", () async {
+  test("an action that is not a send has no send entry", () async {
     final decided = await decidedWhile(
       (path) => answerOf(writeAndFormat('a.dart'), path.at(1)),
       rules: {'write', 'dart'},

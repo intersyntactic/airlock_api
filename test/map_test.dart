@@ -40,7 +40,7 @@ final class _FileDriver implements FileDriver {
 
 void main() {
   test(
-    'map runs nothing, and applies its function once the effect answers',
+    'map runs nothing, and applies its function once the action answers',
     () async {
       final airlock = _KeepingAirlock();
       final files = _FileDriver();
@@ -61,12 +61,12 @@ void main() {
             return wrote.replaced ? 'replaced' : 'created';
           });
 
-      expect(result, isA<Effect<String>>());
+      expect(result, isA<Action<String>>());
       expect(applied, 0);
       expect(files.written, isEmpty);
       expect(airlock.kept, isEmpty);
 
-      while (result is Effect<String>) {
+      while (result is Action<String>) {
         result = await result.next(apex);
       }
 

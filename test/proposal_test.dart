@@ -68,7 +68,7 @@ Apex loopApex(RecordedLink link, {int place = 1}) =>
 
 void main() {
   test(
-    'an effect proposed through the record is decided, recorded and '
+    'an action proposed through the record is decided, recorded and '
     'carried out as in the airlock, and its continuation runs in the loop',
     () async {
       final airlock = LogAirlock();
@@ -92,7 +92,7 @@ void main() {
     },
   );
 
-  test("what an effect returned reaches the loop from the record, in full, and "
+  test("what an action returned reaches the loop from the record, in full, and "
       'its entries name the proposal', () async {
     final airlock = LogAirlock();
     final files = MemoryFiles()..files['a.dart'] = 'the text';
@@ -152,7 +152,7 @@ void main() {
   });
 
   test(
-    'an effect proposed in-process has no entry in the record to answer',
+    'an action proposed in-process has no entry in the record to answer',
     () async {
       final airlock = LogAirlock();
       final path = start(airlock, [MemoryFiles()]);
