@@ -28,11 +28,11 @@ final class MemoryFiles implements ReadsAndWritesFiles {
 
 /// Starts nothing, keeps what it was asked to start, and reports while it
 /// runs.
-final class RecordedPrograms implements StartsPrograms {
+final class RecordedPrograms implements RunsPrograms {
   final started = <List<String>>[];
 
   @override
-  Future<Outcome<ExecResult>> start(
+  Future<Outcome<ExecResult>> runProgram(
     ProgramName program,
     Args args, {
     required Report report,

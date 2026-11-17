@@ -296,7 +296,7 @@ final class Executable extends Program<Args, ExecResult> {
     Reach reach,
     _Rendered rendered,
     Report report,
-  ) => journeyPath._driver<StartsPrograms>()?.start(
+  ) => journeyPath._driver<RunsPrograms>()?.runProgram(
     program,
     args,
     report: report,

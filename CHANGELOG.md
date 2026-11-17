@@ -12,9 +12,10 @@ https://github.com/enspyrco/intersyntactic/pull/1164).
   `ProposesActionsThroughTheRecord`. The airlock and its drivers are still
   called that: only the interfaces are renamed, since a noun is kept for
   a thing that exists. No alias is kept.
-- Depends on is_effects ^0.4.0, which renamed its driver interfaces the
-  same way: `Driver` is `CarriesOutActions`, `FileDriver` is
-  `ReadsAndWritesFiles`, `ProgramDriver` is `StartsPrograms`, and
+- Depends on is_effects ^0.5.0, whose 0.4.0 renamed its driver interfaces
+  the same way and whose 0.5.0 renamed one again: `Driver` is
+  `CarriesOutActions`, `FileDriver` is `ReadsAndWritesFiles`,
+  `ProgramDriver` is `RunsPrograms` (its `start` is `runProgram`), and
   `WebDriver` is `CarriesOutWebRequests`. So `JourneyPath(drivers:)`
   takes `Iterable<CarriesOutActions>`.
 
