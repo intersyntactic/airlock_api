@@ -110,8 +110,9 @@ enum Projection {
   static Projection? parse(String wire) =>
       values.where((p) => p.wire == wire).firstOrNull;
 
-  /// The body drawn from [recorded], the text of the entry a request
-  /// names; null when it draws none from it.
+  /// The body drawn from [recorded], the body (after its header) of the
+  /// [resultOfActionOrWhyRefusedKind] logbook entry a request names; null
+  /// when it draws none from it. The caller checks the entry's kind.
   String? drawnFrom(String recorded) => switch (this) {
     teamsMessageFromModelReply => switch (readResultOfActionOrWhyRefused(
       _jsonOrNull(recorded),

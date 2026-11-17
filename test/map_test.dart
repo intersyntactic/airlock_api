@@ -24,7 +24,7 @@ final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
   }) async => kept.add(('result', decision.place));
 
   @override
-  Future<Outcome<String>> recordedOn(
+  Future<Outcome<({String kind, String body})>> recordedOn(
     TrajectoryId trajectory,
     EntryId entry,
   ) async => const Refused('nothing recorded');

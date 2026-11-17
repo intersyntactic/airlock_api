@@ -86,14 +86,14 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   /// The body of each result kept for a proposal, by the proposal it
   /// answers, as the airlock would write it on the decision's chain.
   final results = <EntryId, Object?>{};
-  final _logbook = <EntryId, String>{};
+  final _logbook = <EntryId, ({String kind, String body})>{};
   final _chainOf = <EntryId, TrajectoryId>{};
 
-  /// Records [text], as the logbook would, on [on]'s chain (by default the
-  /// trajectory [start] starts), and gives its id.
-  EntryId remember(String text, {TrajectoryId? on}) {
-    final id = EntryId.of(utf8.encode(text));
-    _logbook[id] = text;
+  /// Records [body] as a [kind] entry, as the logbook would, on [on]'s
+  /// chain (by default the trajectory [start] starts), and gives its id.
+  EntryId remember(String body, {required String kind, TrajectoryId? on}) {
+    final id = EntryId.of(utf8.encode('$kind\n$body'));
+    _logbook[id] = (kind: kind, body: body);
     _chainOf[id] = on ?? idOf('started root');
     return id;
   }
@@ -102,11 +102,11 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   final readOn = <EntryId>[];
 
   @override
-  Future<Outcome<String>> recordedOn(
+  Future<Outcome<({String kind, String body})>> recordedOn(
     TrajectoryId trajectory,
     EntryId entry,
   ) async => switch ((readOn..add(entry), _logbook[entry], _chainOf[entry])) {
-    (_, final text?, final chain) when chain == trajectory => Ran(text),
+    (_, final recorded?, final chain) when chain == trajectory => Ran(recorded),
     (_, _?, _) => Refused('entry $entry is on another chain'),
     (_, null, _) => Refused('entry $entry is not recorded'),
   };
@@ -144,7 +144,11 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
     if (decision.proposed case final proposed?) {
       final body = resultOfActionOrWhyRefusedToJson(proposed, resultAsJson);
       results[proposed] = body;
-      remember(jsonEncode(body), on: decision.trajectoryId);
+      remember(
+        jsonEncode(body),
+        kind: resultOfActionOrWhyRefusedKind,
+        on: decision.trajectoryId,
+      );
     }
     log.add(
       '${decision.place}: ${switch (result) {
@@ -215,6 +219,7 @@ EntryId recordedReply(LogAirlock airlock, String text, {TrajectoryId? on}) =>
           encodeOutcome<ModelReply>(Ran(ModelReply(text)), encodeModelReply),
         ),
       ),
+      kind: resultOfActionOrWhyRefusedKind,
       on: on,
     );
 
@@ -533,6 +538,7 @@ void main() {
           jsonEncode(
             proposalRejectedToJson(EntryId.of(utf8.encode('p')), 'no'),
           ),
+          kind: resultOfActionOrWhyRefusedKind,
         ),
         'the body is not teams-message-from-model-reply of',
       ),
@@ -544,14 +550,33 @@ void main() {
             'proposed': EntryId.of(utf8.encode('p')).hex,
             'result': {'kind': 'refused', 'output': 'done'},
           }),
+          kind: resultOfActionOrWhyRefusedKind,
         ),
         'the body is not teams-message-from-model-reply of',
       ),
       (
         'not a result at all',
         teamsMessageOf('done'),
-        (a) => a.remember('done'),
+        (a) => a.remember('done', kind: resultOfActionOrWhyRefusedKind),
         'the body is not teams-message-from-model-reply of',
+      ),
+      (
+        // A loop may write any body under its own kinds on its own chain.
+        'a reply-shaped body the loop wrote under another kind',
+        teamsMessageOf('anything the loop likes'),
+        (a) => a.remember(
+          jsonEncode(
+            resultOfActionOrWhyRefusedToJson(
+              EntryId.of(utf8.encode('p')),
+              encodeOutcome<ModelReply>(
+                const Ran(ModelReply('anything the loop likes')),
+                encodeModelReply,
+              ),
+            ),
+          ),
+          kind: ModelRequestPiece.kind,
+        ),
+        'is a model-request-piece, not a result-of-action-or-why-refused',
       ),
       (
         "another trajectory's reply",

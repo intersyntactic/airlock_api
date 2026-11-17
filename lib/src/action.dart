@@ -292,6 +292,24 @@ final class Executable extends Program<Args, ExecResult> {
   );
 }
 
+/// The body of [entry], which must belong to [trajectory] and be of [kind],
+/// as [DecidesAndRecordsActions.recordedOn] reads it; or [Refused] with why
+/// not. The kind is checked, since a loop may write a body of any shape
+/// under its own kinds on its own chain.
+Future<Outcome<String>> _bodyOf(
+  Trajectory<Object?, Object?> trajectory,
+  EntryId entry,
+  String kind,
+) async => switch (await trajectory._airlock.recordedOn(trajectory.id, entry)) {
+  Refused(:final why) => Refused(why),
+  Ran(output: (kind: final recorded, :final body)) when recorded == kind => Ran(
+    body,
+  ),
+  Ran(output: (kind: final recorded, body: _)) => Refused(
+    'entry $entry is a $recorded, not a $kind',
+  ),
+};
+
 /// Makes a [WebRequest] to a site, through the sign-in it names, with
 /// exactly the body it holds.
 ///
@@ -340,9 +358,10 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
     CarriesOutWebRequests web,
     Trajectory<Object?, Object?> trajectory,
     WebRequest request,
-  ) async => switch (await trajectory._airlock.recordedOn(
-    trajectory.id,
+  ) async => switch (await _bodyOf(
+    trajectory,
     request.drawnFrom,
+    resultOfActionOrWhyRefusedKind,
   )) {
     Refused(:final why) => Refused(why),
     Ran(output: final recorded)
@@ -416,10 +435,8 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
     ModelCall call,
     Report report,
   ) async {
-    Future<Outcome<String>> read(EntryId entry) =>
-        trajectory._airlock.recordedOn(trajectory.id, entry);
     final ModelRequest request;
-    switch (await read(call.request)) {
+    switch (await _bodyOf(trajectory, call.request, ModelRequest.kind)) {
       case Refused(:final why):
         return Refused(why);
       case Ran(output: final text):
@@ -432,7 +449,7 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
     Future<Outcome<String>> joined(RecordedText recorded) async {
       final texts = <String>[];
       for (final piece in recorded.pieces) {
-        switch (await read(piece)) {
+        switch (await _bodyOf(trajectory, piece, ModelRequestPiece.kind)) {
           case Refused(:final why):
             return Refused(why);
           case Ran(output: final text):
@@ -824,8 +841,10 @@ abstract interface class DecidesAndRecordsActions<R, P> {
     required Object? resultAsJson,
   });
 
-  /// The content of [entry], as text, when it belongs to [trajectory]; or
-  /// [Refused] with why not.
+  /// The kind and body of [entry], when it belongs to [trajectory]: the
+  /// body as text, after its `<kind>\n<previous>\n` header. Or [Refused]
+  /// with why not. Whoever reads it checks the kind it expects, since a
+  /// loop may write a body of any shape under its own kinds.
   ///
   /// An entry belongs to a trajectory when it is on the trajectory's own
   /// chain, or when it is a [resultOfActionOrWhyRefusedKind] logbook entry the
@@ -836,7 +855,10 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// [ModelRequest], pieces or replies and have them sent as its own.
   /// [AskTheModel] reads its request and every piece through here, and
   /// [MakeWebRequest] the entry its body is drawn from.
-  Future<Outcome<String>> recordedOn(TrajectoryId trajectory, EntryId entry);
+  Future<Outcome<({String kind, String body})>> recordedOn(
+    TrajectoryId trajectory,
+    EntryId entry,
+  );
 }
 
 /// What the airlock decided about one action, and [by] whom, so the record

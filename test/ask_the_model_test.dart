@@ -41,7 +41,11 @@ RecordedText recordedText(
 }) => RecordedText(
   pieces: [
     for (final text in texts)
-      airlock.remember(jsonEncode(ModelRequestPiece(text).toJson()), on: on),
+      airlock.remember(
+        jsonEncode(ModelRequestPiece(text).toJson()),
+        kind: ModelRequestPiece.kind,
+        on: on,
+      ),
   ],
   sha256: ObjectId.of(utf8.encode(sha256Of ?? texts.join())),
 );
@@ -59,6 +63,7 @@ EntryId recordedRequest(
       request: request ?? recordedText(airlock, asked),
     ).toJson(),
   ),
+  kind: ModelRequest.kind,
   on: on,
 );
 
@@ -154,9 +159,14 @@ void main() {
         'is not recorded',
       ),
       (
-        'an entry that is not a model request',
-        (a) => a.remember('"hello"'),
+        'a model-request entry that does not read as one',
+        (a) => a.remember('"hello"', kind: ModelRequest.kind),
         'not a model request',
+      ),
+      (
+        'an entry of another kind named as the request',
+        (a) => a.remember('"hello"', kind: ModelRequestPiece.kind),
+        'is a model-request-piece, not a model-request',
       ),
       (
         // Hashed as if the piece were skipped, so only its own check refuses.
@@ -164,7 +174,7 @@ void main() {
         (a) => recordedRequest(
           a,
           request: RecordedText(
-            pieces: [a.remember('"hello"')],
+            pieces: [a.remember('"hello"', kind: ModelRequestPiece.kind)],
             sha256: ObjectId.of(utf8.encode('')),
           ),
         ),
