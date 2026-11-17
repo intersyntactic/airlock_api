@@ -88,13 +88,19 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   final results = <EntryId, Object?>{};
   final _logbook = <EntryId, ({String kind, String body})>{};
   final _chainOf = <EntryId, TrajectoryId>{};
+  final _lastOn = <TrajectoryId, EntryId>{};
 
   /// Records [body] as a [kind] entry, as the logbook would, on [on]'s
   /// chain (by default the trajectory [start] starts), and gives its id.
+  /// Like the logbook's, the id covers the entry before it on the chain, so
+  /// it is never a hash of [body] alone and the same body twice has two.
   EntryId remember(String body, {required String kind, TrajectoryId? on}) {
-    final id = EntryId.of(utf8.encode('$kind\n$body'));
+    final chain = on ?? idOf('started root');
+    final previous = _lastOn[chain]?.hex ?? 'none';
+    final id = EntryId.of(utf8.encode('$kind\n$previous\n$body'));
     _logbook[id] = (kind: kind, body: body);
-    _chainOf[id] = on ?? idOf('started root');
+    _chainOf[id] = chain;
+    _lastOn[chain] = id;
     return id;
   }
 

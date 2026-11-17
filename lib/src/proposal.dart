@@ -15,6 +15,11 @@ part of 'action.dart';
 /// entry on the loop's trajectory's chain, wait for the
 /// [outcomeOfProposedActionKind] entry that names it, and give back the
 /// `result` [readOutcomeOfProposedAction] reads from it.
+///
+/// The outcome names the proposal by the id the logbook gave its entry when
+/// it took it: the hash of the whole recorded entry, which covers the entry
+/// before it on the chain. Wait on that id, as the write returned it. A
+/// hash of the proposal's body alone is never it.
 abstract interface class ProposesActionsThroughTheRecord {
   Future<Object?> propose(Object? proposal);
 }
@@ -201,6 +206,8 @@ const outcomeOfProposedActionKind = 'outcome-of-proposed-action';
 /// The body of an [outcomeOfProposedActionKind] logbook entry answering
 /// the [ActionProposedByAgentLoop] logbook entry [proposed]: [resultAsJson],
 /// as is_effects's `encodeOutcome` writes it with that program's codec.
+/// [proposed] is the id the logbook gave that entry, the hash of the whole
+/// recorded entry, never a hash of its body.
 Object? outcomeOfProposedActionToJson(EntryId proposed, Object? resultAsJson) =>
     {'proposed': proposed.hex, 'result': resultAsJson};
 
