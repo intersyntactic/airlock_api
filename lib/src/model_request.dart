@@ -12,11 +12,8 @@ part of 'action.dart';
 // is sent.
 
 /// One run of a model request's body, in the order [ModelRequest.pieces]
-/// names it: recorded as an entry of its own, and named there by its
-/// content, the journal object the entry points at. So a piece repeated
-/// from an earlier request (the history so far) has the same id and its
-/// bytes are kept once, wherever on the chain it was recorded; its entry's
-/// own id, which hashes its previous too, differs each time.
+/// names it: recorded as an entry of its own, so a piece repeated from an
+/// earlier request (the history so far) has the same id and is held once.
 ///
 /// Its text is a run of the exact body the loop rendered: of the API's JSON,
 /// or of the prompt a program reads. A turn's entry is never a piece, since
@@ -48,18 +45,14 @@ final class ModelRequestPiece {
 }
 
 /// What a step sends the model, recorded before it is sent: the
-/// [ModelRequestPiece]s its body is made of, by content, in order, the
-/// sha256 of that body, and the turns it was rendered from.
-///
-/// The pieces' places on the chain are not what is checked: this entry,
-/// which only the loop user can write, commits to [body], and [join]
-/// gives nothing that does not hash to it.
+/// [ModelRequestPiece] entries its body is made of, in order, the sha256 of
+/// that body, and the turns it was rendered from.
 ///
 /// Written by the loop on its trajectory's chain, which only its loop user
 /// writes, so it names no trajectory, as a [Proposal] names none.
 final class ModelRequest {
   ModelRequest({
-    required Iterable<ObjectId> pieces,
+    required Iterable<EntryId> pieces,
     required this.body,
     Iterable<EntryId> builtFrom = const [],
   }) : pieces = List.unmodifiable(pieces),
@@ -82,29 +75,28 @@ final class ModelRequest {
         '$field: unexpected ${map.keys.where((k) => !keys.contains(k))}',
       );
     }
-    List<T> ids<T>(String name, T? Function(String) parse, String what) =>
-        switch (map[name]) {
-          final List<Object?> list => [
-            for (final (i, id) in list.indexed)
-              parse(_string('$field.$name[$i]', id)) ??
-                  (throw FormatException('$field.$name[$i]: not $what')),
-          ],
-          _ => throw FormatException('$field.$name: not a list'),
-        };
-    final pieces = ids('pieces', ObjectId.parse, 'an object id');
+    List<EntryId> ids(String name) => switch (map[name]) {
+      final List<Object?> list => [
+        for (final (i, id) in list.indexed)
+          EntryId.parse(_string('$field.$name[$i]', id)) ??
+              (throw FormatException('$field.$name[$i]: not an entry id')),
+      ],
+      _ => throw FormatException('$field.$name: not a list'),
+    };
+    final pieces = ids('pieces');
     if (pieces.isEmpty) throw FormatException('$field.pieces: none');
     return ModelRequest(
       pieces: pieces,
       body:
           ObjectId.parse(_string('$field.body', map['body'])) ??
           (throw FormatException('$field.body: not a sha256')),
-      builtFrom: ids('builtFrom', EntryId.parse, 'an entry id'),
+      builtFrom: ids('builtFrom'),
     );
   }
 
-  /// The [ModelRequestPiece]s the body is made of, in order, each by the
-  /// journal object its entry points at; one, when the body is not split.
-  final List<ObjectId> pieces;
+  /// The [ModelRequestPiece] entries the body is made of, in order; one,
+  /// when the body is not split.
+  final List<EntryId> pieces;
 
   /// The sha256 of the body's UTF-8 bytes: what [join] checks the pieces
   /// against.
