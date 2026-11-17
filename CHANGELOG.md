@@ -11,15 +11,29 @@ are two methods.
   `AirlockDecisionOnAction.kind` = `airlock-decision-on-action` for the
   logbook entry the airlock keeps it as. It no longer extends anything.
 - `DecidedWebRequest` is `AirlockDecisionOnWebRequest`, kind
-  `airlock-decision-on-web-request` (was `web-request-decided`). It now
-  carries `proposed`, the proposal it answers, so no two decisions start
-  byte-identical chains: the logbook service refuses a repeated chain start
-  once it names entries by the hash of their text.
+  `airlock-decision-on-web-request` (was `web-request-decided`). It
+  carries the request's exact body, no renderer, and now `proposed`, the
+  proposal it answers, so no two decisions start byte-identical chains:
+  the logbook service refuses a repeated chain start once it names entries
+  by the hash of their text.
+- The renderer is gone: `Renderer`, `RendererName`, `Rendered` (kind
+  `rendered`), `DecidesAndRecordsActions.renderer` and `.rendered`, and
+  the `RendererId` export. A `WebRequest` carries its exact `body`, the
+  `Projection` it is drawn by, and `drawnFrom`, the recorded entry it is
+  drawn from, in place of a renderer's name and entries. Once allowed, the
+  airlock reads `drawnFrom` through `recordedOn`, draws the body by the
+  projection, and reaches the web driver only when it is byte-identical
+  to `body`. One projection: `teamsMessageFromModelReply`
+  (`teams-message-from-model-reply`), a Teams message whose text is a
+  model's reply. A web request's chain is its decision, then its result.
+- `DecidesAndRecordsActions.recordedOn` gives an entry that belongs to the
+  trajectory: on its own chain, or a `result-of-action-or-why-refused` the
+  airlock kept for one of its proposals.
 - `Entry<P>`, `Returned<P>` and `ReturnedProposal` are gone.
   `DecidesAndRecordsActions.record(entry)` is
   `recordDecision(decision)` and `recordResult(decision, result,
   resultAsJson:)`; a result is handed the decision it follows, so a web
-  request's result can name its chain's previous without a lookup.
+  request's result names its decision as its previous without a lookup.
   `Trajectory.entries` is `decisions` and `results`, the latter
   `({decision, result})`.
 - A proposal's answer is the logbook kind

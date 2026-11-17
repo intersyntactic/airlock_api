@@ -60,47 +60,41 @@ while (result is Action<ExecResult>) {
   program's own type. Nothing about an action shows outside; when it is
   proposed, what it would do is worked out as its `Reach`, which the
   airlock decides and records: `Reads(path)`, `Writes(file)`,
-  `Starts(program, args)`, `MakesWebRequest(request, renderer)` or
+  `Starts(program, args)`, `MakesWebRequest(request)` or
   `CallsTheModel(call)`. A rule grants a web request by origin and sign-in
   together, and a model call by its model sign-in.
 
 ## A web request
 
-Everything a web request says is drawn from recorded logbook entries, by a
-renderer the record names exactly
-(https://github.com/enspyrco/intersyntactic/issues/1147).
+A web request carries the exact bytes it sends, so the airlock decides
+what will be sent, not the code that will produce it, and those bytes must
+come from the record.
 
-- `WebRequest`: origin, method, a `WebPath`, sign-in, headers, a `RendererName`
-  such as `teams-reply`, and the `EntryId`s of the recorded entries its
-  words are drawn from. It has no body, so a tool cannot put words in. The
-  path and headers are checked as is_effects's `Request` checks them.
-- `DecidesAndRecordsActions.renderer(name)` resolves a name to a
-  `Renderer`: its `RendererId` (the sha256 of the renderer's published pub archive, as
-  `pubspec.lock` records it) and the `ObjectId` of the render runner built
-  with it, which pins the packages the renderer depends on as well. It is resolved before the decision, so
-  the `AirlockDecisionOnAction` holds the whole `WebRequest` and the exact
-  `Renderer`, never a body, which does not exist yet. A name that resolves to nothing is denied
-  before the rules are asked.
-- The airlock never talks to a renderer
-  (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
-  A renderer subscribes to the logbook for web request decisions naming
-  it, reads the entries the request draws from, and records the body, or a
-  refusal when an entry is missing, in a `Rendered` logbook entry after the
-  decision. `DecidesAndRecordsActions.rendered(decided)` is the airlock
-  reading that entry from the logbook; it is called only once the decision
-  is kept, and what it gives is the body the web driver carries out. So the exact bytes that
-  went out are in the record.
+- `WebRequest`: origin, method, a `WebPath`, sign-in, headers, the exact
+  `body`, the `projection` it is drawn by, and `drawnFrom`, the recorded
+  entry it is drawn from. The path and headers are checked as is_effects's
+  `Request` checks them. The decision holds the whole request, body and
+  all.
+- `Projection`: how a body is drawn from a recorded entry, one pure
+  function each, which the loop builds the body with and the airlock checks
+  it by. `teamsMessageFromModelReply` (`teams-message-from-model-reply`)
+  draws `{"type":"message","text":<text>}` (Dart's `jsonEncode`, those two
+  keys in that order, no whitespace, the text as UTF-8) from a
+  `result-of-action-or-why-refused` whose result ran to text: a model's
+  reply.
+- Once allowed, the airlock reads `drawnFrom` through
+  `DecidesAndRecordsActions.recordedOn`, which gives it only when it
+  belongs to the trajectory, draws the body by the projection, and reaches
+  the web driver only when that is byte-identical to `body`. Anything else
+  is refused, each for its own reason, and nothing is sent. So a loop can
+  send only what its projection makes of what is recorded, and the words
+  in a model's reply only as the airlock recorded them.
 - A web request's chain in the logbook: `AirlockDecisionOnWebRequest`
   (kind `airlock-decision-on-web-request`) starts it, since the proposal's
-  chain is its loop user's alone; then the renderer's `Rendered` (kind
-  `rendered`), then the airlock's `result-of-action-or-why-refused`, each
-  naming the one before as its previous, so the logbook service's tip check
-  lets each be written once. When the renderer does not answer in time, the
-  result (refused) names the decision as its previous and a late
-  `Rendered` is turned away. The decision names its proposal, so no two
-  start byte-identical chains, which the logbook service refuses. Each has
-  `toJson` and a checking `fromJson`. What came back from any proposed
-  action is recorded in full, in its result (below).
+  chain is its loop user's alone, and the airlock's
+  `result-of-action-or-why-refused` follows it. The decision names its
+  proposal, so no two start byte-identical chains, which the logbook
+  service refuses. It has `toJson` and a checking `fromJson`.
 
 A web request is an action, decided like any other: a request a tool makes
 to a chat or an API.
@@ -120,15 +114,16 @@ makes the call.
   `model-request-piece`, `{"text"}`), then a `ModelRequest` (kind
   `model-request`) naming them: `systemPrompt` and `request`, each a
   `RecordedText` (its pieces in order and the sha256 of its UTF-8 bytes),
-  and `builtFrom`, the turns they were rendered from. Pieces are named by
+  and `builtFrom`, the turns they were drawn from. Pieces are named by
   entry, so each was recorded before it is sent; repeated history is still
   stored once, as one object under many entries.
 - `AskTheModel` (proposed as `model`) takes a `ModelCall`: the
   `ModelSignInName` it goes as, the `ModelName`, and the `ModelRequest`
   entry. Its reach, `CallsTheModel`, is decided by the sign-in.
 - Once allowed, the airlock reads the request and each piece with
-  `DecidesAndRecordsActions.recordedOn(trajectory, entry)`, which refuses an
-  entry on any other trajectory's chain, so no loop can have another's
+  `DecidesAndRecordsActions.recordedOn(trajectory, entry)`, which gives an
+  entry only when it belongs to the trajectory: on its own chain, or the
+  airlock's result for one of its proposals. So no loop can have another's
   conversation sent. It joins each text and checks its sha256
   (`RecordedText.join`), and hands the driver (is_effects's
   `AsksTheModel`) exactly those texts. Anything missing, elsewhere, or not
