@@ -1,56 +1,56 @@
 part of 'action.dart';
 
-// One send's chain in the journal: a [DecidedSend] entry, the [Rendered]
-// entry its renderer writes after it, and the airlock's `Returned` after
-// that, each naming the one before as its previous. The journal's tip check
-// lets each link be written once. A renderer that does not answer in time
-// is closed by the airlock's `Returned` (refused), whose previous is the
-// `DecidedSend`, after which a late `Rendered` is turned away, since its
-// previous is no longer the tip.
+// One web request's chain in the journal: a [DecidedWebRequest] entry, the
+// [Rendered] entry its renderer writes after it, and the airlock's
+// `Returned` after that, each naming the one before as its previous. The
+// journal's tip check lets each link be written once. A renderer that does
+// not answer in time is closed by the airlock's `Returned` (refused), whose
+// previous is the `DecidedWebRequest`, after which a late `Rendered` is
+// turned away, since its previous is no longer the tip.
 //
 // A renderer reads the one and writes the other, and the airlock reads what
-// it wrote. What came back from any proposed action, a send's among them, is
-// recorded in full in a [ReturnedProposal].
+// it wrote. What came back from any proposed action, a web request's among
+// them, is recorded in full in a [ReturnedProposal].
 
-/// A send's [Decided] entry as the journal holds it: what its renderer
-/// subscribes to the record for, and reads to know what to draw.
-final class DecidedSend {
-  const DecidedSend._(
+/// A web request's [Decided] entry as the journal holds it: what its
+/// renderer subscribes to the record for, and reads to know what to draw.
+final class DecidedWebRequest {
+  const DecidedWebRequest._(
     this.journeyPath,
     this.place,
-    this.send,
+    this.request,
     this.renderer,
     this.decision,
   );
 
   /// The entry's kind in the journal.
-  static const kind = 'send-decided';
+  static const kind = 'web-request-decided';
 
-  /// [decided] as a send's entry, its place written by [placeToJson]; null
-  /// when it is not a send's.
-  static DecidedSend? of<P>(
+  /// [decided] as a web request's entry, its place written by
+  /// [placeToJson]; null when it is not a web request's.
+  static DecidedWebRequest? of<P>(
     Decided<P> decided,
     Object? Function(P place) placeToJson,
   ) => switch (decided.reach) {
-    Sends(:final send, :final renderer) => DecidedSend._(
+    MakesWebRequest(:final request, :final renderer) => DecidedWebRequest._(
       decided.journeyPathId,
       placeToJson(decided.place),
-      send,
+      request,
       renderer,
       decided.decision,
     ),
     _ => null,
   };
 
-  /// [json] read back as a send's entry, each part checked as its type's
-  /// `parse` checks it. Throws a [FormatException] naming the part.
-  static DecidedSend fromJson(Object? json, [String field = 'decided']) {
+  /// [json] read back as a web request's entry, each part checked as its
+  /// type's `parse` checks it. Throws a [FormatException] naming the part.
+  static DecidedWebRequest fromJson(Object? json, [String field = 'decided']) {
     final map = _object(field, json);
-    return DecidedSend._(
+    return DecidedWebRequest._(
       JourneyPathId.parse(_string('$field.journeyPath', map['journeyPath'])) ??
           (throw FormatException('$field.journeyPath: not a journey path')),
       map['place'],
-      _sendFromJson(map['send'], '$field.send'),
+      _webRequestFromJson(map['request'], '$field.request'),
       switch (map['renderer']) {
         null => null,
         final renderer => _rendererFromJson(renderer, '$field.renderer'),
@@ -63,17 +63,17 @@ final class DecidedSend {
 
   /// The place in a turn, as its journey path writes places.
   final Object? place;
-  final Send send;
+  final WebRequest request;
 
-  /// The renderer the send named, exactly; null when its name named none,
-  /// and the send was denied.
+  /// The renderer the request named, exactly; null when its name named
+  /// none, and the request was denied.
   final Renderer? renderer;
   final Decision decision;
 
   Object? toJson() => {
     'journeyPath': journeyPath.hex,
     'place': place,
-    'send': _sendToJson(send),
+    'request': _webRequestToJson(request),
     'renderer': switch (renderer) {
       final r? => {'id': r.id.hex, 'executable': r.executable.hex},
       null => null,
@@ -89,9 +89,9 @@ final class DecidedSend {
   };
 }
 
-/// What a renderer wrote after a [DecidedSend] entry: the body it drew
-/// from the entries the send names, or why it drew none, and the source it
-/// was built from.
+/// What a renderer wrote after a [DecidedWebRequest] entry: the body it
+/// drew from the entries the request names, or why it drew none, and the
+/// source it was built from.
 final class Rendered {
   const Rendered({
     required this.decided,
@@ -121,15 +121,16 @@ final class Rendered {
     );
   }
 
-  /// The [DecidedSend] entry this answers, its previous.
+  /// The [DecidedWebRequest] entry this answers, its previous.
   final EntryId decided;
 
   /// The source the renderer was built from, as it reports it: the airlock
-  /// sends the body only when this is the id the [DecidedSend] names.
+  /// has the request carried out with the body only when this is the id
+  /// the [DecidedWebRequest] names.
   final RendererId renderer;
 
-  /// The body, or [Refused] with why there is none: an entry the send names
-  /// that the journal does not hold, or that fails its checks.
+  /// The body, or [Refused] with why there is none: an entry the request
+  /// names that the journal does not hold, or that fails its checks.
   final Outcome<String> body;
 
   Object? toJson() => {
