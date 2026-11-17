@@ -56,7 +56,7 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
             );
         }
     }
-    final answer = readResultOfActionOrWhyRefused(
+    final answer = readOutcomeOfProposedAction(
       jsonDecode(jsonEncode(airlock.results[proposed])),
     )!;
     expect(answer.proposed, proposed);
@@ -249,7 +249,7 @@ void main() {
   test('the logbook kinds name what they hold', () {
     expect(ActionProposedByAgentLoop.kind, 'action-proposed-by-agent-loop');
     expect(AirlockDecisionOnAction.kind, 'airlock-decision-on-action');
-    expect(resultOfActionOrWhyRefusedKind, 'result-of-action-or-why-refused');
+    expect(outcomeOfProposedActionKind, 'outcome-of-proposed-action');
   });
 
   test('a result reads back only with the proposal it answers, exactly', () {
@@ -259,9 +259,7 @@ void main() {
       jsonEncode(refused),
       '{"proposed":"${id.hex}","result":{"kind":"refused","why":"why"}}',
     );
-    final back = readResultOfActionOrWhyRefused(
-      jsonDecode(jsonEncode(refused)),
-    )!;
+    final back = readOutcomeOfProposedAction(jsonDecode(jsonEncode(refused)))!;
     expect(back.proposed, id);
     expect(back.result, {'kind': 'refused', 'why': 'why'});
     for (final json in [
@@ -272,7 +270,7 @@ void main() {
       {'proposed': id.hex},
       {'proposed': id.hex, 'result': null, 'outcome': null},
     ]) {
-      expect(readResultOfActionOrWhyRefused(json), isNull, reason: '$json');
+      expect(readOutcomeOfProposedAction(json), isNull, reason: '$json');
     }
   });
 }

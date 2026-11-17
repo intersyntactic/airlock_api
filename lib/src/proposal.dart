@@ -3,7 +3,7 @@ part of 'action.dart';
 // An agent loop writes an [ActionProposedByAgentLoop] logbook entry on its
 // trajectory's chain, which the logbook service takes only from that path's
 // loop user. The airlock reads it, decides, and keeps its decision and then
-// a [resultOfActionOrWhyRefusedKind] logbook entry naming the proposal, with
+// an [outcomeOfProposedActionKind] logbook entry naming the proposal, with
 // what the action came to. loop_launcher hands that entry to the path's
 // loop. The airlock has no door of its own.
 
@@ -13,8 +13,8 @@ part of 'action.dart';
 ///
 /// For an agent loop: write an [ActionProposedByAgentLoop.kind] logbook
 /// entry on the loop's trajectory's chain, wait for the
-/// [resultOfActionOrWhyRefusedKind] entry that names it, and give back the
-/// `result` [readResultOfActionOrWhyRefused] reads from it.
+/// [outcomeOfProposedActionKind] entry that names it, and give back the
+/// `result` [readOutcomeOfProposedAction] reads from it.
 abstract interface class ProposesActionsThroughTheRecord {
   Future<Object?> propose(Object? proposal);
 }
@@ -187,38 +187,36 @@ final class Rejected implements Received {
   final String why;
 }
 
-/// The kind of the logbook entry that keeps what an action a loop proposed
-/// came to: what it ran to, or why it was refused. Its body is
-/// [resultOfActionOrWhyRefusedToJson].
+/// The kind of the logbook entry that keeps the outcome of an action a loop
+/// proposed: what it ran to, or why it was refused. Only the airlock writes
+/// it. Its body is [outcomeOfProposedActionToJson].
 ///
 /// The one copy of what the action returned: a read's text, a program's
 /// output, a site's answer, a model's reply. The airlock writes it on the
 /// decision's chain, never the path's, which only the loop user writes.
 /// loop_launcher hands it to the loop whose path's chain holds the proposal,
 /// and the loop reads the result with the program it proposed.
-const resultOfActionOrWhyRefusedKind = 'result-of-action-or-why-refused';
+const outcomeOfProposedActionKind = 'outcome-of-proposed-action';
 
-/// The body of a [resultOfActionOrWhyRefusedKind] logbook entry answering
+/// The body of an [outcomeOfProposedActionKind] logbook entry answering
 /// the [ActionProposedByAgentLoop] logbook entry [proposed]: [resultAsJson],
 /// as is_effects's `encodeOutcome` writes it with that program's codec.
-Object? resultOfActionOrWhyRefusedToJson(
-  EntryId proposed,
-  Object? resultAsJson,
-) => {'proposed': proposed.hex, 'result': resultAsJson};
+Object? outcomeOfProposedActionToJson(EntryId proposed, Object? resultAsJson) =>
+    {'proposed': proposed.hex, 'result': resultAsJson};
 
 /// The body answering [proposed], a logbook entry that was [Rejected]
 /// because [why]: refused, with no action decided.
 Object? proposalRejectedToJson(EntryId proposed, String why) =>
-    resultOfActionOrWhyRefusedToJson(
+    outcomeOfProposedActionToJson(
       proposed,
       encodeOutcome<Never>(Refused(why), (_) => null),
     );
 
-/// [json] read back as a [resultOfActionOrWhyRefusedKind] body: the
+/// [json] read back as an [outcomeOfProposedActionKind] body: the
 /// proposal it answers and its result, which only the program that was
 /// proposed can read further. Null when [json] is not exactly one, as
 /// when the airlock kept the result of an action no loop proposed.
-({EntryId proposed, Object? result})? readResultOfActionOrWhyRefused(
+({EntryId proposed, Object? result})? readOutcomeOfProposedAction(
   Object? json,
 ) => switch (json) {
   {'proposed': final String hex, 'result': final result}

@@ -361,7 +361,7 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
   ) async => switch (await _bodyOf(
     trajectory,
     request.drawnFrom,
-    resultOfActionOrWhyRefusedKind,
+    outcomeOfProposedActionKind,
   )) {
     Refused(:final why) => Refused(why),
     Ran(output: final recorded)
@@ -831,9 +831,9 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   ///
   /// It extends [decision]'s chain, its previous the decision. When
   /// [decision] answers a proposal,
-  /// its body is [resultOfActionOrWhyRefusedToJson] of
+  /// its body is [outcomeOfProposedActionToJson] of
   /// [AirlockDecisionOnAction.proposed] and [resultAsJson], under
-  /// [resultOfActionOrWhyRefusedKind]: the one copy of what the action
+  /// [outcomeOfProposedActionKind]: the one copy of what the action
   /// returned, which the loop that proposed it is waiting for.
   Future<void> recordResult(
     AirlockDecisionOnAction<P> decision,
@@ -847,7 +847,7 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// loop may write a body of any shape under its own kinds.
   ///
   /// An entry belongs to a trajectory when it is on the trajectory's own
-  /// chain, or when it is a [resultOfActionOrWhyRefusedKind] logbook entry the
+  /// chain, or when it is an [outcomeOfProposedActionKind] logbook entry the
   /// airlock kept for one of the trajectory's proposals: its `proposed` is
   /// on that chain. Only the airlock writes those, so a loop cannot make
   /// one. Any other entry is refused, never read: entry hashes are not

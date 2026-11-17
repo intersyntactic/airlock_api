@@ -3,7 +3,7 @@ part of 'action.dart';
 // One web request's chain in the logbook. The airlock's
 // [AirlockDecisionOnWebRequest] logbook entry starts it (previous `-`): it
 // cannot follow the proposal, whose chain only the path's loop user may
-// extend. The airlock's [resultOfActionOrWhyRefusedKind] logbook entry
+// extend. The airlock's [outcomeOfProposedActionKind] logbook entry
 // follows it, naming it as its previous.
 //
 // The tip check does not stop two decisions on one proposal, since each
@@ -96,7 +96,7 @@ final class AirlockDecisionOnWebRequest {
 /// airlock checks it by, byte for byte.
 enum Projection {
   /// A Teams message whose text is a model's reply: drawn from a
-  /// [resultOfActionOrWhyRefusedKind] body whose result ran to text, as
+  /// [outcomeOfProposedActionKind] body whose result ran to text, as
   /// `{"type":"message","text":<text>}`, Dart's `jsonEncode` of those two
   /// keys in that order, with no whitespace and the text as UTF-8.
   teamsMessageFromModelReply('teams-message-from-model-reply');
@@ -111,10 +111,10 @@ enum Projection {
       values.where((p) => p.wire == wire).firstOrNull;
 
   /// The body drawn from [recorded], the body (after its header) of the
-  /// [resultOfActionOrWhyRefusedKind] logbook entry a request names; null
+  /// [outcomeOfProposedActionKind] logbook entry a request names; null
   /// when it draws none from it. The caller checks the entry's kind.
   String? drawnFrom(String recorded) => switch (this) {
-    teamsMessageFromModelReply => switch (readResultOfActionOrWhyRefused(
+    teamsMessageFromModelReply => switch (readOutcomeOfProposedAction(
       _jsonOrNull(recorded),
     )) {
       (proposed: _, result: {'kind': 'ran', 'output': final String text}) =>

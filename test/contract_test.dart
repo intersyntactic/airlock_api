@@ -142,11 +142,11 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   }) async {
     if (failWriting == FailWriting.result) throw StateError('disk full');
     if (decision.proposed case final proposed?) {
-      final body = resultOfActionOrWhyRefusedToJson(proposed, resultAsJson);
+      final body = outcomeOfProposedActionToJson(proposed, resultAsJson);
       results[proposed] = body;
       remember(
         jsonEncode(body),
-        kind: resultOfActionOrWhyRefusedKind,
+        kind: outcomeOfProposedActionKind,
         on: decision.trajectoryId,
       );
     }
@@ -214,12 +214,12 @@ const teamsMessage = Projection.teamsMessageFromModelReply;
 EntryId recordedReply(LogAirlock airlock, String text, {TrajectoryId? on}) =>
     airlock.remember(
       jsonEncode(
-        resultOfActionOrWhyRefusedToJson(
+        outcomeOfProposedActionToJson(
           EntryId.of(utf8.encode('asked for: $text')),
           encodeOutcome<ModelReply>(Ran(ModelReply(text)), encodeModelReply),
         ),
       ),
-      kind: resultOfActionOrWhyRefusedKind,
+      kind: outcomeOfProposedActionKind,
       on: on,
     );
 
@@ -538,7 +538,7 @@ void main() {
           jsonEncode(
             proposalRejectedToJson(EntryId.of(utf8.encode('p')), 'no'),
           ),
-          kind: resultOfActionOrWhyRefusedKind,
+          kind: outcomeOfProposedActionKind,
         ),
         'the body is not teams-message-from-model-reply of',
       ),
@@ -550,14 +550,14 @@ void main() {
             'proposed': EntryId.of(utf8.encode('p')).hex,
             'result': {'kind': 'refused', 'output': 'done'},
           }),
-          kind: resultOfActionOrWhyRefusedKind,
+          kind: outcomeOfProposedActionKind,
         ),
         'the body is not teams-message-from-model-reply of',
       ),
       (
         'not a result at all',
         teamsMessageOf('done'),
-        (a) => a.remember('done', kind: resultOfActionOrWhyRefusedKind),
+        (a) => a.remember('done', kind: outcomeOfProposedActionKind),
         'the body is not teams-message-from-model-reply of',
       ),
       (
@@ -566,7 +566,7 @@ void main() {
         teamsMessageOf('anything the loop likes'),
         (a) => a.remember(
           jsonEncode(
-            resultOfActionOrWhyRefusedToJson(
+            outcomeOfProposedActionToJson(
               EntryId.of(utf8.encode('p')),
               encodeOutcome<ModelReply>(
                 const Ran(ModelReply('anything the loop likes')),
@@ -576,7 +576,7 @@ void main() {
           ),
           kind: ModelRequestPiece.kind,
         ),
-        'is a model-request-piece, not a result-of-action-or-why-refused',
+        'is a model-request-piece, not a outcome-of-proposed-action',
       ),
       (
         "another trajectory's reply",
