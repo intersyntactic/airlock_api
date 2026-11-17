@@ -14,8 +14,12 @@ mission, and a journey path a trajectory (Nick, 17 Nov 19:07 and 19:09;
   is_shapes 0.5.0's `TrajectoryId` (it hashes as before). Every
   `journeyPath` field is `trajectory`, on the wire too: `WaitingToStart`
   is `{"trajectory": <hex>}`, and `DecidedWebRequest` writes `trajectory`.
-  `Apex` is kept: the trajectory's tip at one place, so one trajectory has
-  many. Depends on is_shapes ^0.5.0.
+  Depends on is_shapes ^0.5.0.
+- `Apex` is `Crux` (Nick, 17 Nov 20:17: "CRUX! That's what I was thinking
+  of when I said 'apex'"): a trajectory's crux is its agent loop, the one
+  holder that extends it (https://github.com/enspyrco/intersyntactic/pull/1168).
+  `Trajectory.at(place)` and `Crux.through(link, place:)` give it at one
+  place; one step's tool calls go through the one crux at their places.
 - `Airlock<R, P>` is `DecidesAndRecordsActions<R, P>`, and `RecordLink` is
   `ProposesActionsThroughTheRecord`. The airlock and its drivers are still
   called that: only the interfaces are renamed, since a noun is kept for

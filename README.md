@@ -28,10 +28,10 @@ final trajectory = Trajectory(
   suit: suit, // the OS user its programs run as
 );
 // Its loop, for one tool call, at that call's place in the turn:
-final apex = trajectory.at(place);
+final crux = trajectory.at(place);
 var result = writeAndFormat(file);
 while (result is Action<ExecResult>) {
-  result = await result.next(apex);
+  result = await result.next(crux);
 }
 ```
 
@@ -44,7 +44,7 @@ while (result is Action<ExecResult>) {
   with ordinary logic between them; each is decided on its own.
 - `result.map(f)`: the same result with its answer, once there is one, given
   to `f`. It reaches no driver: an action's continuation is extended, so
-  every action is still decided and recorded at an apex. Turning a tool's
+  every action is still decided and recorded at a crux. Turning a tool's
   answer into what the model is told takes no trajectory.
 
 ## An action
@@ -118,19 +118,20 @@ supplies and the airlock records; nothing here computes one.
   Holding the drivers
   is already the power to touch the world, so setting up a side grants
   nothing new.
-- `at(place)`: the trajectory's apex at that place, its tip, where its
-  agent loop proposes the next action and its airlock decides it. The
-  trajectory checks the place's type, so whatever comes after a tool's result takes
-  an `Apex` and never handles `P`. Two agents on one machine have two
-  apexes; one step's two tool calls are two apexes of one trajectory, at
-  two places.
+- `at(place)`: the trajectory's crux at that place: its agent loop, the one
+  holder that extends the trajectory, where the next action is proposed and
+  its airlock decides it
+  (https://github.com/enspyrco/intersyntactic/pull/1168). The trajectory
+  checks the place's type, so whatever comes after a tool's result takes a
+  `Crux` and never handles `P`. Two agents on one machine have two cruxes;
+  one step's two tool calls go through one trajectory's crux, at two places.
 - `TrajectoryId`, from `is_shapes`: a trajectory is named by the hash of
   the record entry that started it (`TrajectoryId.of(entryBytes)`), which
   the docking station writes, the way a `MissionId` names a mission. So no two
   trajectories share an id, after a restart too, and nothing here mints
   one. Every entry names it.
-- `action.next(apex)`, the only way an action reaches the world: it is
-  proposed at the apex, and the airlock decides it; the airlock records the
+- `action.next(crux)`, the only way an action reaches the world: it is
+  proposed at the crux, and the airlock decides it; the airlock records the
   decision (`Decided`) and only then is a driver reached; the action comes
   back and the airlock records it (`Returned`), and only then does the
   continuation see it. A record that cannot be written ends the call. A
@@ -161,12 +162,12 @@ and what came back returns through the record
 (https://github.com/enspyrco/intersyntactic/pull/1157). The airlock decides
 and records, and only a driver carries an action out.
 
-- `Trajectory.at(place)` is an apex where the trajectory is, in the
-  airlock service. `Apex.through(link, place:)` is one in the agent loop,
+- `Trajectory.at(place)` is a crux where the trajectory is, in the
+  airlock service. `Crux.through(link, place:)` is one in the agent loop,
   where `link`, which `ProposesActionsThroughTheRecord`, is the transport,
   which this package does not have: it writes a `proposed` entry on the loop's trajectory's chain and waits
   for the `returned` entry that names it, which loop_launcher hands the
-  loop. `action.next(apex)` is the same with either, so a tool does not
+  loop. `action.next(crux)` is the same with either, so a tool does not
   change.
 - A `Proposal` (kind `proposed`) names no trajectory. The journal takes
   the entries on a path's chain only from that path's loop user, so the

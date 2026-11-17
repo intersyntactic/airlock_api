@@ -162,10 +162,10 @@ Result<String> writeAndFormat(String path) => Program.write.runOrRefusal(
   ),
 );
 
-/// [result] carried through at [apex] to an answer, or why there is none.
-Future<String> answerOf(Result<String> result, Apex apex) async {
+/// [result] carried through at [crux] to an answer, or why there is none.
+Future<String> answerOf(Result<String> result, Crux crux) async {
   while (result is Action<String>) {
-    result = await result.next(apex);
+    result = await result.next(crux);
   }
   return switch (result) {
     Done(:final value) => value,
@@ -225,7 +225,7 @@ Result<String> webRequest(
 );
 
 void main() {
-  test('every entry is at the place its apex was given', () async {
+  test('every entry is at the place its crux was given', () async {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles(), RecordedPrograms()]);
     expect(

@@ -18,9 +18,9 @@ abstract interface class ProposesActionsThroughTheRecord {
   Future<Object?> propose(Object? proposal);
 }
 
-/// An apex in the agent loop: proposes each action's program and input through
+/// A crux in the agent loop: proposes each action's program and input through
 /// the record, and keeps the continuation.
-final class _ThroughRecord extends Apex {
+final class _ThroughRecord extends Crux {
   const _ThroughRecord(this._link, {required this._place});
 
   final ProposesActionsThroughTheRecord _link;

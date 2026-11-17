@@ -15,7 +15,7 @@ part 'waiting_to_start.dart';
 /// type of the answer, the tool's output type.
 ///
 /// A tool holds no driver and touches nothing. Its result is carried through
-/// at an [Apex], whose trajectory has each action decided and recorded, and
+/// at a [Crux], whose trajectory has each action decided and recorded, and
 /// reached by a driver if it is allowed, and gives what became of it to the
 /// action's continuation. So a tool can describe nothing an action cannot
 /// express.
@@ -57,17 +57,17 @@ sealed class Result<A> {
 abstract final class Action<A> extends Result<A> {
   const Action._();
 
-  /// This action proposed at [apex], and the result it leads to.
+  /// This action proposed at [crux], and the result it leads to.
   ///
   /// The only way an action reaches the world. What it would do, its
   /// [Reach], is worked out first; the trajectory's airlock decides it,
-  /// and records the decision, at the apex's place, before any driver is
+  /// and records the decision, at the crux's place, before any driver is
   /// reached; a driver of the trajectory carries out an allowed action;
   /// the airlock records what became of it before the continuation sees it.
   /// If either record cannot be written, its error ends the call: no driver
   /// is reached without a recorded decision, and no outcome flows on
   /// unrecorded.
-  Future<Result<A>> next(Apex apex);
+  Future<Result<A>> next(Crux crux);
 
   @override
   Action<B> map<B>(B Function(A answer) f);
@@ -87,8 +87,8 @@ final class _Action<I, O, A> extends Action<A> {
   final Result<A> Function(Outcome<O> outcome) _then;
 
   @override
-  Future<Result<A>> next(Apex apex) async =>
-      _then(await apex._propose(_program, _input));
+  Future<Result<A>> next(Crux crux) async =>
+      _then(await crux._propose(_program, _input));
 
   @override
   Action<B> map<B>(B Function(A answer) f) =>
@@ -523,8 +523,8 @@ final class MakesWebRequest extends Reach {
 /// turn each entry happened.
 ///
 /// Its drivers are those it was given, acting for the path, each wherever
-/// it runs. They are reached only by an [Action] proposed at one of its
-/// apexes, so every such action passes its airlock.
+/// it runs. They are reached only by an [Action] proposed at its crux, so
+/// every such action passes its airlock.
 ///
 /// This is the airlock service's side of a trajectory, set up when the
 /// record shows the docking station started the path (its rules, in
@@ -565,8 +565,8 @@ final class Trajectory<R, P> {
   /// this process.
   ///
   /// Here, where [P] is known, so a place of another type does not compile;
-  /// whoever is handed the apex never sees [P].
-  Apex at(P place) => _AtPath(this, place);
+  /// whoever is handed the crux never sees [P].
+  Crux at(P place) => _AtPath(this, place);
 
   /// Refuses every action on this trajectory whose driver has not yet been
   /// reached. An action whose driver has been reached is not interrupted.
@@ -638,7 +638,7 @@ final class Trajectory<R, P> {
   }
 
   /// [proposal], the `proposed` entry [proposed] on this path's chain,
-  /// considered at [place] as an action proposed at [at]'s apex would be:
+  /// considered at [place] as an action proposed at [at]'s crux would be:
   /// decided and recorded, and carried out by a driver if it is allowed. Its
   /// [Decided] and [Returned] entries name [proposed].
   ///
@@ -653,26 +653,27 @@ final class Trajectory<R, P> {
   }) => proposal._work.on(this, place, proposed);
 }
 
-/// A trajectory's tip at one place in a turn: where its agent loop
-/// proposes the next action and its airlock decides it, recording each
-/// entry at that place.
+/// A trajectory's crux, at one place in a turn: its agent loop, the one
+/// holder that extends the trajectory, proposing the next action there for
+/// its airlock to decide, which records each entry at that place
+/// (https://github.com/enspyrco/intersyntactic/pull/1168).
 ///
 /// Made by [Trajectory.at] where the trajectory is, in the airlock
-/// service, and by [Apex.through] in the agent loop, which is another
+/// service, and by [Crux.through] in the agent loop, which is another
 /// process: there an action's program and input go into the record as a
 /// [Proposal], and its continuation stays behind, since it is the tool's own
 /// code. Either
-/// way, what comes after a tool's result takes an apex and never handles
-/// the place. Two agents on one machine have two apexes; one step's two tool
-/// calls are two apexes of one trajectory, at two places.
-sealed class Apex {
-  const Apex();
+/// way, what comes after a tool's result takes a crux and never handles
+/// the place. Two agents on one machine have two cruxes; one step's two tool
+/// calls go through one trajectory's crux, at two places.
+sealed class Crux {
+  const Crux();
 
-  /// The apex at [place] on the trajectory whose chain [link] writes to.
+  /// The crux, at [place], of the trajectory whose chain [link] writes to.
   ///
   /// [place] is already the JSON its trajectory reads places from, since
   /// the loop and the airlock service agree its type between them.
-  const factory Apex.through(
+  const factory Crux.through(
     ProposesActionsThroughTheRecord link, {
     required Object? place,
   }) = _ThroughRecord;
@@ -680,7 +681,7 @@ sealed class Apex {
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
 }
 
-final class _AtPath<P> extends Apex {
+final class _AtPath<P> extends Crux {
   const _AtPath(this._trajectory, this._place);
 
   final Trajectory<Object?, P> _trajectory;
