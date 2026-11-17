@@ -317,7 +317,7 @@ final class Executable extends Program<Args, ExecResult> {
 /// once the decision is kept, the exact bytes that went out are in the
 /// record, and the airlock never talks to a renderer
 /// (https://github.com/enspyrco/intersyntactic/issues/1147#issuecomment-6905923566).
-final class MakeWebRequest extends Program<WebRequest, Sent> {
+final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
   const MakeWebRequest();
 
   @override
@@ -328,16 +328,16 @@ final class MakeWebRequest extends Program<WebRequest, Sent> {
       MakesWebRequest(request, await findRenderer(request.renderer));
 
   @override
-  _Wire<WebRequest, Sent> get _wire => const _Wire(
+  _Wire<WebRequest, WebRequestOutcome> get _wire => const _Wire(
     {'program': 'web'},
     inputToJson: _webRequestToJson,
     inputFromJson: _webRequestFromJson,
-    outputToJson: encodeSent,
-    outputFromJson: decodeSent,
+    outputToJson: encodeWebRequestOutcome,
+    outputFromJson: decodeWebRequestOutcome,
   );
 
   @override
-  Future<Outcome<Sent>>? _on(
+  Future<Outcome<WebRequestOutcome>>? _on(
     JourneyPath<Object?, Object?> journeyPath,
     WebRequest request,
     covariant MakesWebRequest reach,
@@ -350,13 +350,13 @@ final class MakeWebRequest extends Program<WebRequest, Sent> {
     (_, null) => Future.value(Refused('no renderer named ${request.renderer}')),
   };
 
-  static Future<Outcome<Sent>> _make(
+  static Future<Outcome<WebRequestOutcome>> _make(
     WebDriver web,
     Future<Outcome<String>> rendering,
     WebRequest request,
   ) async => switch (await rendering) {
     Refused(:final why) => Refused(why),
-    Ran(output: final body) => await web.send(
+    Ran(output: final body) => await web.carryOutWebRequest(
       Request(
         request.origin,
         method: request.method,

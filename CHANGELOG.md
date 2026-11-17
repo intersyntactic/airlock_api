@@ -12,8 +12,10 @@ complex things).
 - `DecidedSend` is `DecidedWebRequest`, kind `web-request-decided`, with
   the JSON key `request` in place of `send`. No entry was ever written with
   the old kind. `send_entries.dart` is `web_request_entries.dart`.
-- is_effects's `WebDriver.send` and `Sent` keep their names until
-  is_effects renames them. "Renderer" is not decided and is unchanged.
+- Depends on is_effects ^0.3.0, which made the same change:
+  `WebDriver.send` is `carryOutWebRequest`, and `Sent` is
+  `WebRequestOutcome`, so `MakeWebRequest` gives a `WebRequestOutcome`.
+  "Renderer" is not decided and is unchanged.
 
 ## 0.6.0
 

@@ -44,14 +44,14 @@ final class RecordedPrograms implements ProgramDriver {
 }
 
 /// Makes no request, keeps each one it was asked to make, and says the
-/// destination made `activity-1`. Its method keeps is_effects's own name.
+/// destination made `activity-1`.
 final class RecordedWeb implements WebDriver {
   final requests = <Request>[];
 
   @override
-  Future<Outcome<Sent>> send(Request request) async {
+  Future<Outcome<WebRequestOutcome>> carryOutWebRequest(Request request) async {
     requests.add(request);
-    return const Ran(Sent(status: 201, created: 'activity-1'));
+    return const Ran(WebRequestOutcome(status: 201, created: 'activity-1'));
   }
 }
 
