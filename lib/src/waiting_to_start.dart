@@ -4,9 +4,9 @@ part of 'action.dart';
 /// room (Nick, 17 Nov: "waiting-to-start"; a traveller does not know what a
 /// loop is). The machine has no room for its loop, or no loop user or suit
 /// is free. Its kind's entry is written only by loop_launcher, as the
-/// journal's sender table allows, on a chain of its own, so the path is
-/// named here, not by a chain: a path waiting before any user was handed to
-/// it has no chain yet.
+/// logbook service's sender table allows, on a chain of its own, so the path
+/// is named here, not by a chain: a path waiting before any user was handed
+/// to it has no chain yet.
 ///
 /// Recorded once, when a path that has no `assigned` entry yet has to wait;
 /// its `assigned` ends the wait, and a path with users never waits to
@@ -16,7 +16,7 @@ part of 'action.dart';
 final class WaitingToStart {
   const WaitingToStart(this.trajectory);
 
-  /// The entry's kind in the journal.
+  /// The entry's kind in the logbook.
   static const kind = 'waiting-to-start';
 
   /// [json] read back, strictly: anything but exactly a `trajectory` throws

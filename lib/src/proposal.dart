@@ -1,7 +1,7 @@
 part of 'action.dart';
 
 // A proposal is an entry in the record (Nick, 16 Nov, 20:15): an agent loop
-// writes a `proposed` entry on its trajectory's chain, which the journal
+// writes a `proposed` entry on its trajectory's chain, which the logbook
 // takes only from that path's loop user; the airlock reads it, decides,
 // records, and writes a `returned` entry naming it, with what came back
 // (20:45: "what an action returns is in the record, once"). loop_launcher
@@ -116,16 +116,16 @@ sealed class Received {}
 /// input, read from a [kind] entry and checked.
 ///
 /// It names no trajectory: the airlock takes the path from the chain the
-/// entry is on, whose entries the journal takes only from that path's loop
-/// user. So a loop cannot claim another path, since there is no claim to
-/// make.
+/// entry is on, whose entries the logbook service takes only from that
+/// path's loop user. So a loop cannot claim another path, since there is no
+/// claim to make.
 ///
 /// What leaves the loop is a proposal; the airlock decides it, and only a
 /// driver carries an action out.
 final class Proposal implements Received {
   Proposal._(this.place, this._work);
 
-  /// The entry's kind in the journal.
+  /// The entry's kind in the logbook.
   static const kind = 'proposed';
 
   /// [json] read as a proposal, or [Rejected] with why it is not one. Every
@@ -187,7 +187,7 @@ final class Rejected implements Received {
   final String why;
 }
 
-/// A proposal's [Returned] entry as the journal holds it: what came back
+/// A proposal's [Returned] entry as the logbook holds it: what came back
 /// from the action the `proposed` entry [proposed] asked for, as that program's
 /// codec writes it, or the refusal.
 ///
@@ -199,10 +199,10 @@ final class Rejected implements Received {
 final class ReturnedProposal {
   const ReturnedProposal._(this.proposed, this.outcome);
 
-  /// The entry's kind in the journal.
+  /// The entry's kind in the logbook.
   static const kind = 'returned';
 
-  /// [returned] as the journal holds it; null when no proposal asked for
+  /// [returned] as the logbook holds it; null when no proposal asked for
   /// its action.
   static ReturnedProposal? of<P>(Returned<P> returned) =>
       switch (returned.proposed) {

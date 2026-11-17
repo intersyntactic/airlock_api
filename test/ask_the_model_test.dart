@@ -31,7 +31,7 @@ final opus = ModelName.parse('claude-opus-5-5')!;
 const system = ['You are reviewing a case file.'];
 const asked = ['Turn 1: what does clause 4 say?\n', 'Answer briefly.'];
 
-/// [texts] recorded as piece entries in [airlock]'s journal, on [on]'s
+/// [texts] recorded as piece entries in [airlock]'s logbook, on [on]'s
 /// chain, and the [RecordedText] naming them.
 RecordedText recordedText(
   LogAirlock airlock,
@@ -46,7 +46,7 @@ RecordedText recordedText(
   sha256: ObjectId.of(utf8.encode(sha256Of ?? texts.join())),
 );
 
-/// A model request recorded in [airlock]'s journal, and its entry.
+/// A model request recorded in [airlock]'s logbook, and its entry.
 EntryId recordedRequest(
   LogAirlock airlock, {
   RecordedText? systemPrompt,
