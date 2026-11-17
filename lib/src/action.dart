@@ -598,7 +598,10 @@ final class JourneyPath<R, P> {
         'no renderer named ${request.renderer}',
         by: DecidedBy.rules,
       ),
-      _ => await _airlock.decide(reach, rules),
+      Reads() ||
+      Writes() ||
+      Starts() ||
+      MakesWebRequest() => await _airlock.decide(reach, rules),
     };
     if (stopped) decision = stoppedByPerson;
     final decided = Decided(id, place, reach, decision, proposed: proposed);
