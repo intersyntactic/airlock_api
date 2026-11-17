@@ -12,10 +12,17 @@ environment:
 
 dependencies:
   is_content_id: ^0.2.0
-  # Both: 0.7.0 only adds, and nothing here switches over its new Progress
-  # case. is_flight_rules needs 0.7.0, so ^0.6.0 alone kept the two apart.
-  is_effects: ">=0.6.0 <0.8.0"
+  is_effects: ^0.7.0
   is_shapes: ^0.5.0
+
+# Until is_effects 0.7.0 is on pub.dev: its PR head, AsksTheModel with the
+# system prompt (https://github.com/intersyntactic/effects/pull/4). Removed
+# before this merges.
+dependency_overrides:
+  is_effects:
+    git:
+      url: https://github.com/intersyntactic/effects
+      ref: b313ac87188fb553b9a07ad31407dc1de9c4a610
 
 dev_dependencies:
   analyzer: ^14.7.0

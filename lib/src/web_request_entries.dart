@@ -39,7 +39,7 @@ final class DecidedWebRequest {
       renderer,
       decided.decision,
     ),
-    Reads() || Writes() || Starts() => null,
+    Reads() || Writes() || Starts() || CallsTheModel() => null,
   };
 
   /// [json] read back as a web request's entry, each part checked as its
