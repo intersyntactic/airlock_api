@@ -49,7 +49,7 @@ void main() {
 
   test('a model request and its pieces read back as written', () {
     final back = ModelRequest.fromJson(
-      jsonDecode(jsonEncode(request.toJson())),
+      JsonObject.decode(jsonEncode(request.toJson())),
     );
     expect(back.request.pieces, request.request.pieces);
     expect(back.request.sha256, request.request.sha256);
@@ -59,7 +59,7 @@ void main() {
     expect(back.request.join(asked), isA<Ran<String>>());
     expect(
       ModelRequestPiece.fromJson(
-        jsonDecode(jsonEncode(ModelRequestPiece(asked[1]).toJson())),
+        JsonObject.decode(jsonEncode(ModelRequestPiece(asked[1]).toJson())),
       ).text,
       asked[1],
     );
@@ -90,7 +90,7 @@ void main() {
         {...good, 'request': bad},
     ]) {
       expect(
-        () => ModelRequest.fromJson(json),
+        () => ModelRequest.fromJson(JsonObject.decode(jsonEncode(json))),
         throwsFormatException,
         reason: '$json',
       );
@@ -102,7 +102,7 @@ void main() {
       {'text': 'x', 'role': 'user'},
     ]) {
       expect(
-        () => ModelRequestPiece.fromJson(json),
+        () => ModelRequestPiece.fromJson(JsonObject.decode(jsonEncode(json))),
         throwsFormatException,
         reason: '$json',
       );

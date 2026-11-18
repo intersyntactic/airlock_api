@@ -214,9 +214,8 @@ void main() {
       'model': 'claude-opus-5-5',
       'request': request.hex,
     };
-    Object? wire(Object? input) => jsonDecode(
-      jsonEncode({'program': 'model', 'place': 1, 'input': input}),
-    );
+    String wire(Object? input) =>
+        jsonEncode({'program': 'model', 'place': 1, 'input': input});
     expect(switch (ActionProposedByAgentLoop.read(wire(input))) {
       ActionProposedByAgentLoop(program: AskTheModel()) => 'a model call',
       _ => 'not one',

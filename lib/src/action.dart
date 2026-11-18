@@ -1,5 +1,7 @@
 import 'dart:async';
-import 'dart:convert' show jsonDecode, jsonEncode, utf8;
+import 'dart:convert' show jsonEncode, utf8;
+
+import 'package:checked_json/checked_json.dart';
 
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
@@ -441,7 +443,7 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
         return Refused(why);
       case Ran(output: final text):
         try {
-          request = ModelRequest.fromJson(jsonDecode(text));
+          request = ModelRequest.fromJson(JsonObject.decode(text));
         } on FormatException catch (e) {
           return Refused('not a model request: ${e.message}');
         }
@@ -454,7 +456,9 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
             return Refused(why);
           case Ran(output: final text):
             try {
-              texts.add(ModelRequestPiece.fromJson(jsonDecode(text)).text);
+              texts.add(
+                ModelRequestPiece.fromJson(JsonObject.decode(text)).text,
+              );
             } on FormatException catch (e) {
               return Refused('not a model request piece: ${e.message}');
             }
@@ -502,21 +506,18 @@ Object? _modelCallToJson(ModelCall call) => {
   'request': call.request.hex,
 };
 
-ModelCall _modelCallFromJson(Object? json, String field) {
-  final map = _object(field, json);
-  const keys = {'signIn', 'model', 'request'};
-  if (map.keys.any((key) => !keys.contains(key))) {
-    throw FormatException(
-      '$field: unexpected ${map.keys.where((k) => !keys.contains(k))}',
+ModelCall _modelCallFromJson(Object? input, String field) {
+  final json = _object(field, input);
+  return _at(field, () {
+    _exactly(field, json, const {'signIn', 'model', 'request'});
+    return ModelCall(
+      signIn: decodeModelSignInName(json.raw('signIn'), '$field.signIn'),
+      model: decodeModelName(json.raw('model'), '$field.model'),
+      request:
+          EntryId.parse(json.string('request')) ??
+          (throw FormatException('$field.request: not an entry id')),
     );
-  }
-  return ModelCall(
-    signIn: decodeModelSignInName(map['signIn'], '$field.signIn'),
-    model: decodeModelName(map['model'], '$field.model'),
-    request:
-        EntryId.parse(_string('$field.request', map['request'])) ??
-        (throw FormatException('$field.request: not an entry id')),
-  );
+  });
 }
 
 /// A web request a tool asks for: where to, as whom, and the exact [body]

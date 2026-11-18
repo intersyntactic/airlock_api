@@ -44,24 +44,24 @@ final class AirlockDecisionOnWebRequest {
   /// [json] read back as a web request's entry, each part checked as its
   /// type's `parse` checks it. Throws a [FormatException] naming the part.
   static AirlockDecisionOnWebRequest fromJson(
-    Object? json, [
+    JsonObject json, [
     String field = 'decided',
-  ]) {
-    final map = _object(field, json);
-    return AirlockDecisionOnWebRequest._(
-      TrajectoryId.parse(_string('$field.trajectory', map['trajectory'])) ??
+  ]) => _at(
+    field,
+    () => AirlockDecisionOnWebRequest._(
+      TrajectoryId.parse(json.string('trajectory')) ??
           (throw FormatException('$field.trajectory: not a trajectory')),
-      map['place'],
-      _webRequestFromJson(map['request'], '$field.request'),
-      _decisionFromJson(map['decision'], '$field.decision'),
-      switch (map['proposed']) {
+      json.raw('place'),
+      _webRequestFromJson(json.object('request'), '$field.request'),
+      _decisionFromJson(json.object('decision'), '$field.decision'),
+      switch (json.stringOrNull('proposed')) {
         null => null,
         final hex =>
-          EntryId.parse(_string('$field.proposed', hex)) ??
+          EntryId.parse(hex) ??
               (throw FormatException('$field.proposed: not an entry id')),
       },
-    );
-  }
+    ),
+  );
 
   final TrajectoryId trajectory;
 
@@ -125,7 +125,7 @@ enum Projection {
 /// The model's reply [recorded] ran to, read with is_effects's own codec so
 /// a reply's shape is decided there alone; null when it holds none.
 ModelReply? _modelReplyIn(String recorded) {
-  final outcome = readOutcomeOfProposedAction(_jsonOrNull(recorded));
+  final outcome = readOutcomeOfProposedAction(recorded);
   if (outcome == null) return null;
   try {
     return switch (decodeOutcome(outcome.result, decodeModelReply)) {
@@ -137,32 +137,35 @@ ModelReply? _modelReplyIn(String recorded) {
   }
 }
 
-Object? _jsonOrNull(String text) {
+Decision _decisionFromJson(JsonObject json, String field) => _at(field, () {
+  final by =
+      DecidedBy.values.asNameMap()[json.string('by')] ??
+      (throw FormatException('$field.by: not rules or person'));
+  return json.boolean('allow')
+      ? Allow(by: by)
+      : Deny(json.string('why'), by: by);
+});
+
+/// What [read] reads from an object at [field], a field of the wrong shape
+/// named by its dotted path from [field]: checked_json names it by its key
+/// alone.
+T _at<T>(String field, T Function() read) {
   try {
-    return jsonDecode(text);
-  } on FormatException {
-    return null;
+    return read();
+  } on JsonFieldException catch (e) {
+    throw FormatException('$field.${e.field}: not ${e.wanted}');
   }
 }
 
-Decision _decisionFromJson(Object? json, String field) {
-  final map = _object(field, json);
-  final by =
-      DecidedBy.values.asNameMap()[_string('$field.by', map['by'])] ??
-      (throw FormatException('$field.by: not rules or person'));
-  return switch (map['allow']) {
-    true => Allow(by: by),
-    false => Deny(_string('$field.why', map['why']), by: by),
-    _ => throw FormatException('$field.allow: not true or false'),
-  };
+/// [json] as an object at [field], for a value an is_effects codec hands
+/// over undecoded.
+JsonObject _object(String field, Object? json) =>
+    JsonObject.parse(json) ?? (throw FormatException('$field: not an object'));
+
+/// Throws unless every key of [json] is one of [keys].
+void _exactly(String field, JsonObject json, Set<String> keys) {
+  final unexpected = json.keys.where((k) => !keys.contains(k));
+  if (unexpected.isNotEmpty) {
+    throw FormatException('$field: unexpected $unexpected');
+  }
 }
-
-Map<String, Object?> _object(String field, Object? json) => switch (json) {
-  final Map<String, Object?> map => map,
-  _ => throw FormatException('$field: not an object'),
-};
-
-String _string(String field, Object? json) => switch (json) {
-  final String s => s,
-  _ => throw FormatException('$field: not a string'),
-};

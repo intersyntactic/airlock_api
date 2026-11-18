@@ -22,20 +22,15 @@ final class WaitingToStart {
   /// [json] read back, strictly: anything but exactly a `trajectory` throws
   /// a [FormatException] naming the part.
   static WaitingToStart fromJson(
-    Object? json, [
+    JsonObject json, [
     String field = 'waitingToStart',
-  ]) {
-    final map = _object(field, json);
-    if (map.keys.any((key) => key != 'trajectory')) {
-      throw FormatException(
-        '$field: unexpected ${map.keys.where((k) => k != 'trajectory')}',
-      );
-    }
+  ]) => _at(field, () {
+    _exactly(field, json, const {'trajectory'});
     return WaitingToStart(
-      TrajectoryId.parse(_string('$field.trajectory', map['trajectory'])) ??
+      TrajectoryId.parse(json.string('trajectory')) ??
           (throw FormatException('$field.trajectory: not a trajectory')),
     );
-  }
+  });
 
   final TrajectoryId trajectory;
 

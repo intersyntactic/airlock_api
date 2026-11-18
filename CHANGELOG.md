@@ -1,7 +1,21 @@
 # Changelog
 
-## 0.10.3
+## 0.11.0
 
+Breaking. JSON is read with checked_json's `JsonObject`, checked once
+where it is decoded.
+
+- Every `fromJson` takes a `JsonObject`: `AirlockDecisionOnWebRequest`,
+  `ModelRequest`, `ModelRequestPiece`, `RecordedText` and `WaitingToStart`.
+  Decode a logbook entry's body with `JsonObject.decode(body)`, which throws
+  a `FormatException` for anything but an object. `JsonObject` and
+  `JsonFieldException` are exported.
+- `ActionProposedByAgentLoop.read` and `readOutcomeOfProposedAction` take
+  the logbook entry's body text, not decoded JSON, and still never throw:
+  a body that is not a JSON object is `Rejected('not a proposal')` or
+  null.
+- Error messages are unchanged: a field of the wrong shape is still named
+  by its dotted path, as `decided.request.body: not a string`.
 - `Projection.teamsMessageFromModelReply` reads the reply with is_effects's
   `decodeModelReply`, not a pattern of its own, so a reply that gains a
   field there (token usage, coming) is still drawn from. Same bytes out.

@@ -47,7 +47,7 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
       body,
       kind: ActionProposedByAgentLoop.kind,
     );
-    switch (ActionProposedByAgentLoop.read(jsonDecode(body))) {
+    switch (ActionProposedByAgentLoop.read(body)) {
       case Rejected(:final why):
         rejected.add(why);
         airlock.results[proposed] = proposalRejectedToJson(proposed, why);
@@ -65,7 +65,7 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
         }
     }
     final answer = readOutcomeOfProposedAction(
-      jsonDecode(jsonEncode(airlock.results[proposed])),
+      jsonEncode(airlock.results[proposed]),
     )!;
     expect(answer.proposed, proposed);
     return answerWith(answer.result);
@@ -271,7 +271,7 @@ void main() {
       jsonEncode(refused),
       '{"proposed":"${id.hex}","result":{"kind":"refused","why":"why"}}',
     );
-    final back = readOutcomeOfProposedAction(jsonDecode(jsonEncode(refused)))!;
+    final back = readOutcomeOfProposedAction(jsonEncode(refused))!;
     expect(back.proposed, id);
     expect(back.result, {'kind': 'refused', 'why': 'why'});
     for (final json in [
@@ -282,7 +282,11 @@ void main() {
       {'proposed': id.hex},
       {'proposed': id.hex, 'result': null, 'outcome': null},
     ]) {
-      expect(readOutcomeOfProposedAction(json), isNull, reason: '$json');
+      expect(
+        readOutcomeOfProposedAction(jsonEncode(json)),
+        isNull,
+        reason: '$json',
+      );
     }
   });
 }

@@ -19,7 +19,7 @@ import 'contract_test.dart'
         writeAndFormat;
 
 /// [json] as the logbook would hold it and give it back: JSON text.
-Object? throughText(Object? json) => jsonDecode(jsonEncode(json));
+JsonObject throughText(Object? json) => JsonObject.decode(jsonEncode(json));
 
 /// The [AirlockDecisionOnAction] entries recorded while [run] is carried through on a trajectory
 /// with [rules].
@@ -94,10 +94,9 @@ void main() {
     expect(json, isA<Map<String, Object?>>());
     if (json case final Map<String, Object?> written) {
       expect(
-        () => AirlockDecisionOnWebRequest.fromJson({
-          ...written,
-          'proposed': 'nope',
-        }),
+        () => AirlockDecisionOnWebRequest.fromJson(
+          JsonObject.of({...written, 'proposed': 'nope'}),
+        ),
         throwsFormatException,
       );
     }
@@ -143,14 +142,9 @@ void main() {
       (path) => answerOf(webRequest(teams, hart), path.at(1)),
       rules: {'$teams as $hart'},
     );
-    final json =
-        throughText(
-              AirlockDecisionOnWebRequest.of(
-                decided.single,
-                (int p) => p,
-              )!.toJson(),
-            )!
-            as Map<String, Object?>;
+    final json = throughText(
+      AirlockDecisionOnWebRequest.of(decided.single, (int p) => p)!.toJson(),
+    ).asUncheckedMap();
     Map<String, Object?> change(String key, Object? value) => {
       ...json,
       key: value,
@@ -158,7 +152,9 @@ void main() {
     final request = json['request']! as Map<String, Object?>;
     String? whyNot(Object? entry) {
       try {
-        AirlockDecisionOnWebRequest.fromJson(entry);
+        AirlockDecisionOnWebRequest.fromJson(
+          JsonObject.decode(jsonEncode(entry)),
+        );
         return null;
       } on FormatException catch (e) {
         return e.message;
