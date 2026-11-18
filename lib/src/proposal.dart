@@ -152,6 +152,10 @@ final class ActionProposedByAgentLoop implements Received {
   /// it as its trajectory's `P`.
   final Object? place;
 
+  /// The program this proposes, as a type: a reader tells a model call from
+  /// a web request by it, as `program: AskTheModel()` in a pattern.
+  Program<Object?, Object?> get program => _work.program;
+
   final _Work<Object?, Object?> _work;
 }
 
