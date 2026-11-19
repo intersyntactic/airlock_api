@@ -217,10 +217,10 @@ void main() {
     Object? wire(Object? input) => jsonDecode(
       jsonEncode({'program': 'model', 'place': 1, 'input': input}),
     );
-    expect(
-      ActionProposedByAgentLoop.read(wire(input)),
-      isA<ActionProposedByAgentLoop>(),
-    );
+    expect(switch (ActionProposedByAgentLoop.read(wire(input))) {
+      ActionProposedByAgentLoop(program: AskTheModel()) => 'a model call',
+      _ => 'not one',
+    }, 'a model call');
     for (final bad in <Object?>[
       {...input, 'request': 'nope'},
       {...input, 'signIn': 'Nick Team'},

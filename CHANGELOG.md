@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.2
+
+- `ActionProposedByAgentLoop.program`: the program a proposal names, as a
+  type, so a reader of the record tells a model call from a web request
+  with `ActionProposedByAgentLoop(program: AskTheModel())` rather than
+  comparing the wire's `program` string.
+
 ## 0.10.1
 
 - Takes the newest is_effects and is_shapes, `^0.8.0` and `^0.6.0`, not a

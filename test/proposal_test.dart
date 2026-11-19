@@ -21,7 +21,8 @@ import 'contract_test.dart'
 
 /// A trajectory's chain and the airlock's, in memory: each proposal the
 /// loop writes goes through `jsonEncode` and back, as the logbook would keep
-/// it, and is named by the hash of its bytes; the airlock service considers
+/// it, and is named by the id the logbook gives it, as the loop's write
+/// returns it, never a hash of the body alone; the airlock service considers
 /// it on [path], and the loop is handed the result that names it, through
 /// `jsonEncode` and back, as loop_launcher would hand it.
 /// Places are ints. Keeps why each rejected entry was rejected.
@@ -32,19 +33,26 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
   final LogAirlock airlock;
   final rejected = <String>[];
 
+  /// The program of each proposal read back, in order.
+  final programs = <Program<Object?, Object?>>[];
+
   /// What loop_launcher would hand the loop, when a test wants another
   /// answer.
   Object? Function(Object? outcome) answerWith = (outcome) => outcome;
 
   @override
   Future<Object?> propose(Object? proposal) async {
-    final bytes = utf8.encode(jsonEncode(proposal));
-    final proposed = EntryId.of(bytes);
-    switch (ActionProposedByAgentLoop.read(jsonDecode(utf8.decode(bytes)))) {
+    final body = jsonEncode(proposal);
+    final proposed = airlock.remember(
+      body,
+      kind: ActionProposedByAgentLoop.kind,
+    );
+    switch (ActionProposedByAgentLoop.read(jsonDecode(body))) {
       case Rejected(:final why):
         rejected.add(why);
         airlock.results[proposed] = proposalRejectedToJson(proposed, why);
       case final ActionProposedByAgentLoop proposal:
+        programs.add(proposal.program);
         switch (proposal.place) {
           case final int place:
             await path.consider(proposal, place, proposed: proposed);
@@ -91,6 +99,10 @@ void main() {
         '3: ran dart format a.dart',
       ]);
       expect(link.rejected, isEmpty);
+      expect(link.programs, [
+        Program.write,
+        isA<Executable>().having((e) => e.name, 'name', 'dart'),
+      ]);
     },
   );
 
