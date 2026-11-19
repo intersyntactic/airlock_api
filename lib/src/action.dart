@@ -759,7 +759,7 @@ final class Trajectory<R, P> {
     final reach = await program._reach(input);
     var decision = stopped
         ? stoppedByPerson
-        : await _airlock.decide(reach, rules);
+        : await _airlock.decide(id, reach, rules);
     if (stopped) decision = stoppedByPerson;
     final decided = AirlockDecisionOnAction(
       id,
@@ -851,12 +851,15 @@ final class _AtPath<P> extends Crux {
 /// given, not the mission: an agent that joins a mission with its own
 /// drivers is decided, or not, by its own.
 abstract interface class DecidesAndRecordsActions<R, P> {
-  /// Whether a driver may carry out an action that would do [reach], under
-  /// [rules].
+  /// Whether a driver may carry out an action of [trajectory]'s that would
+  /// do [reach], under [rules].
   ///
   /// Given the reach, not the action, so the decision is about exactly what is
-  /// recorded: for a web request, the bytes it sends.
-  Future<Decision> decide(Reach reach, R rules);
+  /// recorded: for a web request, the bytes it sends. Given the trajectory,
+  /// so the airlock can read what holds for it now from its chain, such as
+  /// the bot leased to it, at the moment of deciding; the decision names
+  /// each entry it read in [Decision.reliedOn].
+  Future<Decision> decide(TrajectoryId trajectory, Reach reach, R rules);
 
   /// Keeps [decision] in the logbook. An action's driver is reached only
   /// once its decision is kept; an error thrown here ends the call.
@@ -918,20 +921,25 @@ abstract interface class DecidesAndRecordsActions<R, P> {
 /// What the airlock decided about one action, and [by] whom, so the record
 /// tells "the rules let it through" from "the person said yes".
 sealed class Decision {
-  const Decision({required this.by});
+  const Decision({required this.by, this.reliedOn = const []});
 
   final DecidedBy by;
+
+  /// The logbook entries the airlock read to decide, beyond the rules: what
+  /// held for the trajectory at that moment, such as the lease of the bot it
+  /// may post as. Empty when the rules alone decided.
+  final List<EntryId> reliedOn;
 }
 
 /// A driver may carry the action out.
 final class Allow extends Decision {
-  const Allow({required super.by});
+  const Allow({required super.by, super.reliedOn});
 }
 
 /// No driver carries the action out, because [why]; its continuation is handed
 /// [Refused] with that reason.
 final class Deny extends Decision {
-  const Deny(this.why, {required super.by});
+  const Deny(this.why, {required super.by, super.reliedOn});
 
   final String why;
 }

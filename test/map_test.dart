@@ -9,8 +9,11 @@ final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
   final kept = <(String, int)>[];
 
   @override
-  Future<Decision> decide(Reach reach, String rules) async =>
-      const Allow(by: DecidedBy.rules);
+  Future<Decision> decide(
+    TrajectoryId trajectory,
+    Reach reach,
+    String rules,
+  ) async => const Allow(by: DecidedBy.rules);
 
   @override
   Future<void> recordDecision(AirlockDecisionOnAction<int> decision) async =>
