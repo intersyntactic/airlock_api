@@ -360,29 +360,45 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
     CarriesOutWebRequests web,
     Trajectory<Object?, Object?> trajectory,
     WebRequest request,
-  ) async => switch (await _bodyOf(
-    trajectory,
-    request.drawnFrom,
-    outcomeOfProposedActionKind,
-  )) {
-    Refused(:final why) => Refused(why),
-    Ran(output: final recorded)
-        when request.projection.drawnFrom(recorded) != request.body =>
+  ) async => switch (request.projection) {
+    Projection.teamsMessageFromModelReply => switch (await _bodyOf(
+      trajectory,
+      request.drawnFrom,
+      outcomeOfProposedActionKind,
+    )) {
+      Refused(:final why) => Refused(why),
+      Ran(output: final recorded)
+          when request.projection.drawnFrom(recorded) != request.body =>
+        Refused(
+          'the body is not ${request.projection.wire} of '
+          '${request.drawnFrom}',
+        ),
+      Ran() => await _send(web, request),
+    },
+    Projection.trajectoryOpenCard
+        when request.drawnFrom.hex != trajectory.id.hex =>
       Refused(
-        'the body is not ${request.projection.wire} of '
-        '${request.drawnFrom}',
+        'a trajectory open card is drawn from its own trajectory, '
+        '${trajectory.id.hex}, not ${request.drawnFrom}',
       ),
-    Ran() => await web.carryOutWebRequest(
-      Request(
-        request.origin,
-        method: request.method,
-        path: request.path,
-        signIn: request.signIn,
-        headers: request.headers,
-        body: request.body,
-      ),
-    ),
+    Projection.trajectoryOpenCard when request.body != trajectoryOpenCardBody =>
+      const Refused('the body is not trajectory-open-card'),
+    Projection.trajectoryOpenCard => await _send(web, request),
   };
+
+  static Future<Outcome<WebRequestOutcome>> _send(
+    CarriesOutWebRequests web,
+    WebRequest request,
+  ) => web.carryOutWebRequest(
+    Request(
+      request.origin,
+      method: request.method,
+      path: request.path,
+      signIn: request.signIn,
+      headers: request.headers,
+      body: request.body,
+    ),
+  );
 }
 
 /// Asks the model, through the model driver, as the [ModelCall]'s sign-in,

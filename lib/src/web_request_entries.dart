@@ -100,7 +100,14 @@ enum Projection {
   /// read by is_effects's `decodeModelReply`, as
   /// `{"type":"message","text":<text>}`, Dart's `jsonEncode` of those two
   /// keys in that order, with no whitespace and the text as UTF-8.
-  teamsMessageFromModelReply('teams-message-from-model-reply');
+  teamsMessageFromModelReply('teams-message-from-model-reply'),
+
+  /// The card that shows a trajectory is open, with its one Close action:
+  /// exactly [trajectoryOpenCardBody], drawn from the trajectory itself. Its
+  /// request's `drawnFrom` is the trajectory's id, the hash of the
+  /// admission that started it, so it draws from no entry's body and the
+  /// airlock reads nothing to check it.
+  trajectoryOpenCard('trajectory-open-card');
 
   const Projection(this.wire);
 
@@ -113,14 +120,49 @@ enum Projection {
 
   /// The body drawn from [recorded], the body (after its header) of the
   /// [outcomeOfProposedActionKind] logbook entry a request names; null
-  /// when it draws none from it. The caller checks the entry's kind.
+  /// when it draws none from it, as [trajectoryOpenCard] never does. The
+  /// caller checks the entry's kind.
   String? drawnFrom(String recorded) => switch (this) {
     teamsMessageFromModelReply => switch (_modelReplyIn(recorded)) {
       final reply? => jsonEncode({'type': 'message', 'text': reply.text}),
       null => null,
     },
+    trajectoryOpenCard => null,
   };
 }
+
+/// The exact body of [Projection.trajectoryOpenCard]: a Teams message
+/// holding an Adaptive Card 1.5, the version that has rendered in both
+/// tenants, reading "● Open · trajectory started" with one action whose
+/// `verb` teams_module reads as a request to close the trajectory. Teams
+/// shows when it was posted, so the card names no time.
+final trajectoryOpenCardBody = jsonEncode({
+  'type': 'message',
+  'attachments': [
+    {
+      'contentType': 'application/vnd.microsoft.card.adaptive',
+      'content': {
+        r'$schema': 'http://adaptivecards.io/schemas/adaptive-card.json',
+        'type': 'AdaptiveCard',
+        'version': '1.5',
+        'body': [
+          {
+            'type': 'TextBlock',
+            'text': '● Open · trajectory started',
+            'wrap': true,
+          },
+        ],
+        'actions': [
+          {
+            'type': 'Action.Execute',
+            'title': 'Close trajectory',
+            'verb': 'close',
+          },
+        ],
+      },
+    },
+  ],
+});
 
 /// The model's reply [recorded] ran to, read with is_effects's own codec so
 /// a reply's shape is decided there alone; null when it holds none.
