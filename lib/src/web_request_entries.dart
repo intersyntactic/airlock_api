@@ -96,7 +96,8 @@ final class AirlockDecisionOnWebRequest {
 /// airlock checks it by, byte for byte.
 enum Projection {
   /// A Teams message whose text is a model's reply: drawn from a
-  /// [outcomeOfProposedActionKind] body whose result ran to text, as
+  /// [outcomeOfProposedActionKind] body whose result ran to a [ModelReply],
+  /// read by is_effects's `decodeModelReply`, as
   /// `{"type":"message","text":<text>}`, Dart's `jsonEncode` of those two
   /// keys in that order, with no whitespace and the text as UTF-8.
   teamsMessageFromModelReply('teams-message-from-model-reply');
@@ -114,14 +115,26 @@ enum Projection {
   /// [outcomeOfProposedActionKind] logbook entry a request names; null
   /// when it draws none from it. The caller checks the entry's kind.
   String? drawnFrom(String recorded) => switch (this) {
-    teamsMessageFromModelReply => switch (readOutcomeOfProposedAction(
-      _jsonOrNull(recorded),
-    )) {
-      (proposed: _, result: {'kind': 'ran', 'output': final String text}) =>
-        jsonEncode({'type': 'message', 'text': text}),
-      _ => null,
+    teamsMessageFromModelReply => switch (_modelReplyIn(recorded)) {
+      final reply? => jsonEncode({'type': 'message', 'text': reply.text}),
+      null => null,
     },
   };
+}
+
+/// The model's reply [recorded] ran to, read with is_effects's own codec so
+/// a reply's shape is decided there alone; null when it holds none.
+ModelReply? _modelReplyIn(String recorded) {
+  final outcome = readOutcomeOfProposedAction(_jsonOrNull(recorded));
+  if (outcome == null) return null;
+  try {
+    return switch (decodeOutcome(outcome.result, decodeModelReply)) {
+      Ran(:final output) => output,
+      Refused() => null,
+    };
+  } on FormatException {
+    return null;
+  }
 }
 
 Object? _jsonOrNull(String text) {

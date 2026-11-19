@@ -13,6 +13,7 @@ import 'contract_test.dart'
         hart,
         start,
         teams,
+        teamsMessage,
         teamsMessageOf,
         webRequest,
         writeAndFormat;
@@ -186,5 +187,27 @@ void main() {
       startsWith('decided.request.body'),
     );
     expect(whyNot(change('trajectory', 'x')), startsWith('decided.trajectory'));
+  });
+
+  test('a Teams message is drawn only from a reply the model ran to', () {
+    final proposed = EntryId.of(utf8.encode('asked'));
+    String outcome(Object? result) =>
+        jsonEncode(outcomeOfProposedActionToJson(proposed, result));
+    expect(
+      teamsMessage.drawnFrom(
+        outcome(
+          encodeOutcome<ModelReply>(Ran(ModelReply('hi')), encodeModelReply),
+        ),
+      ),
+      teamsMessageOf('hi'),
+    );
+    for (final recorded in [
+      outcome(encodeOutcome<ModelReply>(const Refused('no'), encodeModelReply)),
+      outcome({'kind': 'ran', 'output': 7}),
+      outcome({'kind': 'reported', 'output': 'hi'}),
+      'not json',
+    ]) {
+      expect(teamsMessage.drawnFrom(recorded), isNull, reason: recorded);
+    }
   });
 }
