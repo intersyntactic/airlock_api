@@ -231,7 +231,11 @@ EntryId recordedProposal(
   Object? input, {
   TrajectoryId? on,
 }) => airlock.remember(
-  jsonEncode({'place': 1, 'program': program, 'input': input}),
+  jsonEncode({
+    'place': [1, 0],
+    'program': program,
+    'input': input,
+  }),
   kind: ActionProposedByAgentLoop.kind,
   on: on,
 );

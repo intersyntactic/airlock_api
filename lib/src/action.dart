@@ -822,13 +822,14 @@ final class Trajectory<R, P> {
 sealed class Crux {
   const Crux();
 
-  /// The crux, at [place], of the trajectory whose chain [link] writes to.
-  ///
-  /// [place] is already the JSON its trajectory reads places from, since
-  /// the loop and the airlock service agree its type between them.
-  const factory Crux.through(
+  /// The crux for [turn] of the trajectory whose chain [link] writes to: it
+  /// proposes each action at the turn's next step, from 0, so the model
+  /// call, each action of a tool it asks for and the reply each get their
+  /// own place, and a restarted loop gives each the same place again. Make
+  /// one per turn and carry every action of the turn through it.
+  factory Crux.through(
     ProposesActionsThroughTheRecord link, {
-    required Object? place,
+    required int turn,
   }) = _ThroughRecord;
 
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
