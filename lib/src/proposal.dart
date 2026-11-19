@@ -165,6 +165,34 @@ WebRequest _webRequestFromJson(Object? input, [String field = 'request']) {
   );
 }
 
+Object? _webFetchToJson(WebFetch fetch) => {
+  'origin': encodeOrigin(fetch.origin),
+  'path': encodeWebPath(fetch.path),
+  'signIn': switch (fetch.signIn) {
+    final signIn? => encodeSignIn(signIn),
+    null => null,
+  },
+  'keep': encodeBodyToKeep(fetch.keep),
+};
+
+/// [json] as a fetch, exactly its four keys, so a body or headers slipped
+/// into one is refused rather than dropped.
+WebFetch _webFetchFromJson(Object? input, [String field = 'fetch']) {
+  final json = _object(field, input);
+  return _at(field, () {
+    _exactly(field, json, const {'origin', 'path', 'signIn', 'keep'});
+    return WebFetch(
+      decodeOrigin(json.raw('origin'), '$field.origin'),
+      path: decodeWebPath(json.raw('path'), '$field.path'),
+      signIn: switch (json.raw('signIn')) {
+        null => null,
+        final name => decodeSignIn(name, '$field.signIn'),
+      },
+      keep: decodeBodyToKeep(json.raw('keep'), '$field.keep'),
+    );
+  });
+}
+
 /// What an [ActionProposedByAgentLoop.kind] logbook entry came to, once
 /// read: an [ActionProposedByAgentLoop] to consider, or [Rejected].
 sealed class Received {}
@@ -246,6 +274,7 @@ Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
       ('read-bytes', null) => Program.readBytes,
       ('write', null) => Program.write,
       ('web', null) => Program.web,
+      ('fetch', null) => Program.fetch,
       ('model', null) => Program.askTheModel,
       ('start', final String program) => Executable.parse(program),
       _ => null,

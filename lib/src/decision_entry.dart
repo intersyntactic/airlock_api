@@ -18,6 +18,7 @@ Object? _reachToJson(Reach reach) {
     Writes(:final file) => as(Program.write, file),
     Starts(:final program, :final args) => as(Executable(program), args),
     MakesWebRequest(:final request) => as(Program.web, request),
+    FetchesFromWeb(:final fetch) => as(Program.fetch, fetch),
     CallsTheModel(:final call) => as(Program.askTheModel, call),
   };
 }

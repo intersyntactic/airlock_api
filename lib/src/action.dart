@@ -126,7 +126,7 @@ final class Failed extends Result<Never> {
 /// back, [O].
 ///
 /// A closed set: [ReadFile], [ReadFileBytes], [WriteFile], [Executable],
-/// [MakeWebRequest] and [AskTheModel].
+/// [MakeWebRequest], [FetchFromWeb] and [AskTheModel].
 /// Programs reach drivers, so they are part of what is trusted, with the
 /// drivers and the airlock; a new kind of action is a new driver and program
 /// here.
@@ -142,6 +142,7 @@ sealed class Program<I, O> {
   static const readBytes = ReadFileBytes();
   static const write = WriteFile();
   static const web = MakeWebRequest();
+  static const fetch = FetchFromWeb();
   static const askTheModel = AskTheModel();
 
   /// For the model and the record; an [Executable] is compared by it.
@@ -470,6 +471,66 @@ final class MakeWebRequest extends Program<WebRequest, WebResponse> {
   );
 }
 
+/// Fetches from a site, through the sign-in it names, with a GET that sends
+/// no body and no headers, and keeps the response's body as [WebFetch.keep]
+/// asks: a document's bytes, or a listing's text.
+///
+/// Nothing is drawn from the record, since nothing is sent but the address.
+/// The path is decided as written, so what the model chose for it reaches
+/// only the origin the rules grant with that sign-in; a rule can bound it
+/// further by prefix. Every byte kept is recorded in the outcome.
+final class FetchFromWeb extends Program<WebFetch, WebResponse> {
+  const FetchFromWeb();
+
+  @override
+  String get name => 'fetch';
+
+  @override
+  Reach _reach(WebFetch fetch) => FetchesFromWeb(fetch);
+
+  @override
+  _Wire<WebFetch, WebResponse> get _wire => const _Wire(
+    {'program': 'fetch'},
+    inputToJson: _webFetchToJson,
+    inputFromJson: _webFetchFromJson,
+    outputToJson: encodeWebResponse,
+    outputFromJson: decodeWebResponse,
+  );
+
+  @override
+  Future<Outcome<WebResponse>>? _on(
+    Trajectory<Object?, Object?> trajectory,
+    WebFetch fetch,
+    Reach reach,
+    Report report,
+  ) => trajectory._driver<CarriesOutWebRequests>()?.carryOutWebRequest(
+    Request(
+      fetch.origin,
+      path: fetch.path,
+      signIn: fetch.signIn,
+      keep: fetch.keep,
+    ),
+  );
+}
+
+/// A GET a tool asks for: where to, as whom, and what of the response's
+/// body to keep. It has no body or headers to carry words.
+final class WebFetch {
+  const WebFetch(
+    this.origin, {
+    required this.keep,
+    this.path = WebPath.root,
+    this.signIn,
+  });
+
+  final Origin origin;
+  final WebPath path;
+
+  /// Who it goes as; null goes under no sign-in.
+  final SignIn? signIn;
+  final BodyToKeep keep;
+}
+
 /// Asks the model, through the model driver, as the [ModelCall]'s sign-in,
 /// with the system prompt and request its recorded [ModelRequest] holds.
 ///
@@ -697,6 +758,21 @@ final class MakesWebRequest extends Reach {
 
   Origin get origin => request.origin;
   SignIn? get signIn => request.signIn;
+}
+
+/// Reaches the world with an address alone: a GET goes to [origin], as
+/// [signIn] or under none when null, and its response's body is kept as
+/// [fetch] asks. Its own reach, so a grant to post somewhere is not a grant
+/// to fetch from it, or the other way round. Null means no sign-in, as in
+/// [MakesWebRequest].
+final class FetchesFromWeb extends Reach {
+  const FetchesFromWeb(this.fetch);
+
+  final WebFetch fetch;
+
+  Origin get origin => fetch.origin;
+  SignIn? get signIn => fetch.signIn;
+  WebPath get path => fetch.path;
 }
 
 /// Reaches the model: [call] goes out as its sign-in, to its model, with the

@@ -38,7 +38,11 @@ final class AirlockDecisionOnWebRequest {
       decided.decision,
       decided.proposed,
     ),
-    Reads() || Writes() || Starts() || CallsTheModel() => null,
+    Reads() ||
+    Writes() ||
+    Starts() ||
+    FetchesFromWeb() ||
+    CallsTheModel() => null,
   };
 
   /// [json] read back as a web request's entry, each part checked as its

@@ -62,6 +62,27 @@ final class RecordedWeb implements CarriesOutWebRequests {
   }
 }
 
+/// A web driver that keeps every request and answers 200 with the body
+/// each asked to keep: "PK zip" as bytes or text.
+final class FetchingWeb implements CarriesOutWebRequests {
+  final requests = <Request>[];
+
+  @override
+  Future<Outcome<WebResponse>> carryOutWebRequest(Request request) async {
+    requests.add(request);
+    return Ran(
+      WebResponse(
+        status: 200,
+        body: switch (request.keep) {
+          BodyToKeep.none => const NoBody(),
+          BodyToKeep.text => const TextBody('PK zip'),
+          BodyToKeep.bytes => BytesBody(utf8.encode('PK zip')),
+        },
+      ),
+    );
+  }
+}
+
 String reachOf(Reach reach) => switch (reach) {
   Reads(:final path) => 'read $path',
   Writes(:final file) => 'write ${file.path}',
@@ -71,6 +92,8 @@ String reachOf(Reach reach) => switch (reach) {
   ].join(' '),
   MakesWebRequest(:final origin, :final signIn) =>
     'request to $origin as $signIn',
+  FetchesFromWeb(:final origin, :final path, :final signIn) =>
+    'fetch $origin${path.value} as $signIn',
   CallsTheModel(:final model, :final signIn) => 'ask $model as $signIn',
 };
 
@@ -139,6 +162,8 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
           Writes() => 'write',
           Starts(:final program) => program.value,
           MakesWebRequest(:final origin, :final signIn) => '$origin as $signIn',
+          FetchesFromWeb(:final origin, :final signIn) =>
+            'fetch $origin as $signIn',
           CallsTheModel(:final signIn) => 'model as $signIn',
         })
         ? const Allow(by: DecidedBy.rules)

@@ -6,6 +6,7 @@ import 'package:test/test.dart';
 
 import 'contract_test.dart'
     show
+        FetchingWeb,
         LogAirlock,
         MemoryFiles,
         RecordedPrograms,
@@ -169,6 +170,54 @@ void main() {
     );
   });
 
+  test('a fetch goes as a GET with no body or headers, keeps what it asks, '
+      'and its bytes reach the loop from the record', () async {
+    final web = FetchingWeb();
+    final airlock = LogAirlock();
+    final graph = Origin.parse('https://graph.microsoft.com')!;
+    final path = start(airlock, [web], rules: {'fetch $graph as $hart'});
+    final answer = await answerOf(
+      Program.fetch.runOrRefusal(
+        WebFetch(
+          graph,
+          path: WebPath.parse('/v1.0/drives/d/items/i/content')!,
+          signIn: hart,
+          keep: BodyToKeep.bytes,
+        ),
+        then: (response) => Done(switch (response.body) {
+          BytesBody(:final bytes) => utf8.decode(bytes),
+          _ => 'no bytes',
+        }),
+      ),
+      loopCrux(RecordedLink(path, airlock)),
+    );
+    expect(answer, 'PK zip');
+    final sent = web.requests.single;
+    expect(sent.method, Method.get);
+    expect(sent.path.value, '/v1.0/drives/d/items/i/content');
+    expect(sent.signIn, hart);
+    expect(sent.body, isNull);
+    expect(sent.headers, isEmpty);
+    expect(sent.keep, BodyToKeep.bytes);
+  });
+
+  test('a fetch is not granted by a grant to post to the same site', () async {
+    final web = FetchingWeb();
+    final airlock = LogAirlock();
+    final path = start(airlock, [web], rules: {'$teams as $hart'});
+    expect(
+      await answerOf(
+        Program.fetch.runOrRefusal(
+          WebFetch(teams, signIn: hart, keep: BodyToKeep.text),
+          then: (_) => const Done('fetched'),
+        ),
+        loopCrux(RecordedLink(path, airlock)),
+      ),
+      'failed: not in the rules',
+    );
+    expect(web.requests, isEmpty);
+  });
+
   test(
     'a web request proposed through the record sends a recorded reply',
     () async {
@@ -257,6 +306,35 @@ void main() {
       ),
       everyElement(isA<Refused>()),
     );
+    expect(airlock.log, isEmpty);
+  });
+
+  test('a fetch carrying a body or headers is rejected at the boundary, not '
+      'stripped', () async {
+    final airlock = LogAirlock();
+    final link = RecordedLink(start(airlock, [FetchingWeb()]), airlock);
+    final fetch = {
+      'origin': '$teams',
+      'path': '/x',
+      'signIn': 'hart-bot',
+      'keep': 'text',
+    };
+    for (final extra in [
+      {'body': 'case words'},
+      {'headers': <String, String>{}},
+      {'keep': 'everything'},
+    ]) {
+      await link.proposeAsIs({
+        'place': [1, 0],
+        'program': 'fetch',
+        'input': {...fetch, ...extra},
+      });
+    }
+    expect(link.rejected, [
+      startsWith('input: unexpected (body)'),
+      startsWith('input: unexpected (headers)'),
+      startsWith('input.keep'),
+    ]);
     expect(airlock.log, isEmpty);
   });
 

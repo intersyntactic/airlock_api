@@ -32,6 +32,14 @@ final reaches = <Reach>[
     ),
   ),
   Reads(RelativePath('report.docx'), as: ReadsAs.bytes),
+  FetchesFromWeb(
+    WebFetch(
+      Origin.parse('https://graph.microsoft.com')!,
+      path: WebPath.parse('/v1.0/drives/d/items/i/content')!,
+      signIn: hart,
+      keep: BodyToKeep.bytes,
+    ),
+  ),
 ];
 
 final place = PlaceInTrajectory.at(3, 1);
@@ -100,10 +108,17 @@ void main() {
       'input': 'report.docx',
     });
     expect(
-      readBack(
-        written(decided(reaches[5], const Allow(by: DecidedBy.rules))),
-      ).reach,
+      readBack(written(decided(reaches[5], const Allow(by: DecidedBy.rules))))
+          .reach,
       isA<Reads>().having((r) => r.as, 'as', ReadsAs.bytes),
+    );
+    expect(
+      readBack(written(decided(reaches[6], const Allow(by: DecidedBy.rules))))
+          .reach,
+      isA<FetchesFromWeb>()
+          .having((r) => r.path.value, 'path', '/v1.0/drives/d/items/i/content')
+          .having((r) => r.signIn, 'signIn', hart)
+          .having((r) => r.fetch.keep, 'keep', BodyToKeep.bytes),
     );
     expect(
       reachOf(reaches[2]),
