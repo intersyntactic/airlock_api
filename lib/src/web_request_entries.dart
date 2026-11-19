@@ -101,7 +101,9 @@ enum Projection {
   /// `{"type":"message","text":<text>}`, Dart's `jsonEncode` of those two
   /// keys in that order, with no whitespace and the text as UTF-8. A
   /// [CutOffReply]'s text is followed by a blank line and
-  /// `_(reply cut off)_`, so it never reads as the whole answer.
+  /// `_(reply cut off)_`, so it never reads as the whole answer. The
+  /// airlock also checks that the proposal the outcome names asked the
+  /// model, since other results, such as a read's text, can read as a reply.
   teamsMessageFromModelReply('teams-message-from-model-reply'),
 
   /// The card that shows a trajectory is open, with its one Close action:
