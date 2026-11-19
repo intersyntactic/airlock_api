@@ -12,6 +12,7 @@ part 'web_request_entries.dart';
 part 'proposal.dart';
 part 'waiting_to_start.dart';
 part 'model_request.dart';
+part 'decision_entry.dart';
 
 /// What a tool's code returns for a call: an action whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -166,7 +167,7 @@ sealed class Program<I, O> {
   );
 
   /// What [input] would do to the world.
-  Future<Reach> _reach(I input);
+  Reach _reach(I input);
 
   /// How this program, its input and its output travel between the agent
   /// loop and the airlock.
@@ -174,8 +175,8 @@ sealed class Program<I, O> {
 
   /// This program with the input [json] holds. Throws a [FormatException]
   /// when it holds none.
-  _Work<I, O> _work(Object? json) =>
-      _Work(this, _wire.inputFromJson(json, 'input'));
+  _Work<I, O> _work(Object? json, [String field = 'input']) =>
+      _Work(this, _wire.inputFromJson(json, field));
 
   /// [input], whose reach is [reach], performed by [trajectory]'s driver
   /// for this program, reporting to [report] while it runs, or null when it
@@ -196,7 +197,7 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
   String get name => 'read';
 
   @override
-  Future<Reach> _reach(RelativePath path) async => Reads(path);
+  Reach _reach(RelativePath path) => Reads(path);
 
   @override
   _Wire<RelativePath, ReadResult> get _wire => const _Wire(
@@ -224,7 +225,7 @@ final class WriteFile extends Program<FileText, Wrote> {
   String get name => 'write';
 
   @override
-  Future<Reach> _reach(FileText file) async => Writes(file);
+  Reach _reach(FileText file) => Writes(file);
 
   @override
   _Wire<FileText, Wrote> get _wire => const _Wire(
@@ -261,7 +262,7 @@ final class Executable extends Program<Args, ExecResult> {
   String get name => program.value;
 
   @override
-  Future<Reach> _reach(Args args) async => Starts(program, args);
+  Reach _reach(Args args) => Starts(program, args);
 
   @override
   _Wire<Args, ExecResult> get _wire => _Wire(
@@ -372,7 +373,7 @@ final class MakeWebRequest extends Program<WebRequest, WebResponse> {
   String get name => 'web';
 
   @override
-  Future<Reach> _reach(WebRequest request) async => MakesWebRequest(request);
+  Reach _reach(WebRequest request) => MakesWebRequest(request);
 
   @override
   _Wire<WebRequest, WebResponse> get _wire => const _Wire(
@@ -462,7 +463,7 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
   String get name => 'model';
 
   @override
-  Future<Reach> _reach(ModelCall call) async => CallsTheModel(call);
+  Reach _reach(ModelCall call) => CallsTheModel(call);
 
   @override
   _Wire<ModelCall, ModelReply> get _wire => const _Wire(
@@ -756,7 +757,7 @@ final class Trajectory<R, P> {
     EntryId? proposed,
   }) async {
     const stoppedByPerson = Deny('stopped', by: DecidedBy.person);
-    final reach = await program._reach(input);
+    final reach = program._reach(input);
     var decision = stopped
         ? stoppedByPerson
         : await _airlock.decide(id, reach, rules);
@@ -965,6 +966,38 @@ final class AirlockDecisionOnAction<P> {
   /// The kind of the logbook entry the airlock keeps it as, unless it is a
   /// web request's, which is an [AirlockDecisionOnWebRequest].
   static const kind = 'airlock-decision-on-action';
+
+  /// [json] read back as [toJson] wrote it, its place read by
+  /// [placeFromJson], null for one that is not a place. Each part is
+  /// checked as its type's `parse` checks it; throws a [FormatException]
+  /// naming the part.
+  static AirlockDecisionOnAction<P> fromJson<P>(
+    JsonObject json,
+    P? Function(Object? json) placeFromJson, [
+    String field = 'decided',
+  ]) => _at(
+    field,
+    () => AirlockDecisionOnAction(
+      TrajectoryId.parse(json.string('trajectory')) ??
+          (throw FormatException('$field.trajectory: not a trajectory')),
+      placeFromJson(json.raw('place')) ??
+          (throw FormatException('$field.place: not a place')),
+      _reachFromJson(json.object('reach'), '$field.reach'),
+      _decisionFromJson(json.object('decision'), '$field.decision'),
+      proposed: _proposedFromJson(json, field),
+    ),
+  );
+
+  /// This decision as the logbook holds it, for every reach, its place
+  /// written by [placeToJson]. The reach is the program and input that
+  /// make it, as a proposal writes them.
+  Object? toJson(Object? Function(P place) placeToJson) => {
+    'trajectory': trajectoryId.hex,
+    'place': placeToJson(place),
+    'reach': _reachToJson(reach),
+    'decision': _decisionToJson(decision),
+    'proposed': proposed?.hex,
+  };
 
   final TrajectoryId trajectoryId;
   final P place;

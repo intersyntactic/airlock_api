@@ -228,6 +228,9 @@ final class _Work<I, O> {
   final Program<I, O> program;
   final I input;
 
+  /// What [input] would do to the world.
+  Reach get reach => program._reach(input);
+
   Future<void> on<P>(
     Trajectory<Object?, P> trajectory,
     P place,

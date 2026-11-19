@@ -54,12 +54,7 @@ final class AirlockDecisionOnWebRequest {
       json.raw('place'),
       _webRequestFromJson(json.object('request'), '$field.request'),
       _decisionFromJson(json.object('decision'), '$field.decision'),
-      switch (json.stringOrNull('proposed')) {
-        null => null,
-        final hex =>
-          EntryId.parse(hex) ??
-              (throw FormatException('$field.proposed: not an entry id')),
-      },
+      _proposedFromJson(json, field),
     ),
   );
 
@@ -79,20 +74,7 @@ final class AirlockDecisionOnWebRequest {
     'trajectory': trajectory.hex,
     'place': place,
     'request': _webRequestToJson(request),
-    'decision': {
-      ...switch (decision) {
-        Allow(:final by) => {'allow': true, 'by': by.name},
-        Deny(:final why, :final by) => {
-          'allow': false,
-          'why': why,
-          'by': by.name,
-        },
-      },
-      // Absent when empty, so a decision kept before it existed reads back
-      // to the same bytes.
-      if (decision.reliedOn.isNotEmpty)
-        'reliedOn': [for (final e in decision.reliedOn) e.hex],
-    },
+    'decision': _decisionToJson(decision),
     'proposed': proposed?.hex,
   };
 }
