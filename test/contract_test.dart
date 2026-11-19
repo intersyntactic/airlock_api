@@ -606,21 +606,6 @@ void main() {
         'names no proposal',
       ),
       (
-        // A read's result is {"kind":"text","text":…}, which reads as a
-        // model reply: a file's contents must never reach Teams this way.
-        "a file read's text",
-        teamsMessageOf('the secret file'),
-        (a) => recordedOutcome(
-          a,
-          recordedProposal(a, 'read', 'secret.txt'),
-          encodeOutcome<ReadResult>(
-            const Ran(ReadText('the secret file')),
-            encodeReadResult,
-          ),
-        ),
-        'which asked no model',
-      ),
-      (
         'a reply to a proposal on another chain',
         teamsMessageOf('done'),
         (a) => recordedOutcome(
@@ -709,6 +694,31 @@ void main() {
         reason: why,
       );
     }
+  });
+
+  test("a file read's text is never sent as a model's reply", () async {
+    // A read's result is {"kind":"text","text":…}, which reads as a reply.
+    final web = RecordedWeb();
+    final airlock = LogAirlock();
+    final read = recordedProposal(airlock, 'read', 'secret.txt');
+    final answer = await answerOf(
+      webRequest(
+        teams,
+        hart,
+        drawnFrom: recordedOutcome(
+          airlock,
+          read,
+          encodeOutcome<ReadResult>(
+            const Ran(ReadText('the secret file')),
+            encodeReadResult,
+          ),
+        ),
+        body: teamsMessageOf('the secret file'),
+      ),
+      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+    );
+    expect(answer, allOf(startsWith('failed: '), contains('asked no model')));
+    expect(web.requests, isEmpty);
   });
 
   test('a trajectory open card is sent only as its fixed bytes, drawn from '
