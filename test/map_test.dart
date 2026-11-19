@@ -42,6 +42,10 @@ final class _FileDriver implements ReadsAndWritesFiles {
       const Ran(ReadMissing());
 
   @override
+  Future<Outcome<BytesReadResult>> readBytes(RelativePath path) async =>
+      const Ran(ReadMissing());
+
+  @override
   Future<Outcome<Wrote>> write(FileText file) async {
     written.add(file.path);
     return const Ran(Wrote(replaced: false));
