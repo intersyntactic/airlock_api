@@ -171,7 +171,9 @@ supplies and the airlock records; nothing here computes one.
   (https://github.com/intersyntactic/logbook/pull/12).
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped trajectory's refusal
-  is the person's.
+  is the person's. `reliedOn` names the logbook entries the airlock read
+  to decide beyond the rules, such as the lease of the bot the trajectory
+  may post as.
 - `stop()`: refuses every action on this trajectory whose driver has not
   yet been reached. An action whose driver has been reached is not
   interrupted.
@@ -179,8 +181,9 @@ supplies and the airlock records; nothing here computes one.
   the decision it follows, once recorded. `underway`: what drivers report
   while an action is underway, for a live view, and not recorded. Each
   names its trajectory and place.
-- `DecidesAndRecordsActions<R, P>`: `decide`, given an action's `Reach`,
-  then `recordDecision(decision)` and `recordResult(decision, result,
+- `DecidesAndRecordsActions<R, P>`: `decide`, given the trajectory and an
+  action's `Reach`, so the airlock can read what holds for that trajectory
+  now, then `recordDecision(decision)` and `recordResult(decision, result,
   resultAsJson:)`, implemented by intersyntactic's airlock. An interface is
   named for what it can do, so `implements` reads as a true sentence
   (https://github.com/enspyrco/intersyntactic/pull/1164).
@@ -198,13 +201,24 @@ and what came back returns through the record
 and records, and only a driver carries an action out.
 
 - `Trajectory.at(place)` is a crux where the trajectory is, in the
-  airlock service. `Crux.through(link, place:)` is one in the agent loop,
-  where `link`, which `ProposesActionsThroughTheRecord`, is the transport,
-  which this package does not have: it writes an
+  airlock service. `Crux.through(link, turn:)` is one in the agent loop,
+  one per turn: it proposes each action of the turn at the next
+  `PlaceInTrajectory(turn, step)`, from step 0, so the model call, each
+  action of a tool it asks for and the reply each get their own place, and
+  a restarted loop gives each the same place again. `link`, which
+  `ProposesActionsThroughTheRecord`, is the transport, which this package
+  does not have: `writeProposal(body)` writes an
   `action-proposed-by-agent-loop` logbook entry on the loop's trajectory's
-  chain and waits for the `outcome-of-proposed-action` logbook entry
-  that names it, which loop_launcher hands the loop. `action.next(crux)` is the same with either, so a tool does not
-  change.
+  chain and gives back the id the logbook gave it, and
+  `outcomeNaming(id)` waits for the `outcome-of-proposed-action` logbook
+  entry that names it, which loop_launcher hands the loop. This package
+  joins the two and refuses an outcome naming another proposal, so a loop
+  never works out an id. `action.next(crux)` is the same with either, so a
+  tool does not change.
+- `PlaceInTrajectory`: a turn (one model call and what it caused) and a
+  step within it, written `[turn, step]`, ordered by turn then step.
+  `parse` gives null for anything else, and a proposal without one is
+  `Rejected('not a place')`.
 - An `ActionProposedByAgentLoop` (kind `action-proposed-by-agent-loop`)
   names no trajectory. The logbook service
   takes the entries on a path's chain only from that path's loop user, so

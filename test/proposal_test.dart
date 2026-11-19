@@ -312,6 +312,8 @@ void main() {
       expect(PlaceInTrajectory.parse(json), isNull, reason: '$json');
     }
     expect(() => PlaceInTrajectory.at(-1, 0), throwsArgumentError);
+    expect(PlaceInTrajectory.at(1, 0), isNot(PlaceInTrajectory.at(2, 0)));
+    expect(PlaceInTrajectory.at(1, 0), isNot(PlaceInTrajectory.at(1, 1)));
     expect(
       [
         PlaceInTrajectory.at(2, 0),
