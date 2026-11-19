@@ -86,26 +86,27 @@ Object? _webRequestToJson(WebRequest request) => {
 /// [json] as a web request, each part checked as its type's `parse` checks
 /// it. Throws a [FormatException] naming the part, as is_effects's decoders
 /// do.
-WebRequest _webRequestFromJson(Object? json, [String field = 'request']) {
-  if (json is! Map<String, Object?>) {
-    throw FormatException('$field: not an object');
-  }
-  return WebRequest(
-    decodeOrigin(json['origin'], '$field.origin'),
-    method: decodeMethod(json['method'], '$field.method'),
-    path: decodeWebPath(json['path'], '$field.path'),
-    signIn: switch (json['signIn']) {
-      null => null,
-      final name => decodeSignIn(name, '$field.signIn'),
-    },
-    headers: decodeHeaders(json['headers'], '$field.headers'),
-    body: _string('$field.body', json['body']),
-    projection:
-        Projection.parse(_string('$field.projection', json['projection'])) ??
-        (throw FormatException('$field.projection: not a projection')),
-    drawnFrom:
-        EntryId.parse(_string('$field.drawnFrom', json['drawnFrom'])) ??
-        (throw FormatException('$field.drawnFrom: not an entry id')),
+WebRequest _webRequestFromJson(Object? input, [String field = 'request']) {
+  final json = _object(field, input);
+  return _at(
+    field,
+    () => WebRequest(
+      decodeOrigin(json.raw('origin'), '$field.origin'),
+      method: decodeMethod(json.raw('method'), '$field.method'),
+      path: decodeWebPath(json.raw('path'), '$field.path'),
+      signIn: switch (json.raw('signIn')) {
+        null => null,
+        final name => decodeSignIn(name, '$field.signIn'),
+      },
+      headers: decodeHeaders(json.raw('headers'), '$field.headers'),
+      body: json.string('body'),
+      projection:
+          Projection.parse(json.string('projection')) ??
+          (throw FormatException('$field.projection: not a projection')),
+      drawnFrom:
+          EntryId.parse(json.string('drawnFrom')) ??
+          (throw FormatException('$field.drawnFrom: not an entry id')),
+    ),
   );
 }
 
@@ -129,23 +130,30 @@ final class ActionProposedByAgentLoop implements Received {
   /// The entry's kind in the logbook.
   static const kind = 'action-proposed-by-agent-loop';
 
-  /// [json] read as a proposal, or [Rejected] with why it is not one. Every
-  /// part is checked here, as its type's own `parse` checks it, since a loop
-  /// is not to be trusted to have gone through it.
-  static Received read(Object? json) {
-    if (json case {'program': final String program}) {
-      final p = _programNamed(program, json['executable']);
-      if (p == null) return Rejected('not a program: $program');
-      try {
-        return ActionProposedByAgentLoop._(
-          json['place'],
-          p._work(json['input']),
-        );
-      } on FormatException catch (e) {
-        return Rejected(e.message);
-      }
+  /// [body], a [kind] logbook entry's body, read as a proposal, or
+  /// [Rejected] with why it is not one; never a throw, so the loop that
+  /// wrote it is answered. Every part is checked here, as its type's own
+  /// `parse` checks it, since a loop is not to be trusted to have gone
+  /// through it.
+  static Received read(String body) {
+    final JsonObject json;
+    try {
+      json = JsonObject.decode(body);
+    } on FormatException {
+      return const Rejected('not a proposal');
     }
-    return const Rejected('not a proposal');
+    final program = json.raw('program');
+    if (program is! String) return const Rejected('not a proposal');
+    final p = _programNamed(program, json.raw('executable'));
+    if (p == null) return Rejected('not a program: $program');
+    try {
+      return ActionProposedByAgentLoop._(
+        json.raw('place'),
+        p._work(json.raw('input')),
+      );
+    } on FormatException catch (e) {
+      return Rejected(e.message);
+    }
   }
 
   /// The place in a turn, as the loop wrote it; the airlock service reads
@@ -223,18 +231,23 @@ Object? proposalRejectedToJson(EntryId proposed, String why) =>
       encodeOutcome<Never>(Refused(why), (_) => null),
     );
 
-/// [json] read back as an [outcomeOfProposedActionKind] body: the
-/// proposal it answers and its result, which only the program that was
-/// proposed can read further. Null when [json] is not exactly one, as
-/// when the airlock kept the result of an action no loop proposed.
-({EntryId proposed, Object? result})? readOutcomeOfProposedAction(
-  Object? json,
-) => switch (json) {
-  {'proposed': final String hex, 'result': final result}
-      when json.length == 2 =>
-    switch (EntryId.parse(hex)) {
-      final proposed? => (proposed: proposed, result: result),
+/// [body] read back as an [outcomeOfProposedActionKind] logbook entry's
+/// body: the proposal it answers and its result, which only the program
+/// that was proposed can read further. Null when [body] is not exactly one,
+/// as when the airlock kept the result of an action no loop proposed.
+({EntryId proposed, Object? result})? readOutcomeOfProposedAction(String body) {
+  final JsonObject json;
+  try {
+    json = JsonObject.decode(body);
+  } on FormatException {
+    return null;
+  }
+  if (json.keys.length != 2 || !json.has('result')) return null;
+  return switch (json.raw('proposed')) {
+    final String hex => switch (EntryId.parse(hex)) {
+      final proposed? => (proposed: proposed, result: json.raw('result')),
       null => null,
     },
-  _ => null,
-};
+    _ => null,
+  };
+}

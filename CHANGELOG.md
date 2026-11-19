@@ -1,7 +1,31 @@
 # Changelog
 
-## 0.10.3
+## 0.11.0
 
+Breaking. Takes is_effects `^0.9.0`, reads JSON with checked_json, and adds
+a trajectory open card.
+
+- is_effects 0.9.0: `WebRequestOutcome` is `WebResponse`, and a
+  `ModelReply` is `FinishedReply` or `CutOffReply`, with token usage.
+- A cut-off reply reaches Teams with a blank line and `_(reply cut off)_`
+  after its text, so it never reads as the whole answer.
+- `Projection.trajectoryOpenCard`: the card that shows a trajectory is
+  open, with one Close action (verb `close`), exactly
+  `trajectoryOpenCardBody`. Its request's `drawnFrom` is the trajectory's
+  own id, and the airlock reads nothing to check it.
+- JSON is read with checked_json's `JsonObject`, checked once where it is
+  decoded.
+- Every `fromJson` takes a `JsonObject`: `AirlockDecisionOnWebRequest`,
+  `ModelRequest`, `ModelRequestPiece`, `RecordedText` and `WaitingToStart`.
+  Decode a logbook entry's body with `JsonObject.decode(body)`, which throws
+  a `FormatException` for anything but an object. `JsonObject` and
+  `JsonFieldException` are exported.
+- `ActionProposedByAgentLoop.read` and `readOutcomeOfProposedAction` take
+  the logbook entry's body text, not decoded JSON, and still never throw:
+  a body that is not a JSON object is `Rejected('not a proposal')` or
+  null.
+- Error messages are unchanged: a field of the wrong shape is still named
+  by its dotted path, as `decided.request.body: not a string`.
 - `Projection.teamsMessageFromModelReply` reads the reply with is_effects's
   `decodeModelReply`, not a pattern of its own, so a reply that gains a
   field there (token usage, coming) is still drawn from. Same bytes out.

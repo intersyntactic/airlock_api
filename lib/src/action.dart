@@ -1,5 +1,7 @@
 import 'dart:async';
-import 'dart:convert' show jsonDecode, jsonEncode, utf8;
+import 'dart:convert' show jsonEncode, utf8;
+
+import 'package:checked_json/checked_json.dart';
 
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
@@ -325,7 +327,7 @@ Future<Outcome<String>> _bodyOf(
 /// request's [Projection], and reaches the web driver only when that is
 /// byte-identical to the body. Any other body is refused, so a loop can send
 /// only what its projection makes of what is recorded.
-final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
+final class MakeWebRequest extends Program<WebRequest, WebResponse> {
   const MakeWebRequest();
 
   @override
@@ -335,16 +337,16 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
   Future<Reach> _reach(WebRequest request) async => MakesWebRequest(request);
 
   @override
-  _Wire<WebRequest, WebRequestOutcome> get _wire => const _Wire(
+  _Wire<WebRequest, WebResponse> get _wire => const _Wire(
     {'program': 'web'},
     inputToJson: _webRequestToJson,
     inputFromJson: _webRequestFromJson,
-    outputToJson: encodeWebRequestOutcome,
-    outputFromJson: decodeWebRequestOutcome,
+    outputToJson: encodeWebResponse,
+    outputFromJson: decodeWebResponse,
   );
 
   @override
-  Future<Outcome<WebRequestOutcome>>? _on(
+  Future<Outcome<WebResponse>>? _on(
     Trajectory<Object?, Object?> trajectory,
     WebRequest request,
     Reach reach,
@@ -354,33 +356,49 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
     final web => _make(web, trajectory, request),
   };
 
-  static Future<Outcome<WebRequestOutcome>> _make(
+  static Future<Outcome<WebResponse>> _make(
     CarriesOutWebRequests web,
     Trajectory<Object?, Object?> trajectory,
     WebRequest request,
-  ) async => switch (await _bodyOf(
-    trajectory,
-    request.drawnFrom,
-    outcomeOfProposedActionKind,
-  )) {
-    Refused(:final why) => Refused(why),
-    Ran(output: final recorded)
-        when request.projection.drawnFrom(recorded) != request.body =>
+  ) async => switch (request.projection) {
+    Projection.teamsMessageFromModelReply => switch (await _bodyOf(
+      trajectory,
+      request.drawnFrom,
+      outcomeOfProposedActionKind,
+    )) {
+      Refused(:final why) => Refused(why),
+      Ran(output: final recorded)
+          when request.projection.drawnFrom(recorded) != request.body =>
+        Refused(
+          'the body is not ${request.projection.wire} of '
+          '${request.drawnFrom}',
+        ),
+      Ran() => await _send(web, request),
+    },
+    Projection.trajectoryOpenCard
+        when request.drawnFrom.hex != trajectory.id.hex =>
       Refused(
-        'the body is not ${request.projection.wire} of '
-        '${request.drawnFrom}',
+        'a trajectory open card is drawn from its own trajectory, '
+        '${trajectory.id.hex}, not ${request.drawnFrom}',
       ),
-    Ran() => await web.carryOutWebRequest(
-      Request(
-        request.origin,
-        method: request.method,
-        path: request.path,
-        signIn: request.signIn,
-        headers: request.headers,
-        body: request.body,
-      ),
-    ),
+    Projection.trajectoryOpenCard when request.body != trajectoryOpenCardBody =>
+      const Refused('the body is not trajectory-open-card'),
+    Projection.trajectoryOpenCard => await _send(web, request),
   };
+
+  static Future<Outcome<WebResponse>> _send(
+    CarriesOutWebRequests web,
+    WebRequest request,
+  ) => web.carryOutWebRequest(
+    Request(
+      request.origin,
+      method: request.method,
+      path: request.path,
+      signIn: request.signIn,
+      headers: request.headers,
+      body: request.body,
+    ),
+  );
 }
 
 /// Asks the model, through the model driver, as the [ModelCall]'s sign-in,
@@ -441,7 +459,7 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
         return Refused(why);
       case Ran(output: final text):
         try {
-          request = ModelRequest.fromJson(jsonDecode(text));
+          request = ModelRequest.fromJson(JsonObject.decode(text));
         } on FormatException catch (e) {
           return Refused('not a model request: ${e.message}');
         }
@@ -454,7 +472,9 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
             return Refused(why);
           case Ran(output: final text):
             try {
-              texts.add(ModelRequestPiece.fromJson(jsonDecode(text)).text);
+              texts.add(
+                ModelRequestPiece.fromJson(JsonObject.decode(text)).text,
+              );
             } on FormatException catch (e) {
               return Refused('not a model request piece: ${e.message}');
             }
@@ -502,21 +522,18 @@ Object? _modelCallToJson(ModelCall call) => {
   'request': call.request.hex,
 };
 
-ModelCall _modelCallFromJson(Object? json, String field) {
-  final map = _object(field, json);
-  const keys = {'signIn', 'model', 'request'};
-  if (map.keys.any((key) => !keys.contains(key))) {
-    throw FormatException(
-      '$field: unexpected ${map.keys.where((k) => !keys.contains(k))}',
+ModelCall _modelCallFromJson(Object? input, String field) {
+  final json = _object(field, input);
+  return _at(field, () {
+    _exactly(field, json, const {'signIn', 'model', 'request'});
+    return ModelCall(
+      signIn: decodeModelSignInName(json.raw('signIn'), '$field.signIn'),
+      model: decodeModelName(json.raw('model'), '$field.model'),
+      request:
+          EntryId.parse(json.string('request')) ??
+          (throw FormatException('$field.request: not an entry id')),
     );
-  }
-  return ModelCall(
-    signIn: decodeModelSignInName(map['signIn'], '$field.signIn'),
-    model: decodeModelName(map['model'], '$field.model'),
-    request:
-        EntryId.parse(_string('$field.request', map['request'])) ??
-        (throw FormatException('$field.request: not an entry id')),
-  );
+  });
 }
 
 /// A web request a tool asks for: where to, as whom, and the exact [body]

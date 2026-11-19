@@ -49,9 +49,9 @@ final class RecordedWeb implements CarriesOutWebRequests {
   final requests = <Request>[];
 
   @override
-  Future<Outcome<WebRequestOutcome>> carryOutWebRequest(Request request) async {
+  Future<Outcome<WebResponse>> carryOutWebRequest(Request request) async {
     requests.add(request);
-    return const Ran(WebRequestOutcome(status: 201, created: 'activity-1'));
+    return const Ran(WebResponse(status: 201, created: 'activity-1'));
   }
 }
 
@@ -222,7 +222,10 @@ EntryId recordedReply(LogAirlock airlock, String text, {TrajectoryId? on}) =>
       jsonEncode(
         outcomeOfProposedActionToJson(
           EntryId.of(utf8.encode('asked for: $text')),
-          encodeOutcome<ModelReply>(Ran(ModelReply(text)), encodeModelReply),
+          encodeOutcome<ModelReply>(
+            Ran(FinishedReply(text: text)),
+            encodeModelReply,
+          ),
         ),
       ),
       kind: outcomeOfProposedActionKind,
@@ -238,13 +241,14 @@ Result<String> webRequest(
   SignIn signIn, {
   EntryId? drawnFrom,
   String? body,
+  Projection projection = teamsMessage,
 }) => Program.web.runOrRefusal(
   WebRequest(
     site,
     path: WebPath.parse('/v3/conversations/c/activities')!,
     signIn: signIn,
     body: body ?? teamsMessageOf('done'),
-    projection: teamsMessage,
+    projection: projection,
     drawnFrom: drawnFrom ?? EntryId.of(utf8.encode('nothing recorded')),
   ),
   then: (answer) => Done('${answer.status} ${answer.created}'),
@@ -575,7 +579,7 @@ void main() {
             outcomeOfProposedActionToJson(
               EntryId.of(utf8.encode('p')),
               encodeOutcome<ModelReply>(
-                const Ran(ModelReply('anything the loop likes')),
+                const Ran(FinishedReply(text: 'anything the loop likes')),
                 encodeModelReply,
               ),
             ),
@@ -616,6 +620,62 @@ void main() {
         reason: why,
       );
     }
+  });
+
+  test('a trajectory open card is sent only as its fixed bytes, drawn from '
+      'its own trajectory, and reads nothing', () async {
+    final own = EntryId.parse(idOf('started root').hex)!;
+    final cases = [
+      ('the card, from its trajectory', own, trajectoryOpenCardBody, true),
+      (
+        'from another trajectory',
+        EntryId.parse(idOf('another root').hex)!,
+        trajectoryOpenCardBody,
+        false,
+      ),
+      ('another body', own, teamsMessageOf('done'), false),
+    ];
+    for (final (why, drawnFrom, body, sent) in cases) {
+      final web = RecordedWeb();
+      final airlock = LogAirlock();
+      final answer = await answerOf(
+        webRequest(
+          teams,
+          hart,
+          drawnFrom: drawnFrom,
+          body: body,
+          projection: Projection.trajectoryOpenCard,
+        ),
+        start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+      );
+      expect(answer, sent ? '201 activity-1' : startsWith('failed: '));
+      expect(
+        [for (final r in web.requests) r.body],
+        [if (sent) trajectoryOpenCardBody],
+        reason: why,
+      );
+      expect(airlock.readOn, isEmpty, reason: why);
+    }
+    expect(
+      Projection.trajectoryOpenCard.drawnFrom(
+        jsonEncode(
+          outcomeOfProposedActionToJson(
+            own,
+            encodeOutcome<ModelReply>(
+              Ran(FinishedReply(text: 'hi')),
+              encodeModelReply,
+            ),
+          ),
+        ),
+      ),
+      isNull,
+    );
+    expect(trajectoryOpenCardBody, contains('"verb":"close"'));
+    expect(trajectoryOpenCardBody, contains('● Open · trajectory started'));
+    expect(
+      Projection.parse('trajectory-open-card'),
+      Projection.trajectoryOpenCard,
+    );
   });
 
   test('a denied web request never has its entry read', () async {

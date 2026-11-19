@@ -44,24 +44,24 @@ final class AirlockDecisionOnWebRequest {
   /// [json] read back as a web request's entry, each part checked as its
   /// type's `parse` checks it. Throws a [FormatException] naming the part.
   static AirlockDecisionOnWebRequest fromJson(
-    Object? json, [
+    JsonObject json, [
     String field = 'decided',
-  ]) {
-    final map = _object(field, json);
-    return AirlockDecisionOnWebRequest._(
-      TrajectoryId.parse(_string('$field.trajectory', map['trajectory'])) ??
+  ]) => _at(
+    field,
+    () => AirlockDecisionOnWebRequest._(
+      TrajectoryId.parse(json.string('trajectory')) ??
           (throw FormatException('$field.trajectory: not a trajectory')),
-      map['place'],
-      _webRequestFromJson(map['request'], '$field.request'),
-      _decisionFromJson(map['decision'], '$field.decision'),
-      switch (map['proposed']) {
+      json.raw('place'),
+      _webRequestFromJson(json.object('request'), '$field.request'),
+      _decisionFromJson(json.object('decision'), '$field.decision'),
+      switch (json.stringOrNull('proposed')) {
         null => null,
         final hex =>
-          EntryId.parse(_string('$field.proposed', hex)) ??
+          EntryId.parse(hex) ??
               (throw FormatException('$field.proposed: not an entry id')),
       },
-    );
-  }
+    ),
+  );
 
   final TrajectoryId trajectory;
 
@@ -99,8 +99,17 @@ enum Projection {
   /// [outcomeOfProposedActionKind] body whose result ran to a [ModelReply],
   /// read by is_effects's `decodeModelReply`, as
   /// `{"type":"message","text":<text>}`, Dart's `jsonEncode` of those two
-  /// keys in that order, with no whitespace and the text as UTF-8.
-  teamsMessageFromModelReply('teams-message-from-model-reply');
+  /// keys in that order, with no whitespace and the text as UTF-8. A
+  /// [CutOffReply]'s text is followed by a blank line and
+  /// `_(reply cut off)_`, so it never reads as the whole answer.
+  teamsMessageFromModelReply('teams-message-from-model-reply'),
+
+  /// The card that shows a trajectory is open, with its one Close action:
+  /// exactly [trajectoryOpenCardBody], drawn from the trajectory itself. Its
+  /// request's `drawnFrom` is the trajectory's id, the hash of the
+  /// admission that started it, so it draws from no entry's body and the
+  /// airlock reads nothing to check it.
+  trajectoryOpenCard('trajectory-open-card');
 
   const Projection(this.wire);
 
@@ -113,19 +122,61 @@ enum Projection {
 
   /// The body drawn from [recorded], the body (after its header) of the
   /// [outcomeOfProposedActionKind] logbook entry a request names; null
-  /// when it draws none from it. The caller checks the entry's kind.
+  /// when it draws none from it, as [trajectoryOpenCard] never does. The
+  /// caller checks the entry's kind.
   String? drawnFrom(String recorded) => switch (this) {
     teamsMessageFromModelReply => switch (_modelReplyIn(recorded)) {
-      final reply? => jsonEncode({'type': 'message', 'text': reply.text}),
+      FinishedReply(:final text) => _teamsMessage(text),
+      CutOffReply(:final text) => _teamsMessage('$text\n\n$_cutOffMarker'),
       null => null,
     },
+    trajectoryOpenCard => null,
   };
 }
+
+String _teamsMessage(String text) =>
+    jsonEncode({'type': 'message', 'text': text});
+
+/// The line a cut-off reply ends with in Teams.
+const _cutOffMarker = '_(reply cut off)_';
+
+/// The exact body of [Projection.trajectoryOpenCard]: a Teams message
+/// holding an Adaptive Card 1.5, the version that has rendered in both
+/// tenants, reading "● Open · trajectory started" with one action whose
+/// `verb` teams_module reads as a request to close the trajectory. Teams
+/// shows when it was posted, so the card names no time.
+final trajectoryOpenCardBody = jsonEncode({
+  'type': 'message',
+  'attachments': [
+    {
+      'contentType': 'application/vnd.microsoft.card.adaptive',
+      'content': {
+        r'$schema': 'http://adaptivecards.io/schemas/adaptive-card.json',
+        'type': 'AdaptiveCard',
+        'version': '1.5',
+        'body': [
+          {
+            'type': 'TextBlock',
+            'text': '● Open · trajectory started',
+            'wrap': true,
+          },
+        ],
+        'actions': [
+          {
+            'type': 'Action.Execute',
+            'title': 'Close trajectory',
+            'verb': 'close',
+          },
+        ],
+      },
+    },
+  ],
+});
 
 /// The model's reply [recorded] ran to, read with is_effects's own codec so
 /// a reply's shape is decided there alone; null when it holds none.
 ModelReply? _modelReplyIn(String recorded) {
-  final outcome = readOutcomeOfProposedAction(_jsonOrNull(recorded));
+  final outcome = readOutcomeOfProposedAction(recorded);
   if (outcome == null) return null;
   try {
     return switch (decodeOutcome(outcome.result, decodeModelReply)) {
@@ -137,32 +188,35 @@ ModelReply? _modelReplyIn(String recorded) {
   }
 }
 
-Object? _jsonOrNull(String text) {
+Decision _decisionFromJson(JsonObject json, String field) => _at(field, () {
+  final by =
+      DecidedBy.values.asNameMap()[json.string('by')] ??
+      (throw FormatException('$field.by: not rules or person'));
+  return json.boolean('allow')
+      ? Allow(by: by)
+      : Deny(json.string('why'), by: by);
+});
+
+/// What [read] reads from an object at [field], a field of the wrong shape
+/// named by its dotted path from [field]: checked_json names it by its key
+/// alone.
+T _at<T>(String field, T Function() read) {
   try {
-    return jsonDecode(text);
-  } on FormatException {
-    return null;
+    return read();
+  } on JsonFieldException catch (e) {
+    throw FormatException('$field.${e.field}: not ${e.wanted}');
   }
 }
 
-Decision _decisionFromJson(Object? json, String field) {
-  final map = _object(field, json);
-  final by =
-      DecidedBy.values.asNameMap()[_string('$field.by', map['by'])] ??
-      (throw FormatException('$field.by: not rules or person'));
-  return switch (map['allow']) {
-    true => Allow(by: by),
-    false => Deny(_string('$field.why', map['why']), by: by),
-    _ => throw FormatException('$field.allow: not true or false'),
-  };
+/// [json] as an object at [field], for a value an is_effects codec hands
+/// over undecoded.
+JsonObject _object(String field, Object? json) =>
+    JsonObject.parse(json) ?? (throw FormatException('$field: not an object'));
+
+/// Throws unless every key of [json] is one of [keys].
+void _exactly(String field, JsonObject json, Set<String> keys) {
+  final unexpected = json.keys.where((k) => !keys.contains(k));
+  if (unexpected.isNotEmpty) {
+    throw FormatException('$field: unexpected $unexpected');
+  }
 }
-
-Map<String, Object?> _object(String field, Object? json) => switch (json) {
-  final Map<String, Object?> map => map,
-  _ => throw FormatException('$field: not an object'),
-};
-
-String _string(String field, Object? json) => switch (json) {
-  final String s => s,
-  _ => throw FormatException('$field: not a string'),
-};

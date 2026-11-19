@@ -34,17 +34,12 @@ final class ModelRequestPiece {
   /// [json] read back, strictly: anything but exactly a `text` throws a
   /// [FormatException] naming the part.
   static ModelRequestPiece fromJson(
-    Object? json, [
+    JsonObject json, [
     String field = 'modelRequestPiece',
-  ]) {
-    final map = _object(field, json);
-    if (map.keys.any((key) => key != 'text')) {
-      throw FormatException(
-        '$field: unexpected ${map.keys.where((k) => k != 'text')}',
-      );
-    }
-    return ModelRequestPiece(_string('$field.text', map['text']));
-  }
+  ]) => _at(field, () {
+    _exactly(field, json, const {'text'});
+    return ModelRequestPiece(json.string('text'));
+  });
 
   final String text;
 
@@ -64,23 +59,17 @@ final class RecordedText {
 
   /// [json] read back, strictly, as [ModelRequest.fromJson] reads its
   /// parts.
-  static RecordedText fromJson(Object? json, String field) {
-    final map = _object(field, json);
-    const keys = {'pieces', 'sha256'};
-    if (map.keys.any((key) => !keys.contains(key))) {
-      throw FormatException(
-        '$field: unexpected ${map.keys.where((k) => !keys.contains(k))}',
-      );
-    }
-    final pieces = _entryIds('$field.pieces', map['pieces']);
+  static RecordedText fromJson(JsonObject json, String field) => _at(field, () {
+    _exactly(field, json, const {'pieces', 'sha256'});
+    final pieces = _entryIds('$field.pieces', json.strings('pieces'));
     if (pieces.isEmpty) throw FormatException('$field.pieces: none');
     return RecordedText(
       pieces: pieces,
       sha256:
-          ObjectId.parse(_string('$field.sha256', map['sha256'])) ??
+          ObjectId.parse(json.string('sha256')) ??
           (throw FormatException('$field.sha256: not a sha256')),
     );
-  }
+  });
 
   /// The [ModelRequestPiece] entries, in order; one, when the text is not
   /// split.
@@ -130,23 +119,20 @@ final class ModelRequest {
 
   /// [json] read back, strictly: a key it does not know, or a part that is
   /// not what it names, throws a [FormatException] naming the part.
-  static ModelRequest fromJson(Object? json, [String field = 'modelRequest']) {
-    final map = _object(field, json);
-    const keys = {'systemPrompt', 'request', 'builtFrom'};
-    if (map.keys.any((key) => !keys.contains(key))) {
-      throw FormatException(
-        '$field: unexpected ${map.keys.where((k) => !keys.contains(k))}',
-      );
-    }
+  static ModelRequest fromJson(
+    JsonObject json, [
+    String field = 'modelRequest',
+  ]) => _at(field, () {
+    _exactly(field, json, const {'systemPrompt', 'request', 'builtFrom'});
     return ModelRequest(
       systemPrompt: RecordedText.fromJson(
-        map['systemPrompt'],
+        json.object('systemPrompt'),
         '$field.systemPrompt',
       ),
-      request: RecordedText.fromJson(map['request'], '$field.request'),
-      builtFrom: _entryIds('$field.builtFrom', map['builtFrom']),
+      request: RecordedText.fromJson(json.object('request'), '$field.request'),
+      builtFrom: _entryIds('$field.builtFrom', json.strings('builtFrom')),
     );
-  }
+  });
 
   /// The system prompt the model is given in place of its own.
   final RecordedText systemPrompt;
@@ -166,11 +152,8 @@ final class ModelRequest {
   };
 }
 
-List<EntryId> _entryIds(String field, Object? json) => switch (json) {
-  final List<Object?> list => [
-    for (final (i, id) in list.indexed)
-      EntryId.parse(_string('$field[$i]', id)) ??
-          (throw FormatException('$field[$i]: not an entry id')),
-  ],
-  _ => throw FormatException('$field: not a list'),
-};
+List<EntryId> _entryIds(String field, List<String> hexes) => [
+  for (final (i, hex) in hexes.indexed)
+    EntryId.parse(hex) ??
+        (throw FormatException('$field[$i]: not an entry id')),
+];

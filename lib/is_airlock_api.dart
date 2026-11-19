@@ -9,6 +9,8 @@
 /// an `is_tools_api` definition to what a tool does is `is_tool`'s.
 library;
 
+export 'package:checked_json/checked_json.dart'
+    show JsonFieldException, JsonObject;
 export 'package:is_content_id/is_content_id.dart' show ObjectId;
 export 'package:is_shapes/is_shapes.dart' show DecidedBy, EntryId, TrajectoryId;
 
