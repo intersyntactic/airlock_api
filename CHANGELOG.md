@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.3
+
+- `Projection.teamsMessageFromModelReply` reads the reply with is_effects's
+  `decodeModelReply`, not a pattern of its own, so a reply that gains a
+  field there (token usage, coming) is still drawn from. Same bytes out.
+
 ## 0.10.2
 
 - `ActionProposedByAgentLoop.program`: the program a proposal names, as a
