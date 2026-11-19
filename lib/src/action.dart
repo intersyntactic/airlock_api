@@ -312,6 +312,42 @@ Future<Outcome<String>> _bodyOf(
   ),
 };
 
+/// The body of [entry], an [outcomeOfProposedActionKind] logbook entry of
+/// [trajectory]'s, when the proposal it names asked the model; or [Refused]
+/// with why not. Another program's result can read as a model reply, as a
+/// read's `{"kind":"text","text":…}` does, so the proposal is read from the
+/// trajectory's chain and checked.
+Future<Outcome<String>> _modelReplyOutcome(
+  Trajectory<Object?, Object?> trajectory,
+  EntryId entry,
+) async =>
+    switch (await _bodyOf(trajectory, entry, outcomeOfProposedActionKind)) {
+      Refused(:final why) => Refused(why),
+      Ran(output: final recorded) => switch (readOutcomeOfProposedAction(
+        recorded,
+      )) {
+        null => Refused('entry $entry names no proposal'),
+        (:final proposed, result: _) => switch (await _bodyOf(
+          trajectory,
+          proposed,
+          ActionProposedByAgentLoop.kind,
+        )) {
+          Refused(:final why) => Refused(why),
+          Ran(output: final proposal) => switch (ActionProposedByAgentLoop.read(
+            proposal,
+          )) {
+            ActionProposedByAgentLoop(program: AskTheModel()) => Ran(recorded),
+            ActionProposedByAgentLoop() => Refused(
+              'entry $entry answers $proposed, which asked no model',
+            ),
+            Rejected(:final why) => Refused(
+              'entry $entry answers $proposed, which asked no model: $why',
+            ),
+          },
+        },
+      },
+    };
+
 /// Makes a [WebRequest] to a site, through the sign-in it names, with
 /// exactly the body it holds.
 ///
@@ -326,7 +362,9 @@ Future<Outcome<String>> _bodyOf(
 /// [DecidesAndRecordsActions.recordedOn], draws the body from it by the
 /// request's [Projection], and reaches the web driver only when that is
 /// byte-identical to the body. Any other body is refused, so a loop can send
-/// only what its projection makes of what is recorded.
+/// only what its projection makes of what is recorded. A model reply is
+/// drawn only from the outcome of a proposal to ask the model, read from the
+/// trajectory's own chain.
 final class MakeWebRequest extends Program<WebRequest, WebResponse> {
   const MakeWebRequest();
 
@@ -361,10 +399,9 @@ final class MakeWebRequest extends Program<WebRequest, WebResponse> {
     Trajectory<Object?, Object?> trajectory,
     WebRequest request,
   ) async => switch (request.projection) {
-    Projection.teamsMessageFromModelReply => switch (await _bodyOf(
+    Projection.teamsMessageFromModelReply => switch (await _modelReplyOutcome(
       trajectory,
       request.drawnFrom,
-      outcomeOfProposedActionKind,
     )) {
       Refused(:final why) => Refused(why),
       Ran(output: final recorded)

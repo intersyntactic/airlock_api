@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.1
+
+- A `teams-message-from-model-reply` request is sent only when the
+  outcome it is drawn from answers a proposal that asked the model. A
+  read's result, `{"kind":"text","text":…}`, also reads as a model reply,
+  so a loop could have sent a file's contents to Teams. The airlock reads
+  the proposal from the trajectory's own chain: one more logbook read per
+  send.
+
 ## 0.11.0
 
 Breaking. Takes is_effects `^0.9.0`, reads JSON with checked_json, and adds

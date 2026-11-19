@@ -214,21 +214,50 @@ final teams = Origin.parse('https://smba.trafficmanager.net')!;
 
 const teamsMessage = Projection.teamsMessageFromModelReply;
 
-/// A model's reply [text], kept in [airlock]'s logbook as the airlock keeps
-/// a proposal's result, belonging to [on] (by default the trajectory
-/// [start] starts).
+/// A proposal of [program] with [input], as a loop writes one on [on]'s
+/// chain (by default the trajectory [start] starts).
+EntryId recordedProposal(
+  LogAirlock airlock,
+  String program,
+  Object? input, {
+  TrajectoryId? on,
+}) => airlock.remember(
+  jsonEncode({'place': 1, 'program': program, 'input': input}),
+  kind: ActionProposedByAgentLoop.kind,
+  on: on,
+);
+
+/// A proposal to ask the model, on [on]'s chain.
+EntryId askedTheModel(LogAirlock airlock, {TrajectoryId? on}) =>
+    recordedProposal(airlock, 'model', {
+      'signIn': 'hart-model',
+      'model': 'claude-opus-5-5',
+      'request': EntryId.of(utf8.encode('a model request')).hex,
+    }, on: on);
+
+/// The result [resultAsJson] of [proposed], kept as the airlock keeps one,
+/// belonging to [on].
+EntryId recordedOutcome(
+  LogAirlock airlock,
+  EntryId proposed,
+  Object? resultAsJson, {
+  TrajectoryId? on,
+}) => airlock.remember(
+  jsonEncode(outcomeOfProposedActionToJson(proposed, resultAsJson)),
+  kind: outcomeOfProposedActionKind,
+  on: on,
+);
+
+/// A model's reply [text], answering a proposal to ask the model, both
+/// belonging to [on] (by default the trajectory [start] starts).
 EntryId recordedReply(LogAirlock airlock, String text, {TrajectoryId? on}) =>
-    airlock.remember(
-      jsonEncode(
-        outcomeOfProposedActionToJson(
-          EntryId.of(utf8.encode('asked for: $text')),
-          encodeOutcome<ModelReply>(
-            Ran(FinishedReply(text: text)),
-            encodeModelReply,
-          ),
-        ),
+    recordedOutcome(
+      airlock,
+      askedTheModel(airlock, on: on),
+      encodeOutcome<ModelReply>(
+        Ran(FinishedReply(text: text)),
+        encodeModelReply,
       ),
-      kind: outcomeOfProposedActionKind,
       on: on,
     );
 
@@ -503,7 +532,15 @@ void main() {
       'recorded model reply, and the decision holds that body', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock();
-    final reply = recordedReply(airlock, 'Clause 4 — rent is due monthly.');
+    final asked = askedTheModel(airlock);
+    final reply = recordedOutcome(
+      airlock,
+      asked,
+      encodeOutcome<ModelReply>(
+        const Ran(FinishedReply(text: 'Clause 4 — rent is due monthly.')),
+        encodeModelReply,
+      ),
+    );
     final path = start(airlock, [web], rules: {'$teams as $hart'});
     final decided = <AirlockDecisionOnAction<int>>[];
     path.decisions.listen(decided.add);
@@ -519,7 +556,7 @@ void main() {
       web.requests.single.body,
       '{"type":"message","text":"Clause 4 — rent is due monthly."}',
     );
-    expect(airlock.readOn, [reply]);
+    expect(airlock.readOn, [reply, asked]);
     final MakesWebRequest(:request) = decided.single.reach as MakesWebRequest;
     expect(request.body, body);
     expect(request.drawnFrom, reply);
@@ -545,9 +582,7 @@ void main() {
         'a reply that was refused',
         teamsMessageOf('done'),
         (a) => a.remember(
-          jsonEncode(
-            proposalRejectedToJson(EntryId.of(utf8.encode('p')), 'no'),
-          ),
+          jsonEncode(proposalRejectedToJson(askedTheModel(a), 'no')),
           kind: outcomeOfProposedActionKind,
         ),
         'the body is not teams-message-from-model-reply of',
@@ -557,7 +592,7 @@ void main() {
         teamsMessageOf('done'),
         (a) => a.remember(
           jsonEncode({
-            'proposed': EntryId.of(utf8.encode('p')).hex,
+            'proposed': askedTheModel(a).hex,
             'result': {'kind': 'refused', 'output': 'done'},
           }),
           kind: outcomeOfProposedActionKind,
@@ -568,7 +603,46 @@ void main() {
         'not a result at all',
         teamsMessageOf('done'),
         (a) => a.remember('done', kind: outcomeOfProposedActionKind),
-        'the body is not teams-message-from-model-reply of',
+        'names no proposal',
+      ),
+      (
+        'a reply to a proposal on another chain',
+        teamsMessageOf('done'),
+        (a) => recordedOutcome(
+          a,
+          askedTheModel(a, on: other),
+          encodeOutcome<ModelReply>(
+            const Ran(FinishedReply(text: 'done')),
+            encodeModelReply,
+          ),
+        ),
+        'is on another chain',
+      ),
+      (
+        'a reply naming an entry that is not a proposal',
+        teamsMessageOf('done'),
+        (a) => recordedOutcome(
+          a,
+          a.remember('{}', kind: ModelRequestPiece.kind),
+          encodeOutcome<ModelReply>(
+            const Ran(FinishedReply(text: 'done')),
+            encodeModelReply,
+          ),
+        ),
+        'is a model-request-piece, not a action-proposed-by-agent-loop',
+      ),
+      (
+        'a reply naming a proposal that is not one',
+        teamsMessageOf('done'),
+        (a) => recordedOutcome(
+          a,
+          a.remember('not json', kind: ActionProposedByAgentLoop.kind),
+          encodeOutcome<ModelReply>(
+            const Ran(FinishedReply(text: 'done')),
+            encodeModelReply,
+          ),
+        ),
+        'which asked no model',
       ),
       (
         // A loop may write any body under its own kinds on its own chain.
@@ -620,6 +694,31 @@ void main() {
         reason: why,
       );
     }
+  });
+
+  test("a file read's text is never sent as a model's reply", () async {
+    // A read's result is {"kind":"text","text":…}, which reads as a reply.
+    final web = RecordedWeb();
+    final airlock = LogAirlock();
+    final read = recordedProposal(airlock, 'read', 'secret.txt');
+    final answer = await answerOf(
+      webRequest(
+        teams,
+        hart,
+        drawnFrom: recordedOutcome(
+          airlock,
+          read,
+          encodeOutcome<ReadResult>(
+            const Ran(ReadText('the secret file')),
+            encodeReadResult,
+          ),
+        ),
+        body: teamsMessageOf('the secret file'),
+      ),
+      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+    );
+    expect(answer, allOf(startsWith('failed: '), contains('asked no model')));
+    expect(web.requests, isEmpty);
   });
 
   test('a trajectory open card is sent only as its fixed bytes, drawn from '
