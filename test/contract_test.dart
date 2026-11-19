@@ -16,6 +16,13 @@ final class MemoryFiles implements ReadsAndWritesFiles {
       };
 
   @override
+  Future<Outcome<BytesReadResult>> readBytes(RelativePath path) async =>
+      switch (files[path.value]) {
+        null => const Ran(ReadMissing()),
+        final text => Ran(ReadBytes(utf8.encode(text))),
+      };
+
+  @override
   Future<Outcome<Wrote>> write(FileText file) async {
     if (file.path.value.startsWith('.git/')) {
       return Refused("${file.path} is git's own");

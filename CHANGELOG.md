@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1
+
+- Takes is_effects `^0.11.0`. Its one break is
+  `ReadsAndWritesFiles.readBytes`, which matters only to a file driver that
+  implements it; nothing in this package's API changes.
+
 ## 0.12.0
 
 Breaking, for the agent loop and the airlock alike.
