@@ -102,6 +102,52 @@ void main() {
     }
   });
 
+  test('the entries a decision relied on read back, and a decision that '
+      'relied on none is written as before', () async {
+    final [d] = await decidedWhile(
+      (path) => answerOf(webRequest(teams, hart), path.at(4)),
+      rules: {'$teams as $hart'},
+    );
+    final lease = EntryId.of(utf8.encode('bot leased'));
+    final settings = EntryId.of(utf8.encode('settings'));
+    Object? written(Decision decision) => AirlockDecisionOnWebRequest.of(
+      AirlockDecisionOnAction(d.trajectoryId, d.place, d.reach, decision),
+      (int place) => place,
+    )!.toJson();
+    for (final decision in [
+      Allow(by: DecidedBy.rules, reliedOn: [lease, settings]),
+      Deny('leased elsewhere', by: DecidedBy.rules, reliedOn: [lease]),
+    ]) {
+      final read = AirlockDecisionOnWebRequest.fromJson(
+        throughText(written(decision)),
+      );
+      expect(read.decision.reliedOn, decision.reliedOn);
+      expect(read.decision.runtimeType, decision.runtimeType);
+    }
+    expect(
+      throughText(written(const Allow(by: DecidedBy.rules)))
+          .asUncheckedMap()['decision'],
+      {'allow': true, 'by': 'rules'},
+    );
+    final json = throughText(written(Allow(by: DecidedBy.rules)));
+    for (final (bad, said) in [
+      (['x'], 'decided.decision.reliedOn[0]: not an entry id'),
+      ([1], 'decided.decision.reliedOn: not a list of strings'),
+    ]) {
+      expect(
+        () => AirlockDecisionOnWebRequest.fromJson(
+          JsonObject.of({
+            ...json.asUncheckedMap(),
+            'decision': {'allow': true, 'by': 'rules', 'reliedOn': bad},
+          }),
+        ),
+        throwsA(
+          isA<FormatException>().having((e) => e.message, 'message', said),
+        ),
+      );
+    }
+  });
+
   test('a denied web request reads back with why', () async {
     final decided = await decidedWhile(
       (path) => answerOf(webRequest(teams, hart), path.at(1)),

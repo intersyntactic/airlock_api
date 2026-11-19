@@ -25,7 +25,8 @@ import 'contract_test.dart'
 /// returns it, never a hash of the body alone; the airlock service considers
 /// it on [path], and the loop is handed the result that names it, through
 /// `jsonEncode` and back, as loop_launcher would hand it.
-/// Places are ints. Keeps why each rejected entry was rejected.
+/// The airlock service considers each at its step. Keeps why each rejected
+/// entry was rejected.
 final class RecordedLink implements ProposesActionsThroughTheRecord {
   RecordedLink(this.path, this.airlock);
 
@@ -33,16 +34,16 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
   final LogAirlock airlock;
   final rejected = <String>[];
 
-  /// The program of each proposal read back, in order.
+  /// The program and place of each proposal read back, in order.
   final programs = <Program<Object?, Object?>>[];
+  final places = <PlaceInTrajectory>[];
 
-  /// What loop_launcher would hand the loop, when a test wants another
-  /// answer.
-  Object? Function(Object? outcome) answerWith = (outcome) => outcome;
+  /// What loop_launcher would hand the loop for the outcome [body] and the
+  /// proposal it answers, when a test wants another answer.
+  String Function(String body, EntryId proposed) answerWith = (body, _) => body;
 
   @override
-  Future<Object?> propose(Object? proposal) async {
-    final body = jsonEncode(proposal);
+  Future<EntryId> writeProposal(String body) async {
     final proposed = airlock.remember(
       body,
       kind: ActionProposedByAgentLoop.kind,
@@ -53,28 +54,27 @@ final class RecordedLink implements ProposesActionsThroughTheRecord {
         airlock.results[proposed] = proposalRejectedToJson(proposed, why);
       case final ActionProposedByAgentLoop proposal:
         programs.add(proposal.program);
-        switch (proposal.place) {
-          case final int place:
-            await path.consider(proposal, place, proposed: proposed);
-          default:
-            rejected.add('not a place');
-            airlock.results[proposed] = proposalRejectedToJson(
-              proposed,
-              'not a place',
-            );
-        }
+        places.add(proposal.place);
+        await path.consider(proposal, proposal.place.step, proposed: proposed);
     }
-    final answer = readOutcomeOfProposedAction(
-      jsonEncode(airlock.results[proposed]),
-    )!;
-    expect(answer.proposed, proposed);
-    return answerWith(answer.result);
+    return proposed;
   }
+
+  @override
+  Future<String> outcomeNaming(EntryId proposed) async =>
+      answerWith(jsonEncode(airlock.results[proposed]), proposed);
+
+  /// [proposal] written as it is, bypassing the crux, and the result of
+  /// what the airlock recorded it came to.
+  Future<Object?> proposeAsIs(Object? proposal) async =>
+      readOutcomeOfProposedAction(
+        await outcomeNaming(await writeProposal(jsonEncode(proposal))),
+      )!.result;
 }
 
-/// The agent loop's crux at [place] on [link]'s path.
-Crux loopCrux(RecordedLink link, {int place = 1}) =>
-    Crux.through(link, place: place);
+/// The agent loop's crux for [turn] on [link]'s path.
+Crux loopCrux(RecordedLink link, {int turn = 1}) =>
+    Crux.through(link, turn: turn);
 
 void main() {
   test(
@@ -88,17 +88,21 @@ void main() {
         airlock,
       );
       expect(
-        await answerOf(writeAndFormat('a.dart'), loopCrux(link, place: 3)),
+        await answerOf(writeAndFormat('a.dart'), loopCrux(link, turn: 3)),
         'Formatted 1 file',
       );
       expect(files.files, {'a.dart': 'void main() {}'});
       expect(airlock.log, [
-        '3: allow write a.dart',
-        '3: ran write a.dart',
-        '3: allow dart format a.dart',
-        '3: ran dart format a.dart',
+        '0: allow write a.dart',
+        '0: ran write a.dart',
+        '1: allow dart format a.dart',
+        '1: ran dart format a.dart',
       ]);
       expect(link.rejected, isEmpty);
+      expect(link.places, [
+        PlaceInTrajectory.at(3, 0),
+        PlaceInTrajectory.at(3, 1),
+      ]);
       expect(link.programs, [
         Program.write,
         isA<Executable>().having((e) => e.name, 'name', 'dart'),
@@ -186,7 +190,10 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [RecordedWeb()], rules: {'$teams as $hart'});
     final link = RecordedLink(path, airlock);
-    final proposal = {'place': 1, 'program': 'web'};
+    final proposal = {
+      'place': [1, 0],
+      'program': 'web',
+    };
     Map<String, Object?> requestWith(Map<String, Object?> change) => {
       'origin': '$teams',
       'method': 'post',
@@ -208,7 +215,7 @@ void main() {
         {'drawnFrom': 'not an id'},
         {'body': null},
       ])
-        await link.propose({...proposal, 'input': requestWith(change)}),
+        await link.proposeAsIs({...proposal, 'input': requestWith(change)}),
     ];
     expect(link.rejected, hasLength(5));
     expect(link.rejected[0], startsWith('input.path'));
@@ -228,7 +235,10 @@ void main() {
   test('what is not a proposal is rejected', () async {
     final airlock = LogAirlock();
     final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock);
-    final proposal = {'place': 1, 'input': 'a.dart'};
+    final proposal = {
+      'place': [1, 0],
+      'input': 'a.dart',
+    };
     for (final request in [
       null,
       'read a.dart',
@@ -236,7 +246,7 @@ void main() {
       {...proposal, 'program': 'start'},
       {...proposal, 'program': 'read', 'place': 'first'},
     ]) {
-      await link.propose(request);
+      await link.proposeAsIs(request);
     }
     expect(link.rejected, [
       'not a proposal',
@@ -251,10 +261,70 @@ void main() {
   test('an answer that is no outcome ends the call', () async {
     final airlock = LogAirlock();
     final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock)
-      ..answerWith = (_) => {'kind': 'maybe'};
+      ..answerWith = (_, proposed) => jsonEncode({
+        'proposed': proposed.hex,
+        'result': {'kind': 'maybe'},
+      });
     await expectLater(
       answerOf(writeAndFormat('a.dart'), loopCrux(link)),
       throwsFormatException,
+    );
+  });
+
+  test('an outcome that names another proposal ends the call', () async {
+    final airlock = LogAirlock();
+    final other = EntryId.of(utf8.encode('another proposal'));
+    final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock)
+      ..answerWith = (body, _) => body.replaceAll(
+        readOutcomeOfProposedAction(body)!.proposed.hex,
+        other.hex,
+      );
+    await expectLater(
+      answerOf(writeAndFormat('a.dart'), loopCrux(link)),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          contains('names $other'),
+        ),
+      ),
+    );
+  });
+
+  test('a place is a turn and a step, read back strictly and in order', () {
+    final place = PlaceInTrajectory.at(2, 5);
+    expect(place.toJson(), [2, 5]);
+    expect(
+      PlaceInTrajectory.parse(jsonDecode(jsonEncode(place.toJson()))),
+      place,
+    );
+    for (final json in [
+      null,
+      1,
+      'first',
+      [1],
+      [1, 2, 3],
+      [1.0, 2],
+      [-1, 0],
+      [0, -1],
+      ['1', '2'],
+    ]) {
+      expect(PlaceInTrajectory.parse(json), isNull, reason: '$json');
+    }
+    expect(() => PlaceInTrajectory.at(-1, 0), throwsArgumentError);
+    expect(PlaceInTrajectory.at(1, 0), isNot(PlaceInTrajectory.at(2, 0)));
+    expect(PlaceInTrajectory.at(1, 0), isNot(PlaceInTrajectory.at(1, 1)));
+    expect(
+      [
+        PlaceInTrajectory.at(2, 0),
+        PlaceInTrajectory.at(1, 9),
+        PlaceInTrajectory.at(1, 0),
+      ]..sort(),
+      [
+        PlaceInTrajectory.at(1, 0),
+        PlaceInTrajectory.at(1, 9),
+        PlaceInTrajectory.at(2, 0),
+      ],
     );
   });
 

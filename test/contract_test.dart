@@ -104,6 +104,9 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
     return id;
   }
 
+  /// The trajectory each [decide] was for, in order.
+  final decidedFor = <TrajectoryId>[];
+
   /// Each entry the airlock read through [recordedOn], in order.
   final readOn = <EntryId>[];
 
@@ -118,16 +121,22 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   };
 
   @override
-  Future<Decision> decide(Reach reach, Set<String> rules) async =>
-      rules.contains(switch (reach) {
-        Reads() => 'read',
-        Writes() => 'write',
-        Starts(:final program) => program.value,
-        MakesWebRequest(:final origin, :final signIn) => '$origin as $signIn',
-        CallsTheModel(:final signIn) => 'model as $signIn',
-      })
-      ? const Allow(by: DecidedBy.rules)
-      : const Deny('not in the rules', by: DecidedBy.rules);
+  Future<Decision> decide(
+    TrajectoryId trajectory,
+    Reach reach,
+    Set<String> rules,
+  ) async {
+    decidedFor.add(trajectory);
+    return rules.contains(switch (reach) {
+          Reads() => 'read',
+          Writes() => 'write',
+          Starts(:final program) => program.value,
+          MakesWebRequest(:final origin, :final signIn) => '$origin as $signIn',
+          CallsTheModel(:final signIn) => 'model as $signIn',
+        })
+        ? const Allow(by: DecidedBy.rules)
+        : const Deny('not in the rules', by: DecidedBy.rules);
+  }
 
   @override
   Future<void> recordDecision(AirlockDecisionOnAction<int> decision) async {
@@ -222,7 +231,11 @@ EntryId recordedProposal(
   Object? input, {
   TrajectoryId? on,
 }) => airlock.remember(
-  jsonEncode({'place': 1, 'program': program, 'input': input}),
+  jsonEncode({
+    'place': [1, 0],
+    'program': program,
+    'input': input,
+  }),
   kind: ActionProposedByAgentLoop.kind,
   on: on,
 );
@@ -775,6 +788,13 @@ void main() {
       Projection.parse('trajectory-open-card'),
       Projection.trajectoryOpenCard,
     );
+  });
+
+  test('the airlock decides knowing which trajectory acts', () async {
+    final airlock = LogAirlock();
+    final path = start(airlock, [MemoryFiles()], rules: {'write', 'dart'});
+    await answerOf(writeAndFormat('a.dart'), path.at(1));
+    expect(airlock.decidedFor, [path.id, path.id]);
   });
 
   test('a denied web request never has its entry read', () async {

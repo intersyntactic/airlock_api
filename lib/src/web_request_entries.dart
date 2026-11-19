@@ -54,12 +54,7 @@ final class AirlockDecisionOnWebRequest {
       json.raw('place'),
       _webRequestFromJson(json.object('request'), '$field.request'),
       _decisionFromJson(json.object('decision'), '$field.decision'),
-      switch (json.stringOrNull('proposed')) {
-        null => null,
-        final hex =>
-          EntryId.parse(hex) ??
-              (throw FormatException('$field.proposed: not an entry id')),
-      },
+      _proposedFromJson(json, field),
     ),
   );
 
@@ -79,14 +74,7 @@ final class AirlockDecisionOnWebRequest {
     'trajectory': trajectory.hex,
     'place': place,
     'request': _webRequestToJson(request),
-    'decision': switch (decision) {
-      Allow(:final by) => {'allow': true, 'by': by.name},
-      Deny(:final why, :final by) => {
-        'allow': false,
-        'why': why,
-        'by': by.name,
-      },
-    },
+    'decision': _decisionToJson(decision),
     'proposed': proposed?.hex,
   };
 }
@@ -194,9 +182,14 @@ Decision _decisionFromJson(JsonObject json, String field) => _at(field, () {
   final by =
       DecidedBy.values.asNameMap()[json.string('by')] ??
       (throw FormatException('$field.by: not rules or person'));
+  final reliedOn = [
+    for (final (i, hex) in (json.stringsOrNull('reliedOn') ?? []).indexed)
+      EntryId.parse(hex) ??
+          (throw FormatException('$field.reliedOn[$i]: not an entry id')),
+  ];
   return json.boolean('allow')
-      ? Allow(by: by)
-      : Deny(json.string('why'), by: by);
+      ? Allow(by: by, reliedOn: reliedOn)
+      : Deny(json.string('why'), by: by, reliedOn: reliedOn);
 });
 
 /// What [read] reads from an object at [field], a field of the wrong shape

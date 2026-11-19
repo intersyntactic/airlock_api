@@ -7,44 +7,99 @@ part of 'action.dart';
 // what the action came to. loop_launcher hands that entry to the path's
 // loop. The airlock has no door of its own.
 
-/// Records an [ActionProposedByAgentLoop], as JSON, and brings back what the
-/// airlock recorded it came to, as JSON: the transport, which this package
-/// does not have.
-///
-/// For an agent loop: write an [ActionProposedByAgentLoop.kind] logbook
-/// entry on the loop's trajectory's chain, wait for the
-/// [outcomeOfProposedActionKind] entry that names it, and give back the
-/// `result` [readOutcomeOfProposedAction] reads from it.
-///
-/// The outcome names the proposal by the id the logbook gave its entry when
-/// it took it: the hash of the whole recorded entry, which covers the entry
-/// before it on the chain. Wait on that id, as the write returned it. A
-/// hash of the proposal's body alone is never it.
+/// Writes an [ActionProposedByAgentLoop] logbook entry and waits for what the
+/// airlock recorded it came to: the transport, which this package does not
+/// have. This package joins the two, so a loop never works out an id.
 abstract interface class ProposesActionsThroughTheRecord {
-  Future<Object?> propose(Object? proposal);
+  /// Writes [body] as an [ActionProposedByAgentLoop.kind] logbook entry on
+  /// the loop's trajectory's chain, and gives the id the logbook gave it:
+  /// the hash of the whole recorded entry, which covers the entry before it
+  /// on the chain. Never a hash of [body] alone.
+  Future<EntryId> writeProposal(String body);
+
+  /// The body of the [outcomeOfProposedActionKind] logbook entry that names
+  /// [proposed], once the airlock has kept it.
+  Future<String> outcomeNaming(EntryId proposed);
 }
 
-/// A crux in the agent loop: proposes each action's program and input through
-/// the record, and keeps the continuation.
+/// Where in its trajectory a loop proposed an action: the [turn], one model
+/// call and what it caused, and the [step] within it. The model call is
+/// step 0 and a tool call's actions follow it, so a loop that restarts
+/// proposes the same steps at the same places, and a place the record
+/// already answers is one it need not propose again.
+final class PlaceInTrajectory implements Comparable<PlaceInTrajectory> {
+  const PlaceInTrajectory._(this.turn, this.step);
+
+  /// The place [step] of [turn]; both are counted from 0.
+  factory PlaceInTrajectory.at(int turn, int step) => turn >= 0 && step >= 0
+      ? PlaceInTrajectory._(turn, step)
+      : throw ArgumentError('a place is counted from 0: $turn, $step');
+
+  /// [json], as [toJson] writes it, read back; null when it is not one.
+  static PlaceInTrajectory? parse(Object? json) => switch (json) {
+    [final int turn, final int step] when turn >= 0 && step >= 0 =>
+      PlaceInTrajectory._(turn, step),
+    _ => null,
+  };
+
+  final int turn;
+  final int step;
+
+  Object? toJson() => [turn, step];
+
+  /// By [turn], then by [step]: a trajectory's places in the order they
+  /// were proposed.
+  @override
+  int compareTo(PlaceInTrajectory other) => turn != other.turn
+      ? turn.compareTo(other.turn)
+      : step.compareTo(other.step);
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlaceInTrajectory && other.turn == turn && other.step == step;
+
+  @override
+  int get hashCode => Object.hash(turn, step);
+
+  @override
+  String toString() => '$turn.$step';
+}
+
+/// A crux in the agent loop for one turn: proposes each action's program and
+/// input through the record at the turn's next step, and keeps the
+/// continuation.
 final class _ThroughRecord extends Crux {
-  const _ThroughRecord(this._link, {required this._place});
+  _ThroughRecord(this._link, {required this._turn});
 
   final ProposesActionsThroughTheRecord _link;
-  final Object? _place;
+  final int _turn;
+  int _nextStep = 0;
 
-  /// The outcome the airlock recorded. An answer that is not one throws a
-  /// [FormatException], ending the call: whether the action reached the world
-  /// is then not known here, and the airlock's record says.
+  /// The outcome the airlock recorded. An answer that is not one, or that
+  /// names another proposal, throws a [FormatException], ending the call:
+  /// whether the action reached the world is then not known here, and the
+  /// airlock's record says.
   @override
-  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) async =>
-      decodeOutcome(
-        await _link.propose({
-          'place': _place,
-          ...program._wire.program,
-          'input': program._wire.inputToJson(input),
-        }),
-        program._wire.outputFromJson,
-      );
+  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) async {
+    final place = PlaceInTrajectory.at(_turn, _nextStep++);
+    final proposed = await _link.writeProposal(
+      jsonEncode({
+        'place': place.toJson(),
+        ...program._wire.program,
+        'input': program._wire.inputToJson(input),
+      }),
+    );
+    return switch (readOutcomeOfProposedAction(
+      await _link.outcomeNaming(proposed),
+    )) {
+      (proposed: final named, :final result) when named == proposed =>
+        decodeOutcome(result, program._wire.outputFromJson),
+      (proposed: final named, result: _) => throw FormatException(
+        'the outcome for $proposed names $named',
+      ),
+      null => throw FormatException('no outcome for $proposed'),
+    };
+  }
 }
 
 /// How a program, its input and its output travel in an
@@ -146,19 +201,17 @@ final class ActionProposedByAgentLoop implements Received {
     if (program is! String) return const Rejected('not a proposal');
     final p = _programNamed(program, json.raw('executable'));
     if (p == null) return Rejected('not a program: $program');
+    final place = PlaceInTrajectory.parse(json.raw('place'));
+    if (place == null) return const Rejected('not a place');
     try {
-      return ActionProposedByAgentLoop._(
-        json.raw('place'),
-        p._work(json.raw('input')),
-      );
+      return ActionProposedByAgentLoop._(place, p._work(json.raw('input')));
     } on FormatException catch (e) {
       return Rejected(e.message);
     }
   }
 
-  /// The place in a turn, as the loop wrote it; the airlock service reads
-  /// it as its trajectory's `P`.
-  final Object? place;
+  /// Where in its trajectory the loop proposed it.
+  final PlaceInTrajectory place;
 
   /// The program this proposes, as a type: a reader tells a model call from
   /// a web request by it, as `program: AskTheModel()` in a pattern.
@@ -174,6 +227,9 @@ final class _Work<I, O> {
 
   final Program<I, O> program;
   final I input;
+
+  /// What [input] would do to the world.
+  Reach get reach => program._reach(input);
 
   Future<void> on<P>(
     Trajectory<Object?, P> trajectory,

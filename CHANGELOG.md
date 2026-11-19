@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.12.0
+
+Breaking, for the agent loop and the airlock alike.
+
+- `PlaceInTrajectory(turn, step)`: where in its trajectory a loop proposed
+  an action, written `[turn, step]`, ordered by turn then step.
+  `ActionProposedByAgentLoop.place` is one, and a proposal without one is
+  `Rejected('not a place')`.
+- `Crux.through(link, turn:)` replaces `Crux.through(link, place:)`. Make
+  one per turn: it proposes each action at the turn's next step from 0, so
+  a tool that takes several actions gives each its own place, and a
+  restarted loop gives each the same place again.
+- `ProposesActionsThroughTheRecord` is `writeProposal(body)`, giving the id
+  the logbook gave the entry, and `outcomeNaming(id)`, giving the outcome
+  entry's body. `propose` is gone. This package joins the two and refuses
+  an outcome that names another proposal, so a loop never works out an id.
+- `DecidesAndRecordsActions.decide(trajectory, reach, rules)`: the airlock
+  is told which trajectory acts, so it can read what holds for it now,
+  such as the bot leased to it.
+- `Decision.reliedOn`: the logbook entries the airlock read to decide,
+  beyond the rules. `AirlockDecisionOnWebRequest` writes them as
+  `decision.reliedOn` only when there are any, so a decision kept before
+  reads back to the same bytes.
+- `AirlockDecisionOnAction.toJson(placeToJson)` and
+  `AirlockDecisionOnAction.fromJson(json, placeFromJson)`: a decision of
+  every reach, as the logbook holds it under `airlock-decision-on-action`.
+  The reach is written as the program and input that make it, exactly as a
+  proposal writes them, so the airlock can rebuild from history which
+  places it decided and which decisions have no result after them, for
+  every kind of action. A web request's decision keeps its own entry,
+  byte for byte.
+
 ## 0.11.1
 
 - A `teams-message-from-model-reply` request is sent only when the

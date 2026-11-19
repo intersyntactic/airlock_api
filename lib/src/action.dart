@@ -12,6 +12,7 @@ part 'web_request_entries.dart';
 part 'proposal.dart';
 part 'waiting_to_start.dart';
 part 'model_request.dart';
+part 'decision_entry.dart';
 
 /// What a tool's code returns for a call: an action whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
@@ -166,7 +167,7 @@ sealed class Program<I, O> {
   );
 
   /// What [input] would do to the world.
-  Future<Reach> _reach(I input);
+  Reach _reach(I input);
 
   /// How this program, its input and its output travel between the agent
   /// loop and the airlock.
@@ -174,8 +175,8 @@ sealed class Program<I, O> {
 
   /// This program with the input [json] holds. Throws a [FormatException]
   /// when it holds none.
-  _Work<I, O> _work(Object? json) =>
-      _Work(this, _wire.inputFromJson(json, 'input'));
+  _Work<I, O> _work(Object? json, [String field = 'input']) =>
+      _Work(this, _wire.inputFromJson(json, field));
 
   /// [input], whose reach is [reach], performed by [trajectory]'s driver
   /// for this program, reporting to [report] while it runs, or null when it
@@ -196,7 +197,7 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
   String get name => 'read';
 
   @override
-  Future<Reach> _reach(RelativePath path) async => Reads(path);
+  Reach _reach(RelativePath path) => Reads(path);
 
   @override
   _Wire<RelativePath, ReadResult> get _wire => const _Wire(
@@ -224,7 +225,7 @@ final class WriteFile extends Program<FileText, Wrote> {
   String get name => 'write';
 
   @override
-  Future<Reach> _reach(FileText file) async => Writes(file);
+  Reach _reach(FileText file) => Writes(file);
 
   @override
   _Wire<FileText, Wrote> get _wire => const _Wire(
@@ -261,7 +262,7 @@ final class Executable extends Program<Args, ExecResult> {
   String get name => program.value;
 
   @override
-  Future<Reach> _reach(Args args) async => Starts(program, args);
+  Reach _reach(Args args) => Starts(program, args);
 
   @override
   _Wire<Args, ExecResult> get _wire => _Wire(
@@ -372,7 +373,7 @@ final class MakeWebRequest extends Program<WebRequest, WebResponse> {
   String get name => 'web';
 
   @override
-  Future<Reach> _reach(WebRequest request) async => MakesWebRequest(request);
+  Reach _reach(WebRequest request) => MakesWebRequest(request);
 
   @override
   _Wire<WebRequest, WebResponse> get _wire => const _Wire(
@@ -462,7 +463,7 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
   String get name => 'model';
 
   @override
-  Future<Reach> _reach(ModelCall call) async => CallsTheModel(call);
+  Reach _reach(ModelCall call) => CallsTheModel(call);
 
   @override
   _Wire<ModelCall, ModelReply> get _wire => const _Wire(
@@ -756,10 +757,10 @@ final class Trajectory<R, P> {
     EntryId? proposed,
   }) async {
     const stoppedByPerson = Deny('stopped', by: DecidedBy.person);
-    final reach = await program._reach(input);
+    final reach = program._reach(input);
     var decision = stopped
         ? stoppedByPerson
-        : await _airlock.decide(reach, rules);
+        : await _airlock.decide(id, reach, rules);
     if (stopped) decision = stoppedByPerson;
     final decided = AirlockDecisionOnAction(
       id,
@@ -822,13 +823,14 @@ final class Trajectory<R, P> {
 sealed class Crux {
   const Crux();
 
-  /// The crux, at [place], of the trajectory whose chain [link] writes to.
-  ///
-  /// [place] is already the JSON its trajectory reads places from, since
-  /// the loop and the airlock service agree its type between them.
-  const factory Crux.through(
+  /// The crux for [turn] of the trajectory whose chain [link] writes to: it
+  /// proposes each action at the turn's next step, from 0, so the model
+  /// call, each action of a tool it asks for and the reply each get their
+  /// own place, and a restarted loop gives each the same place again. Make
+  /// one per turn and carry every action of the turn through it.
+  factory Crux.through(
     ProposesActionsThroughTheRecord link, {
-    required Object? place,
+    required int turn,
   }) = _ThroughRecord;
 
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
@@ -851,12 +853,15 @@ final class _AtPath<P> extends Crux {
 /// given, not the mission: an agent that joins a mission with its own
 /// drivers is decided, or not, by its own.
 abstract interface class DecidesAndRecordsActions<R, P> {
-  /// Whether a driver may carry out an action that would do [reach], under
-  /// [rules].
+  /// Whether a driver may carry out an action of [trajectory]'s that would
+  /// do [reach], under [rules].
   ///
   /// Given the reach, not the action, so the decision is about exactly what is
-  /// recorded: for a web request, the bytes it sends.
-  Future<Decision> decide(Reach reach, R rules);
+  /// recorded: for a web request, the bytes it sends. Given the trajectory,
+  /// so the airlock can read what holds for it now from its chain, such as
+  /// the bot leased to it, at the moment of deciding; the decision names
+  /// each entry it read in [Decision.reliedOn].
+  Future<Decision> decide(TrajectoryId trajectory, Reach reach, R rules);
 
   /// Keeps [decision] in the logbook. An action's driver is reached only
   /// once its decision is kept; an error thrown here ends the call.
@@ -918,20 +923,25 @@ abstract interface class DecidesAndRecordsActions<R, P> {
 /// What the airlock decided about one action, and [by] whom, so the record
 /// tells "the rules let it through" from "the person said yes".
 sealed class Decision {
-  const Decision({required this.by});
+  const Decision({required this.by, this.reliedOn = const []});
 
   final DecidedBy by;
+
+  /// The logbook entries the airlock read to decide, beyond the rules: what
+  /// held for the trajectory at that moment, such as the lease of the bot it
+  /// may post as. Empty when the rules alone decided.
+  final List<EntryId> reliedOn;
 }
 
 /// A driver may carry the action out.
 final class Allow extends Decision {
-  const Allow({required super.by});
+  const Allow({required super.by, super.reliedOn});
 }
 
 /// No driver carries the action out, because [why]; its continuation is handed
 /// [Refused] with that reason.
 final class Deny extends Decision {
-  const Deny(this.why, {required super.by});
+  const Deny(this.why, {required super.by, super.reliedOn});
 
   final String why;
 }
@@ -956,6 +966,38 @@ final class AirlockDecisionOnAction<P> {
   /// The kind of the logbook entry the airlock keeps it as, unless it is a
   /// web request's, which is an [AirlockDecisionOnWebRequest].
   static const kind = 'airlock-decision-on-action';
+
+  /// [json] read back as [toJson] wrote it, its place read by
+  /// [placeFromJson], null for one that is not a place. Each part is
+  /// checked as its type's `parse` checks it; throws a [FormatException]
+  /// naming the part.
+  static AirlockDecisionOnAction<P> fromJson<P>(
+    JsonObject json,
+    P? Function(Object? json) placeFromJson, [
+    String field = 'decided',
+  ]) => _at(
+    field,
+    () => AirlockDecisionOnAction(
+      TrajectoryId.parse(json.string('trajectory')) ??
+          (throw FormatException('$field.trajectory: not a trajectory')),
+      placeFromJson(json.raw('place')) ??
+          (throw FormatException('$field.place: not a place')),
+      _reachFromJson(json.object('reach'), '$field.reach'),
+      _decisionFromJson(json.object('decision'), '$field.decision'),
+      proposed: _proposedFromJson(json, field),
+    ),
+  );
+
+  /// This decision as the logbook holds it, for every reach, its place
+  /// written by [placeToJson]. The reach is the program and input that
+  /// make it, as a proposal writes them.
+  Object? toJson(Object? Function(P place) placeToJson) => {
+    'trajectory': trajectoryId.hex,
+    'place': placeToJson(place),
+    'reach': _reachToJson(reach),
+    'decision': _decisionToJson(decision),
+    'proposed': proposed?.hex,
+  };
 
   final TrajectoryId trajectoryId;
   final P place;
