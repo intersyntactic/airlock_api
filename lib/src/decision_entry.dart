@@ -13,7 +13,8 @@ Object? _reachToJson(Reach reach) {
     'input': program._wire.inputToJson(input),
   };
   return switch (reach) {
-    Reads(:final path) => as(Program.read, path),
+    Reads(:final path, as: ReadsAs.text) => as(Program.read, path),
+    Reads(:final path, as: ReadsAs.bytes) => as(Program.readBytes, path),
     Writes(:final file) => as(Program.write, file),
     Starts(:final program, :final args) => as(Executable(program), args),
     MakesWebRequest(:final request) => as(Program.web, request),

@@ -125,8 +125,8 @@ final class Failed extends Result<Never> {
 /// A program an action may run: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile], [Executable], [MakeWebRequest]
-/// and [AskTheModel].
+/// A closed set: [ReadFile], [ReadFileBytes], [WriteFile], [Executable],
+/// [MakeWebRequest] and [AskTheModel].
 /// Programs reach drivers, so they are part of what is trusted, with the
 /// drivers and the airlock; a new kind of action is a new driver and program
 /// here.
@@ -139,6 +139,7 @@ sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
+  static const readBytes = ReadFileBytes();
   static const write = WriteFile();
   static const web = MakeWebRequest();
   static const askTheModel = AskTheModel();
@@ -215,6 +216,36 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
     Reach reach,
     Report report,
   ) => trajectory._driver<ReadsAndWritesFiles>()?.read(path);
+}
+
+/// Reads the exact bytes of the file at a path under the file driver's root,
+/// such as a .docx's zip. Every byte returned is recorded, so the driver
+/// refuses a file over its size limit.
+final class ReadFileBytes extends Program<RelativePath, BytesReadResult> {
+  const ReadFileBytes();
+
+  @override
+  String get name => 'read-bytes';
+
+  @override
+  Reach _reach(RelativePath path) => Reads(path, as: ReadsAs.bytes);
+
+  @override
+  _Wire<RelativePath, BytesReadResult> get _wire => const _Wire(
+    {'program': 'read-bytes'},
+    inputToJson: encodeRelativePath,
+    inputFromJson: decodeRelativePath,
+    outputToJson: encodeBytesReadResult,
+    outputFromJson: decodeBytesReadResult,
+  );
+
+  @override
+  Future<Outcome<BytesReadResult>>? _on(
+    Trajectory<Object?, Object?> trajectory,
+    RelativePath path,
+    Reach reach,
+    Report report,
+  ) => trajectory._driver<ReadsAndWritesFiles>()?.readBytes(path);
 }
 
 /// Writes a file, creating its folder.
@@ -617,11 +648,19 @@ sealed class Reach {
   const Reach();
 }
 
+/// Reads the file at [path], as text or as its exact bytes. Either way it
+/// reveals the same file, so a rule granting [path] grants both.
 final class Reads extends Reach {
-  const Reads(this.path);
+  const Reads(this.path, {this.as = ReadsAs.text});
 
   final RelativePath path;
+
+  /// Which program reads it, so the record names the one that ran.
+  final ReadsAs as;
 }
+
+/// How a [Reads] reads its file: [ReadFile] or [ReadFileBytes].
+enum ReadsAs { text, bytes }
 
 final class Writes extends Reach {
   const Writes(this.file);

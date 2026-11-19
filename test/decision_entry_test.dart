@@ -31,6 +31,7 @@ final reaches = <Reach>[
       request: EntryId.of(utf8.encode('a model request')),
     ),
   ),
+  Reads(RelativePath('report.docx'), as: ReadsAs.bytes),
 ];
 
 final place = PlaceInTrajectory.at(3, 1);
@@ -94,6 +95,16 @@ void main() {
         throughText(written(decided(r, const Allow(by: DecidedBy.rules))))
             .asUncheckedMap()['reach'];
     expect(reachOf(reaches[0]), {'program': 'read', 'input': 'a.dart'});
+    expect(reachOf(reaches[5]), {
+      'program': 'read-bytes',
+      'input': 'report.docx',
+    });
+    expect(
+      readBack(
+        written(decided(reaches[5], const Allow(by: DecidedBy.rules))),
+      ).reach,
+      isA<Reads>().having((r) => r.as, 'as', ReadsAs.bytes),
+    );
     expect(
       reachOf(reaches[2]),
       allOf(

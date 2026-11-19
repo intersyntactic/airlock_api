@@ -141,6 +141,34 @@ void main() {
     expect(jsonEncode(airlock.results[proposed]), contains('the text'));
   });
 
+  test("a file's exact bytes reach the loop from the record, and the decision "
+      'names the bytes read', () async {
+    final airlock = LogAirlock();
+    final files = MemoryFiles()..files['report.docx'] = 'PK zip';
+    final path = start(airlock, [files]);
+    final link = RecordedLink(path, airlock);
+    final decisions = <AirlockDecisionOnAction<int>>[];
+    path.decisions.listen(decisions.add);
+    expect(
+      await answerOf(
+        Program.readBytes.runOrRefusal(
+          RelativePath('report.docx'),
+          then: (read) => Done(switch (read) {
+            ReadBytes(:final bytes) => utf8.decode(bytes),
+            ReadMissing() => 'missing',
+          }),
+        ),
+        loopCrux(link),
+      ),
+      'PK zip',
+    );
+    expect(link.programs, [Program.readBytes]);
+    expect(
+      decisions.single.reach,
+      isA<Reads>().having((r) => r.as, 'as', ReadsAs.bytes),
+    );
+  });
+
   test(
     'a web request proposed through the record sends a recorded reply',
     () async {

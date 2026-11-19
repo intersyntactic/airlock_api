@@ -243,6 +243,7 @@ final class _Work<I, O> {
 Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
     switch ((name, executable)) {
       ('read', null) => Program.read,
+      ('read-bytes', null) => Program.readBytes,
       ('write', null) => Program.write,
       ('web', null) => Program.web,
       ('model', null) => Program.askTheModel,
