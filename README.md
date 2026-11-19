@@ -169,6 +169,10 @@ supplies and the airlock records; nothing here computes one.
   the call. A decision with no result after it is an action cut short. Recorded means it
   survives the logbook service crashing, not a power cut
   (https://github.com/intersyntactic/logbook/pull/12).
+- `AirlockDecisionOnAction.toJson` / `fromJson`: a decision of every reach
+  as the logbook holds it (`airlock-decision-on-action`), its reach written
+  as the program and input that make it, as a proposal writes them, so
+  the airlock can read back which places it decided.
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped trajectory's refusal
   is the person's. `reliedOn` names the logbook entries the airlock read

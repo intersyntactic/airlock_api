@@ -23,6 +23,14 @@ Breaking, for the agent loop and the airlock alike.
   beyond the rules. `AirlockDecisionOnWebRequest` writes them as
   `decision.reliedOn` only when there are any, so a decision kept before
   reads back to the same bytes.
+- `AirlockDecisionOnAction.toJson(placeToJson)` and
+  `AirlockDecisionOnAction.fromJson(json, placeFromJson)`: a decision of
+  every reach, as the logbook holds it under `airlock-decision-on-action`.
+  The reach is written as the program and input that make it, exactly as a
+  proposal writes them, so the airlock can rebuild from history which
+  places it decided and which decisions have no result after them, for
+  every kind of action. A web request's decision keeps its own entry,
+  byte for byte.
 
 ## 0.11.1
 
