@@ -49,9 +49,9 @@ final class RecordedWeb implements CarriesOutWebRequests {
   final requests = <Request>[];
 
   @override
-  Future<Outcome<WebRequestOutcome>> carryOutWebRequest(Request request) async {
+  Future<Outcome<WebResponse>> carryOutWebRequest(Request request) async {
     requests.add(request);
-    return const Ran(WebRequestOutcome(status: 201, created: 'activity-1'));
+    return const Ran(WebResponse(status: 201, created: 'activity-1'));
   }
 }
 
@@ -222,7 +222,10 @@ EntryId recordedReply(LogAirlock airlock, String text, {TrajectoryId? on}) =>
       jsonEncode(
         outcomeOfProposedActionToJson(
           EntryId.of(utf8.encode('asked for: $text')),
-          encodeOutcome<ModelReply>(Ran(ModelReply(text)), encodeModelReply),
+          encodeOutcome<ModelReply>(
+            Ran(FinishedReply(text: text)),
+            encodeModelReply,
+          ),
         ),
       ),
       kind: outcomeOfProposedActionKind,
@@ -576,7 +579,7 @@ void main() {
             outcomeOfProposedActionToJson(
               EntryId.of(utf8.encode('p')),
               encodeOutcome<ModelReply>(
-                const Ran(ModelReply('anything the loop likes')),
+                const Ran(FinishedReply(text: 'anything the loop likes')),
                 encodeModelReply,
               ),
             ),
@@ -658,7 +661,10 @@ void main() {
         jsonEncode(
           outcomeOfProposedActionToJson(
             own,
-            encodeOutcome<ModelReply>(Ran(ModelReply('hi')), encodeModelReply),
+            encodeOutcome<ModelReply>(
+              Ran(FinishedReply(text: 'hi')),
+              encodeModelReply,
+            ),
           ),
         ),
       ),

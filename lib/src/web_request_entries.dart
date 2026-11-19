@@ -99,7 +99,9 @@ enum Projection {
   /// [outcomeOfProposedActionKind] body whose result ran to a [ModelReply],
   /// read by is_effects's `decodeModelReply`, as
   /// `{"type":"message","text":<text>}`, Dart's `jsonEncode` of those two
-  /// keys in that order, with no whitespace and the text as UTF-8.
+  /// keys in that order, with no whitespace and the text as UTF-8. A
+  /// [CutOffReply]'s text is followed by a blank line and
+  /// `_(reply cut off)_`, so it never reads as the whole answer.
   teamsMessageFromModelReply('teams-message-from-model-reply'),
 
   /// The card that shows a trajectory is open, with its one Close action:
@@ -124,12 +126,19 @@ enum Projection {
   /// caller checks the entry's kind.
   String? drawnFrom(String recorded) => switch (this) {
     teamsMessageFromModelReply => switch (_modelReplyIn(recorded)) {
-      final reply? => jsonEncode({'type': 'message', 'text': reply.text}),
+      FinishedReply(:final text) => _teamsMessage(text),
+      CutOffReply(:final text) => _teamsMessage('$text\n\n$_cutOffMarker'),
       null => null,
     },
     trajectoryOpenCard => null,
   };
 }
+
+String _teamsMessage(String text) =>
+    jsonEncode({'type': 'message', 'text': text});
+
+/// The line a cut-off reply ends with in Teams.
+const _cutOffMarker = '_(reply cut off)_';
 
 /// The exact body of [Projection.trajectoryOpenCard]: a Teams message
 /// holding an Adaptive Card 1.5, the version that has rendered in both

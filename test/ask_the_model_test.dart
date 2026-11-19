@@ -22,7 +22,7 @@ final class RecordedModel implements AsksTheModel {
     calls.add([signIn.name, model.value, systemPrompt, request]);
     report(const ReplyArriving('Clause 4 '));
     report(const ReplyArriving('says rent is due monthly.'));
-    return const Ran(ModelReply('Clause 4 says rent is due monthly.'));
+    return const Ran(FinishedReply(text: 'Clause 4 says rent is due monthly.'));
   }
 }
 

@@ -189,14 +189,31 @@ void main() {
     final proposed = EntryId.of(utf8.encode('asked'));
     String outcome(Object? result) =>
         jsonEncode(outcomeOfProposedActionToJson(proposed, result));
-    expect(
-      teamsMessage.drawnFrom(
-        outcome(
-          encodeOutcome<ModelReply>(Ran(ModelReply('hi')), encodeModelReply),
-        ),
-      ),
-      teamsMessageOf('hi'),
+    String? drawn(ModelReply reply) => teamsMessage.drawnFrom(
+      outcome(encodeOutcome<ModelReply>(Ran(reply), encodeModelReply)),
     );
+    const usage = ModelUsage(
+      input: 150000,
+      cacheRead: 2000,
+      output: 300,
+      contextWindow: 1000000,
+    );
+    expect(drawn(const FinishedReply(text: 'hi')), teamsMessageOf('hi'));
+    expect(
+      drawn(const FinishedReply(text: 'hi', usage: usage)),
+      teamsMessageOf('hi'),
+      reason: 'a reply with usage is written as an object, and still drawn',
+    );
+    for (final reply in [
+      const CutOffReply(text: 'Clause 4 is'),
+      const CutOffReply(text: 'Clause 4 is', usage: usage),
+    ]) {
+      expect(
+        drawn(reply),
+        teamsMessageOf('Clause 4 is\n\n_(reply cut off)_'),
+        reason: 'a cut-off reply is never posted as the whole answer',
+      );
+    }
     for (final recorded in [
       outcome(encodeOutcome<ModelReply>(const Refused('no'), encodeModelReply)),
       outcome({'kind': 'ran', 'output': 7}),

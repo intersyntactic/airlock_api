@@ -327,7 +327,7 @@ Future<Outcome<String>> _bodyOf(
 /// request's [Projection], and reaches the web driver only when that is
 /// byte-identical to the body. Any other body is refused, so a loop can send
 /// only what its projection makes of what is recorded.
-final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
+final class MakeWebRequest extends Program<WebRequest, WebResponse> {
   const MakeWebRequest();
 
   @override
@@ -337,16 +337,16 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
   Future<Reach> _reach(WebRequest request) async => MakesWebRequest(request);
 
   @override
-  _Wire<WebRequest, WebRequestOutcome> get _wire => const _Wire(
+  _Wire<WebRequest, WebResponse> get _wire => const _Wire(
     {'program': 'web'},
     inputToJson: _webRequestToJson,
     inputFromJson: _webRequestFromJson,
-    outputToJson: encodeWebRequestOutcome,
-    outputFromJson: decodeWebRequestOutcome,
+    outputToJson: encodeWebResponse,
+    outputFromJson: decodeWebResponse,
   );
 
   @override
-  Future<Outcome<WebRequestOutcome>>? _on(
+  Future<Outcome<WebResponse>>? _on(
     Trajectory<Object?, Object?> trajectory,
     WebRequest request,
     Reach reach,
@@ -356,7 +356,7 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
     final web => _make(web, trajectory, request),
   };
 
-  static Future<Outcome<WebRequestOutcome>> _make(
+  static Future<Outcome<WebResponse>> _make(
     CarriesOutWebRequests web,
     Trajectory<Object?, Object?> trajectory,
     WebRequest request,
@@ -386,7 +386,7 @@ final class MakeWebRequest extends Program<WebRequest, WebRequestOutcome> {
     Projection.trajectoryOpenCard => await _send(web, request),
   };
 
-  static Future<Outcome<WebRequestOutcome>> _send(
+  static Future<Outcome<WebResponse>> _send(
     CarriesOutWebRequests web,
     WebRequest request,
   ) => web.carryOutWebRequest(

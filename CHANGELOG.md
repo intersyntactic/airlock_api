@@ -2,9 +2,19 @@
 
 ## 0.11.0
 
-Breaking. JSON is read with checked_json's `JsonObject`, checked once
-where it is decoded.
+Breaking. Takes is_effects `^0.9.0`, reads JSON with checked_json, and adds
+a trajectory open card.
 
+- is_effects 0.9.0: `WebRequestOutcome` is `WebResponse`, and a
+  `ModelReply` is `FinishedReply` or `CutOffReply`, with token usage.
+- A cut-off reply reaches Teams with a blank line and `_(reply cut off)_`
+  after its text, so it never reads as the whole answer.
+- `Projection.trajectoryOpenCard`: the card that shows a trajectory is
+  open, with one Close action (verb `close`), exactly
+  `trajectoryOpenCardBody`. Its request's `drawnFrom` is the trajectory's
+  own id, and the airlock reads nothing to check it.
+- JSON is read with checked_json's `JsonObject`, checked once where it is
+  decoded.
 - Every `fromJson` takes a `JsonObject`: `AirlockDecisionOnWebRequest`,
   `ModelRequest`, `ModelRequestPiece`, `RecordedText` and `WaitingToStart`.
   Decode a logbook entry's body with `JsonObject.decode(body)`, which throws
