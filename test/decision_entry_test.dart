@@ -14,21 +14,35 @@ final reaches = <Reach>[
   Reads(RelativePath('a.dart')),
   Writes(FileText(RelativePath('a.dart'), 'void main() {}')),
   Starts(ProgramName.parse('dart')!, Args(['format', 'a.dart'])),
-  MakesWebRequest(
-    WebRequest(
-      teams,
-      path: WebPath.parse('/v3/conversations/c/activities')!,
-      signIn: hart,
-      body: teamsMessageOf('done'),
-      projection: Projection.teamsMessageFromModelReply,
-      drawnFrom: EntryId.of(utf8.encode('a reply')),
+  AnswersEvent(
+    ReplyToEvent(
+      respondsTo: EntryId.of(utf8.encode('an admission')),
+      reply: EntryId.of(utf8.encode('a reply')),
     ),
+    [
+      Request(
+        teams,
+        method: Method.post,
+        path: WebPath.parse('/v3/conversations/c/activities')!,
+        signIn: hart,
+        body: teamsMessageOf('done'),
+      ),
+    ],
   ),
   CallsTheModel(
     ModelCall(
       signIn: ModelSignInName.parse('nick-claude-team')!,
       model: ModelName.parse('claude-opus-5-5')!,
       request: EntryId.of(utf8.encode('a model request')),
+    ),
+  ),
+  Reads(RelativePath('report.docx'), as: ReadsAs.bytes),
+  FetchesFromWeb(
+    WebFetch(
+      Origin.parse('https://graph.microsoft.com')!,
+      path: WebPath.parse('/v1.0/drives/d/items/i/content')!,
+      signIn: hart,
+      keep: BodyToKeep.bytes,
     ),
   ),
 ];
@@ -94,6 +108,23 @@ void main() {
         throughText(written(decided(r, const Allow(by: DecidedBy.rules))))
             .asUncheckedMap()['reach'];
     expect(reachOf(reaches[0]), {'program': 'read', 'input': 'a.dart'});
+    expect(reachOf(reaches[5]), {
+      'program': 'read-bytes',
+      'input': 'report.docx',
+    });
+    expect(
+      readBack(written(decided(reaches[5], const Allow(by: DecidedBy.rules))))
+          .reach,
+      isA<Reads>().having((r) => r.as, 'as', ReadsAs.bytes),
+    );
+    expect(
+      readBack(written(decided(reaches[6], const Allow(by: DecidedBy.rules))))
+          .reach,
+      isA<FetchesFromWeb>()
+          .having((r) => r.path.value, 'path', '/v1.0/drives/d/items/i/content')
+          .having((r) => r.signIn, 'signIn', hart)
+          .having((r) => r.fetch.keep, 'keep', BodyToKeep.bytes),
+    );
     expect(
       reachOf(reaches[2]),
       allOf(
@@ -106,9 +137,23 @@ void main() {
     );
     expect(
       back.reach,
-      isA<MakesWebRequest>()
-          .having((r) => r.request.body, 'body', teamsMessageOf('done'))
-          .having((r) => r.signIn, 'signIn', hart),
+      isA<AnswersEvent>()
+          .having((r) => r.requests.single.body, 'body', teamsMessageOf('done'))
+          .having((r) => r.requests.single.signIn, 'signIn', hart)
+          .having((r) => r.answer, 'answer', isA<ReplyToEvent>()),
+    );
+    expect(
+      readBack(
+        written(
+          decided(
+            AnswersEvent(const TrajectoryOpened(), const []),
+            const Deny('no module', by: DecidedBy.rules),
+          ),
+        ),
+      ).reach,
+      isA<AnswersEvent>()
+          .having((r) => r.answer, 'answer', isA<TrajectoryOpened>())
+          .having((r) => r.requests, 'requests', isEmpty),
     );
     expect(
       readBack(written(decided(reaches[4], const Allow(by: DecidedBy.rules))))
@@ -153,22 +198,5 @@ void main() {
     ]) {
       expect(whyNot(key, value), startsWith(said), reason: '$key: $value');
     }
-  });
-
-  test("a web request's decision keeps its own entry, byte for byte", () {
-    final d = decided(reaches[3], const Allow(by: DecidedBy.rules));
-    final web = AirlockDecisionOnWebRequest.of(d, (p) => p.toJson())!;
-    expect(
-      jsonEncode(web.toJson()),
-      jsonEncode({
-        'trajectory': d.trajectoryId.hex,
-        'place': [3, 1],
-        'request':
-            (throughText(written(d)).asUncheckedMap()['reach']!
-                as Map<String, Object?>)['input'], // cast-ok: written above
-        'decision': {'allow': true, 'by': 'rules'},
-        'proposed': null,
-      }),
-    );
   });
 }

@@ -8,7 +8,7 @@ import 'package:is_effects/is_effects.dart';
 import 'package:is_shapes/is_shapes.dart' show DecidedBy, EntryId, TrajectoryId;
 
 part 'pool_user.dart';
-part 'web_request_entries.dart';
+part 'wire_reading.dart';
 part 'proposal.dart';
 part 'waiting_to_start.dart';
 part 'model_request.dart';
@@ -125,8 +125,8 @@ final class Failed extends Result<Never> {
 /// A program an action may run: what it takes, [I], and what it gives
 /// back, [O].
 ///
-/// A closed set: [ReadFile], [WriteFile], [Executable], [MakeWebRequest]
-/// and [AskTheModel].
+/// A closed set: [ReadFile], [ReadFileBytes], [WriteFile], [Executable],
+/// [AnswerEvent], [FetchFromWeb] and [AskTheModel].
 /// Programs reach drivers, so they are part of what is trusted, with the
 /// drivers and the airlock; a new kind of action is a new driver and program
 /// here.
@@ -139,8 +139,10 @@ sealed class Program<I, O> {
   const Program();
 
   static const read = ReadFile();
+  static const readBytes = ReadFileBytes();
   static const write = WriteFile();
-  static const web = MakeWebRequest();
+  static const answerEvent = AnswerEvent();
+  static const fetch = FetchFromWeb();
   static const askTheModel = AskTheModel();
 
   /// For the model and the record; an [Executable] is compared by it.
@@ -166,8 +168,16 @@ sealed class Program<I, O> {
     },
   );
 
-  /// What [input] would do to the world.
+  /// What [input] would do to the world, as far as the input alone says.
   Reach _reach(I input);
+
+  /// What [input] would do to the world on [trajectory], worked out before
+  /// it is decided, reaching no driver; or [Refused] with why it cannot be.
+  /// [_reach] for every program whose input says it all.
+  Future<Outcome<Reach>> _reachOn(
+    Trajectory<Object?, Object?> trajectory,
+    I input,
+  ) async => Ran(_reach(input));
 
   /// How this program, its input and its output travel between the agent
   /// loop and the airlock.
@@ -215,6 +225,36 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
     Reach reach,
     Report report,
   ) => trajectory._driver<ReadsAndWritesFiles>()?.read(path);
+}
+
+/// Reads the exact bytes of the file at a path under the file driver's root,
+/// such as a .docx's zip. Every byte returned is recorded, so the driver
+/// refuses a file over its size limit.
+final class ReadFileBytes extends Program<RelativePath, BytesReadResult> {
+  const ReadFileBytes();
+
+  @override
+  String get name => 'read-bytes';
+
+  @override
+  Reach _reach(RelativePath path) => Reads(path, as: ReadsAs.bytes);
+
+  @override
+  _Wire<RelativePath, BytesReadResult> get _wire => const _Wire(
+    {'program': 'read-bytes'},
+    inputToJson: encodeRelativePath,
+    inputFromJson: decodeRelativePath,
+    outputToJson: encodeBytesReadResult,
+    outputFromJson: decodeBytesReadResult,
+  );
+
+  @override
+  Future<Outcome<BytesReadResult>>? _on(
+    Trajectory<Object?, Object?> trajectory,
+    RelativePath path,
+    Reach reach,
+    Report report,
+  ) => trajectory._driver<ReadsAndWritesFiles>()?.readBytes(path);
 }
 
 /// Writes a file, creating its folder.
@@ -349,37 +389,128 @@ Future<Outcome<String>> _modelReplyOutcome(
       },
     };
 
-/// Makes a [WebRequest] to a site, through the sign-in it names, with
-/// exactly the body it holds.
+/// Answers an event admitted to the trajectory's mission: with a model's
+/// reply, or with the notice that the trajectory is open.
 ///
-/// An action, decided like any other: a request a tool makes to a chat, an
-/// issue tracker or an API. A call to the model is not one of these: it is
-/// [AskTheModel], through the model driver.
+/// The airlock knows no chat: it asks [DecidesAndRecordsActions] to build
+/// the requests that answer the event, which a module of the event's own
+/// system makes from what is recorded, reaching nothing. Then it decides
+/// them all at once, holding every exact request, so the decision is about
+/// exactly what will be sent and can refuse any of it before a byte leaves.
+/// Once allowed, the web driver sends them in order and stops at the first
+/// that fails, without retrying.
 ///
-/// The request carries the exact bytes it sends, so the airlock decides what
-/// will be sent, not the code that will produce it, and the decision holds
-/// those bytes. They must come from the record: once allowed, the airlock
-/// reads the entry the request is drawn from through
-/// [DecidesAndRecordsActions.recordedOn], draws the body from it by the
-/// request's [Projection], and reaches the web driver only when that is
-/// byte-identical to the body. Any other body is refused, so a loop can send
-/// only what its projection makes of what is recorded. A model reply is
-/// drawn only from the outcome of a proposal to ask the model, read from the
-/// trajectory's own chain.
-final class MakeWebRequest extends Program<WebRequest, WebResponse> {
-  const MakeWebRequest();
+/// A reply is drawn only from the outcome of a proposal to ask the model,
+/// read from the trajectory's own chain: another program's result can read
+/// as a reply, as a read's `{"kind":"text","text":…}` does.
+final class AnswerEvent extends Program<Answer, List<WebResponse>> {
+  const AnswerEvent();
 
   @override
-  String get name => 'web';
+  String get name => 'answer';
+
+  /// The reach before its requests are built: what a refused build is
+  /// decided and recorded as.
+  @override
+  Reach _reach(Answer answer) => AnswersEvent(answer, const []);
 
   @override
-  Reach _reach(WebRequest request) => MakesWebRequest(request);
+  Future<Outcome<Reach>> _reachOn(
+    Trajectory<Object?, Object?> trajectory,
+    Answer input,
+  ) async {
+    final airlock = trajectory._airlock;
+    final built = switch (input) {
+      ReplyToEvent(:final respondsTo, :final reply) =>
+        switch (await _modelReplyOutcome(trajectory, reply)) {
+          Refused(:final why) => Refused(why),
+          Ran(output: final recorded) => switch (_modelReplyIn(recorded)) {
+            null => Refused('entry $reply holds no model reply'),
+            (FinishedReply() || CutOffReply()) && final modelReply =>
+              await airlock.replyRequests(
+                trajectory.id,
+                respondsTo,
+                modelReply,
+              ),
+          },
+        },
+      TrajectoryOpened() => await airlock.trajectoryOpenedRequests(
+        trajectory.id,
+      ),
+    };
+    return switch (built) {
+      Ran(output: final requests) => Ran(AnswersEvent(input, requests)),
+      Refused(:final why) => Refused(why),
+    };
+  }
 
   @override
-  _Wire<WebRequest, WebResponse> get _wire => const _Wire(
-    {'program': 'web'},
-    inputToJson: _webRequestToJson,
-    inputFromJson: _webRequestFromJson,
+  _Wire<Answer, List<WebResponse>> get _wire => const _Wire(
+    {'program': 'answer'},
+    inputToJson: _answerToJson,
+    inputFromJson: _answerFromJson,
+    outputToJson: _webResponsesToJson,
+    outputFromJson: _webResponsesFromJson,
+  );
+
+  @override
+  Future<Outcome<List<WebResponse>>>? _on(
+    Trajectory<Object?, Object?> trajectory,
+    Answer answer,
+    Reach reach,
+    Report report,
+  ) => switch ((trajectory._driver<CarriesOutWebRequests>(), reach)) {
+    (null, _) => null,
+    (final web?, AnswersEvent(:final requests)) => _send(web, requests),
+    (_?, _) => throw StateError('an answer reaches only by AnswersEvent'),
+  };
+
+  static Future<Outcome<List<WebResponse>>> _send(
+    CarriesOutWebRequests web,
+    List<Request> requests,
+  ) async {
+    final responses = <WebResponse>[];
+    for (final request in requests) {
+      final sent = 'sent ${responses.length} of ${requests.length}';
+      switch (await web.carryOutWebRequest(request)) {
+        case Refused(:final why):
+          return Refused('$sent: $why');
+        case Ran(output: final response)
+            when response.status < 200 || response.status > 299:
+          return Refused(
+            '$sent: ${response.status} ${response.refusedBecause ?? ''}'
+                .trimRight(),
+          );
+        case Ran(output: final response):
+          responses.add(response);
+      }
+    }
+    return Ran(responses);
+  }
+}
+
+/// Fetches from a site, through the sign-in it names, with a GET that sends
+/// no body and no headers, and keeps the response's body as [WebFetch.keep]
+/// asks: a document's bytes, or a listing's text.
+///
+/// Nothing is drawn from the record, since nothing is sent but the address.
+/// The path is decided as written, so what the model chose for it reaches
+/// only the origin the rules grant with that sign-in; a rule can bound it
+/// further by prefix. Every byte kept is recorded in the outcome.
+final class FetchFromWeb extends Program<WebFetch, WebResponse> {
+  const FetchFromWeb();
+
+  @override
+  String get name => 'fetch';
+
+  @override
+  Reach _reach(WebFetch fetch) => FetchesFromWeb(fetch);
+
+  @override
+  _Wire<WebFetch, WebResponse> get _wire => const _Wire(
+    {'program': 'fetch'},
+    inputToJson: _webFetchToJson,
+    inputFromJson: _webFetchFromJson,
     outputToJson: encodeWebResponse,
     outputFromJson: decodeWebResponse,
   );
@@ -387,56 +518,35 @@ final class MakeWebRequest extends Program<WebRequest, WebResponse> {
   @override
   Future<Outcome<WebResponse>>? _on(
     Trajectory<Object?, Object?> trajectory,
-    WebRequest request,
+    WebFetch fetch,
     Reach reach,
     Report report,
-  ) => switch (trajectory._driver<CarriesOutWebRequests>()) {
-    null => null,
-    final web => _make(web, trajectory, request),
-  };
-
-  static Future<Outcome<WebResponse>> _make(
-    CarriesOutWebRequests web,
-    Trajectory<Object?, Object?> trajectory,
-    WebRequest request,
-  ) async => switch (request.projection) {
-    Projection.teamsMessageFromModelReply => switch (await _modelReplyOutcome(
-      trajectory,
-      request.drawnFrom,
-    )) {
-      Refused(:final why) => Refused(why),
-      Ran(output: final recorded)
-          when request.projection.drawnFrom(recorded) != request.body =>
-        Refused(
-          'the body is not ${request.projection.wire} of '
-          '${request.drawnFrom}',
-        ),
-      Ran() => await _send(web, request),
-    },
-    Projection.trajectoryOpenCard
-        when request.drawnFrom.hex != trajectory.id.hex =>
-      Refused(
-        'a trajectory open card is drawn from its own trajectory, '
-        '${trajectory.id.hex}, not ${request.drawnFrom}',
-      ),
-    Projection.trajectoryOpenCard when request.body != trajectoryOpenCardBody =>
-      const Refused('the body is not trajectory-open-card'),
-    Projection.trajectoryOpenCard => await _send(web, request),
-  };
-
-  static Future<Outcome<WebResponse>> _send(
-    CarriesOutWebRequests web,
-    WebRequest request,
-  ) => web.carryOutWebRequest(
+  ) => trajectory._driver<CarriesOutWebRequests>()?.carryOutWebRequest(
     Request(
-      request.origin,
-      method: request.method,
-      path: request.path,
-      signIn: request.signIn,
-      headers: request.headers,
-      body: request.body,
+      fetch.origin,
+      path: fetch.path,
+      signIn: fetch.signIn,
+      keep: fetch.keep,
     ),
   );
+}
+
+/// A GET a tool asks for: where to, as whom, and what of the response's
+/// body to keep. It has no body or headers to carry words.
+final class WebFetch {
+  const WebFetch(
+    this.origin, {
+    required this.keep,
+    this.path = WebPath.root,
+    this.signIn,
+  });
+
+  final Origin origin;
+  final WebPath path;
+
+  /// Who it goes as; null goes under no sign-in.
+  final SignIn? signIn;
+  final BodyToKeep keep;
 }
 
 /// Asks the model, through the model driver, as the [ModelCall]'s sign-in,
@@ -574,41 +684,25 @@ ModelCall _modelCallFromJson(Object? input, String field) {
   });
 }
 
-/// A web request a tool asks for: where to, as whom, and the exact [body]
-/// it sends, with the recorded entry it is drawn from and how.
-///
-/// [path] and [headers] are checked as is_effects's `Request` checks them:
-/// a [WebPath] cannot name another site, and [headers] hold no credential.
-final class WebRequest {
-  WebRequest(
-    this.origin, {
-    required this.body,
-    required this.projection,
-    required this.drawnFrom,
-    this.method = Method.post,
-    this.path = WebPath.root,
-    this.signIn,
-    Map<String, String> headers = const {},
-  }) : headers = validatedHeaders(headers);
+/// What an [AnswerEvent] answers with: a closed set.
+sealed class Answer {
+  const Answer();
+}
 
-  final Origin origin;
-  final Method method;
-  final WebPath path;
+/// The model's [reply], an outcome of a proposal to ask the model on this
+/// trajectory, answering the event admitted by [respondsTo].
+final class ReplyToEvent extends Answer {
+  const ReplyToEvent({required this.respondsTo, required this.reply});
 
-  /// Who it goes as; null goes under no sign-in.
-  final SignIn? signIn;
-  final Map<String, String> headers;
+  /// The docking station's admission of the event: one that starts a turn
+  /// on this trajectory, as the airlock checks.
+  final EntryId respondsTo;
+  final EntryId reply;
+}
 
-  /// Exactly what is sent, which the airlock refuses unless [projection]
-  /// draws it from [drawnFrom].
-  final String body;
-
-  /// How [body] is drawn from the entry [drawnFrom].
-  final Projection projection;
-
-  /// The recorded entry [body] is drawn from. It must belong to the
-  /// trajectory, as [DecidesAndRecordsActions.recordedOn] reads it.
-  final EntryId drawnFrom;
+/// That the trajectory is open, answering the event that started it.
+final class TrajectoryOpened extends Answer {
+  const TrajectoryOpened();
 }
 
 /// What an action would do to the world, typed, so the airlock can decide
@@ -617,11 +711,19 @@ sealed class Reach {
   const Reach();
 }
 
+/// Reads the file at [path], as text or as its exact bytes. Either way it
+/// reveals the same file, so a rule granting [path] grants both.
 final class Reads extends Reach {
-  const Reads(this.path);
+  const Reads(this.path, {this.as = ReadsAs.text});
 
   final RelativePath path;
+
+  /// Which program reads it, so the record names the one that ran.
+  final ReadsAs as;
 }
+
+/// How a [Reads] reads its file: [ReadFile] or [ReadFileBytes].
+enum ReadsAs { text, bytes }
 
 final class Writes extends Reach {
   const Writes(this.file);
@@ -636,28 +738,38 @@ final class Starts extends Reach {
   final Args args;
 }
 
-/// Reaches the world: a request goes to [origin], as [signIn], or under no
-/// sign-in when null.
+/// Reaches the world: answers an event with [answer] by sending [requests],
+/// exactly these, in order, each to its origin as its sign-in.
 ///
-/// Null means no sign-in, never any: it is null exactly when the request
-/// has none. So a rule granting a site under no sign-in must not match
-/// a request that has one, or a grant to fetch a page anonymously would let
-/// a trajectory make requests there as a bot.
-///
-/// A rule grants the origin and the sign-in together, never the origin
-/// alone: every bot of a kind makes requests to the same sites, so a grant
-/// by origin would let a trajectory go as any sign-in the web driver
-/// holds.
-///
-/// Holds the whole [request], its exact body among it: the decision is about
-/// what will be sent.
-final class MakesWebRequest extends Reach {
-  const MakesWebRequest(this.request);
+/// Holds every exact request, bodies among them, so the decision is about
+/// what will be sent: the airlock grants each request's origin and sign-in
+/// together, never the origin alone. Empty when the requests could not be
+/// built, which is decided as a refusal.
+final class AnswersEvent extends Reach {
+  AnswersEvent(this.answer, List<Request> requests)
+    : requests = List.unmodifiable(requests);
 
-  final WebRequest request;
+  final Answer answer;
+  final List<Request> requests;
+}
 
-  Origin get origin => request.origin;
-  SignIn? get signIn => request.signIn;
+/// Reaches the world with an address alone: a GET goes to [origin], as
+/// [signIn] or under none when null, and its response's body is kept as
+/// [fetch] asks. Its own reach, so a grant to post somewhere is not a grant
+/// to fetch from it, or the other way round.
+///
+/// A null sign-in means no sign-in, never any: a rule granting a site under
+/// no sign-in must not match a fetch that has one, or a grant to read a
+/// page anonymously would let a trajectory read there as a bot. A rule
+/// grants the origin and the sign-in together, never the origin alone.
+final class FetchesFromWeb extends Reach {
+  const FetchesFromWeb(this.fetch);
+
+  final WebFetch fetch;
+
+  Origin get origin => fetch.origin;
+  SignIn? get signIn => fetch.signIn;
+  WebPath get path => fetch.path;
 }
 
 /// Reaches the model: [call] goes out as its sign-in, to its model, with the
@@ -757,10 +869,18 @@ final class Trajectory<R, P> {
     EntryId? proposed,
   }) async {
     const stoppedByPerson = Deny('stopped', by: DecidedBy.person);
-    final reach = program._reach(input);
-    var decision = stopped
-        ? stoppedByPerson
-        : await _airlock.decide(id, reach, rules);
+    final built = stopped
+        ? Ran(program._reach(input))
+        : await program._reachOn(this, input);
+    final reach = switch (built) {
+      Ran(output: final reach) => reach,
+      Refused() => program._reach(input),
+    };
+    var decision = switch ((stopped, built)) {
+      (true, _) => stoppedByPerson,
+      (false, Refused(:final why)) => Deny(why, by: DecidedBy.rules),
+      (false, Ran()) => await _airlock.decide(id, reach, rules),
+    };
     if (stopped) decision = stoppedByPerson;
     final decided = AirlockDecisionOnAction(
       id,
@@ -857,7 +977,8 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// do [reach], under [rules].
   ///
   /// Given the reach, not the action, so the decision is about exactly what is
-  /// recorded: for a web request, the bytes it sends. Given the trajectory,
+  /// recorded: for an [AnswersEvent], every request it sends, each to be
+  /// granted by its origin and sign-in together. Given the trajectory,
   /// so the airlock can read what holds for it now from its chain, such as
   /// the bot leased to it, at the moment of deciding; the decision names
   /// each entry it read in [Decision.reliedOn].
@@ -875,8 +996,7 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   ///
   /// A decision starts a chain of its own in the logbook (previous `-`):
   /// the chain a proposal is on is its loop user's, which the airlock may not
-  /// extend. A web request's is an [AirlockDecisionOnWebRequest]; any other's
-  /// body is the airlock's to choose, under
+  /// extend. Its body is [AirlockDecisionOnAction.toJson], under
   /// [AirlockDecisionOnAction.kind]. No two may be byte-identical, since the
   /// logbook service refuses a repeated chain start, so one made for a
   /// proposal names it.
@@ -913,10 +1033,29 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// secret, so without this a loop could name another trajectory's
   /// [ModelRequest], pieces or replies and have them sent as its own.
   /// [AskTheModel] reads its request and every piece through here, and
-  /// [MakeWebRequest] the entry its body is drawn from.
+  /// [AnswerEvent] the model's reply.
   Future<Outcome<({String kind, String body})>> recordedOn(
     TrajectoryId trajectory,
     EntryId entry,
+  );
+
+  /// The requests that answer the event [respondsTo] admitted with [reply],
+  /// as the module of that event's system builds them, reaching nothing;
+  /// or [Refused] with why there are none. Refused unless [respondsTo] is
+  /// an admission of an event that starts a turn on [trajectory].
+  ///
+  /// The airlock picks the module and the sign-in the requests go as; the
+  /// decision on them then grants each one's origin and sign-in.
+  Future<Outcome<List<Request>>> replyRequests(
+    TrajectoryId trajectory,
+    EntryId respondsTo,
+    ModelReply reply,
+  );
+
+  /// The requests that tell the event that started [trajectory] that it is
+  /// open, built as [replyRequests] builds a reply's.
+  Future<Outcome<List<Request>>> trajectoryOpenedRequests(
+    TrajectoryId trajectory,
   );
 }
 
@@ -963,8 +1102,7 @@ final class AirlockDecisionOnAction<P> {
     this.proposed,
   });
 
-  /// The kind of the logbook entry the airlock keeps it as, unless it is a
-  /// web request's, which is an [AirlockDecisionOnWebRequest].
+  /// The kind of the logbook entry the airlock keeps it as.
   static const kind = 'airlock-decision-on-action';
 
   /// [json] read back as [toJson] wrote it, its place read by

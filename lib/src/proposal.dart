@@ -123,46 +123,32 @@ final class _Wire<I, O> {
   final O Function(Object? json, String field) outputFromJson;
 }
 
-/// [request] as a proposal holds it.
-Object? _webRequestToJson(WebRequest request) => {
-  'origin': encodeOrigin(request.origin),
-  'method': encodeMethod(request.method),
-  'path': encodeWebPath(request.path),
-  'signIn': switch (request.signIn) {
+Object? _webFetchToJson(WebFetch fetch) => {
+  'origin': encodeOrigin(fetch.origin),
+  'path': encodeWebPath(fetch.path),
+  'signIn': switch (fetch.signIn) {
     final signIn? => encodeSignIn(signIn),
     null => null,
   },
-  'headers': encodeHeaders(request.headers),
-  'body': request.body,
-  'projection': request.projection.wire,
-  'drawnFrom': request.drawnFrom.hex,
+  'keep': encodeBodyToKeep(fetch.keep),
 };
 
-/// [json] as a web request, each part checked as its type's `parse` checks
-/// it. Throws a [FormatException] naming the part, as is_effects's decoders
-/// do.
-WebRequest _webRequestFromJson(Object? input, [String field = 'request']) {
+/// [json] as a fetch, exactly its four keys, so a body or headers slipped
+/// into one is refused rather than dropped.
+WebFetch _webFetchFromJson(Object? input, [String field = 'fetch']) {
   final json = _object(field, input);
-  return _at(
-    field,
-    () => WebRequest(
+  return _at(field, () {
+    _exactly(field, json, const {'origin', 'path', 'signIn', 'keep'});
+    return WebFetch(
       decodeOrigin(json.raw('origin'), '$field.origin'),
-      method: decodeMethod(json.raw('method'), '$field.method'),
       path: decodeWebPath(json.raw('path'), '$field.path'),
       signIn: switch (json.raw('signIn')) {
         null => null,
         final name => decodeSignIn(name, '$field.signIn'),
       },
-      headers: decodeHeaders(json.raw('headers'), '$field.headers'),
-      body: json.string('body'),
-      projection:
-          Projection.parse(json.string('projection')) ??
-          (throw FormatException('$field.projection: not a projection')),
-      drawnFrom:
-          EntryId.parse(json.string('drawnFrom')) ??
-          (throw FormatException('$field.drawnFrom: not an entry id')),
-    ),
-  );
+      keep: decodeBodyToKeep(json.raw('keep'), '$field.keep'),
+    );
+  });
 }
 
 /// What an [ActionProposedByAgentLoop.kind] logbook entry came to, once
@@ -243,8 +229,10 @@ final class _Work<I, O> {
 Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
     switch ((name, executable)) {
       ('read', null) => Program.read,
+      ('read-bytes', null) => Program.readBytes,
       ('write', null) => Program.write,
-      ('web', null) => Program.web,
+      ('answer', null) => Program.answerEvent,
+      ('fetch', null) => Program.fetch,
       ('model', null) => Program.askTheModel,
       ('start', final String program) => Executable.parse(program),
       _ => null,
