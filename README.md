@@ -49,55 +49,54 @@ while (result is Action<ExecResult>) {
 
 ## An action
 
-- `Program`: a closed set, `ReadFile` (`Program.read`), `WriteFile`
+- `Program`: a closed set, `ReadFile` (`Program.read`), `ReadFileBytes`
+  (`Program.readBytes`, a file's exact bytes), `WriteFile`
   (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`),
-  `MakeWebRequest` (`Program.web`, a `WebRequest` to an `Origin` through a
-  named `SignIn`) and `AskTheModel` (`Program.askTheModel`, below). Programs reach drivers, so they belong with the drivers
-  and the airlock to what is trusted; a new kind of action is a new driver
-  and program.
+  `FetchFromWeb` (`Program.fetch`, below), `AnswerEvent`
+  (`Program.answerEvent`, below) and `AskTheModel` (`Program.askTheModel`,
+  below). Programs reach drivers, so they belong with the drivers and the
+  airlock to what is trusted; a new kind of action is a new driver and
+  program.
 - `Action<A>`: a program, its input and the continuation, all private. Made
   only by its program (`program.run(input, then:)`), so its input is the
   program's own type. Nothing about an action shows outside; when it is
   proposed, what it would do is worked out as its `Reach`, which the
-  airlock decides and records: `Reads(path)`, `Writes(file)`,
-  `Starts(program, args)`, `MakesWebRequest(request)` or
-  `CallsTheModel(call)`. A rule grants a web request by origin and sign-in
-  together, and a model call by its model sign-in.
+  airlock decides and records: `Reads(path, as:)`, `Writes(file)`,
+  `Starts(program, args)`, `FetchesFromWeb(fetch)`,
+  `AnswersEvent(answer, requests)` or `CallsTheModel(call)`. A rule grants
+  a web request by origin and sign-in together, never the origin alone,
+  and a model call by its model sign-in.
 
-## A web request
+## The web
 
-A web request carries the exact bytes it sends, so the airlock decides
-what will be sent, not the code that will produce it, and those bytes must
-come from the record.
+The airlock knows no chat. A loop can put words on the web in only two
+ways, and neither lets it write a body.
 
-- `WebRequest`: origin, method, a `WebPath`, sign-in, headers, the exact
-  `body`, the `projection` it is drawn by, and `drawnFrom`, the recorded
-  entry it is drawn from. The path and headers are checked as is_effects's
-  `Request` checks them. The decision holds the whole request, body and
-  all.
-- `Projection`: how a body is drawn from a recorded entry, one pure
-  function each, which the loop builds the body with and the airlock checks
-  it by. `teamsMessageFromModelReply` (`teams-message-from-model-reply`)
-  draws `{"type":"message","text":<text>}` (Dart's `jsonEncode`, those two
-  keys in that order, no whitespace, the text as UTF-8) from a
-  `outcome-of-proposed-action` whose result ran to text: a model's
-  reply.
-- Once allowed, the airlock reads `drawnFrom` through
-  `DecidesAndRecordsActions.recordedOn`, which gives it only when it
-  belongs to the trajectory, draws the body by the projection, and reaches
-  the web driver only when that is byte-identical to `body`. Anything else
-  is refused, each for its own reason, and nothing is sent. So a loop can
-  send only what its projection makes of what is recorded, and the words
-  in a model's reply only as the airlock recorded them.
-- A web request's chain in the logbook: `AirlockDecisionOnWebRequest`
-  (kind `airlock-decision-on-web-request`) starts it, since the proposal's
-  chain is its loop user's alone, and the airlock's
-  `outcome-of-proposed-action` follows it. The decision names its
-  proposal, so no two start byte-identical chains, which the logbook
-  service refuses. It has `toJson` and a checking `fromJson`.
-
-A web request is an action, decided like any other: a request a tool makes
-to a chat or an API.
+- `FetchFromWeb` (proposed as `fetch`) takes a `WebFetch`: an origin, a
+  `WebPath`, a sign-in, and what of the response to keep (is_effects's
+  `BodyToKeep`: none, text or bytes). It sends a GET with no body and no
+  headers, so the only words it carries are in its path, which is decided
+  as written; a rule can bound it by prefix. Its reach, `FetchesFromWeb`,
+  is its own, so a grant to post to a site is not a grant to fetch from
+  it. A proposal carrying a body or headers is rejected, not stripped.
+- `AnswerEvent` (proposed as `answer`) answers an event admitted to the
+  mission, with an `Answer`: `ReplyToEvent(respondsTo:, reply:)`, a
+  model's reply to the admission of an event that starts a turn, or
+  `TrajectoryOpened()`. The requests that answer it are built first,
+  reaching nothing, by `DecidesAndRecordsActions.replyRequests` or
+  `trajectoryOpenedRequests`: the airlock checks the admission, picks the
+  module of the event's system and the sign-in, and the module builds them
+  from what is recorded. Then one decision holds every exact request, as
+  `AnswersEvent(answer, requests)`, so the airlock can refuse any of it
+  before a byte leaves, and the record holds exactly what was sent. Once
+  allowed, they are sent in order; the first that fails stops the rest,
+  `Refused('sent k of n: …')`, with no retry.
+- A reply is drawn only from an `outcome-of-proposed-action` that answers
+  a proposal to ask the model, both on the trajectory's own chain, read
+  through `DecidesAndRecordsActions.recordedOn`: another program's result,
+  such as a read's `{"kind":"text","text":…}`, can read as a reply. A
+  build that cannot be made is decided as `Deny(why)` with no requests,
+  so the loop is still answered.
 
 ## A model call
 
@@ -171,8 +170,9 @@ supplies and the airlock records; nothing here computes one.
   (https://github.com/intersyntactic/logbook/pull/12).
 - `AirlockDecisionOnAction.toJson` / `fromJson`: a decision of every reach
   as the logbook holds it (`airlock-decision-on-action`), its reach written
-  as the program and input that make it, as a proposal writes them, so
-  the airlock can read back which places it decided.
+  as the program and input that make it, as a proposal writes them, and an
+  `AnswersEvent`'s exact requests beside them, so the airlock can read back
+  which places it decided and what it let out.
 - A `Decision` is `Allow` or `Deny(why)`, each saying who made it,
   `DecidedBy.rules` or `DecidedBy.person`; a stopped trajectory's refusal
   is the person's. `reliedOn` names the logbook entries the airlock read
@@ -188,7 +188,9 @@ supplies and the airlock records; nothing here computes one.
 - `DecidesAndRecordsActions<R, P>`: `decide`, given the trajectory and an
   action's `Reach`, so the airlock can read what holds for that trajectory
   now, then `recordDecision(decision)` and `recordResult(decision, result,
-  resultAsJson:)`, implemented by intersyntactic's airlock. An interface is
+  resultAsJson:)`; `recordedOn`, and `replyRequests` /
+  `trajectoryOpenedRequests` for `AnswerEvent`; implemented by
+  intersyntactic's airlock. An interface is
   named for what it can do, so `implements` reads as a true sentence
   (https://github.com/enspyrco/intersyntactic/pull/1164).
 

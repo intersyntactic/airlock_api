@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.13.0
+
+Breaking, for the agent loop and the airlock alike. The airlock knows no
+chat: nothing here builds or checks a Teams body any more.
+
+- `AnswerEvent` (`Program.answerEvent`, proposed as `answer`) replaces
+  `MakeWebRequest`. It answers an event admitted to the mission with an
+  `Answer`: `ReplyToEvent(respondsTo:, reply:)` or `TrajectoryOpened()`.
+  The airlock builds the requests first, reaching nothing, then decides
+  one reach holding every exact request, `AnswersEvent(answer, requests)`,
+  and sends them in order, stopping at the first that fails:
+  `Refused('sent k of n: …')`. A build that cannot be made is decided as
+  `Deny(why)` with no requests.
+- `DecidesAndRecordsActions` gains `replyRequests(trajectory, respondsTo,
+  reply)` and `trajectoryOpenedRequests(trajectory)`: the airlock checks
+  the admission, picks the module and the sign-in, and the module builds
+  the requests (is_effects's `BuildsRequestsAnsweringEvents`).
+- Removed: `MakeWebRequest`, `WebRequest`, `MakesWebRequest`,
+  `Projection` (with `teamsMessageFromModelReply` and
+  `trajectoryOpenCard`), `trajectoryOpenCardBody`, and
+  `AirlockDecisionOnWebRequest` with its entry kind. Every decision is an
+  `AirlockDecisionOnAction`; an `AnswersEvent`'s requests are written in it
+  with is_effects's `encodeRequest`, exact bodies included.
+- `FetchFromWeb` (`Program.fetch`, proposed as `fetch`): a GET with no body
+  or headers, taking a `WebFetch` (origin, path, sign-in, `keep`), and
+  giving the `WebResponse` with the body it kept. Its path is decided as
+  written. Its own reach, `FetchesFromWeb`, so a grant to post to a site
+  is not a grant to fetch from it.
+- `ReadFileBytes` (`Program.readBytes`, proposed as `read-bytes`): a
+  file's exact bytes. It shares the `Reads` reach, which now carries
+  `as: ReadsAs.text | bytes`, so a rule granting a path grants both reads
+  and the record says which ran.
+- `Program._reachOn`: a program may work out its reach before it is
+  decided, reaching no driver. Every program but `AnswerEvent` uses its
+  input alone.
+
 ## 0.12.1
 
 - Takes is_effects `^0.11.0`. Its one break is
