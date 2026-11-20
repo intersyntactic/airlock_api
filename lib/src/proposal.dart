@@ -203,6 +203,13 @@ final class ActionProposedByAgentLoop implements Received {
   /// a web request by it, as `program: AskTheModel()` in a pattern.
   Program<Object?, Object?> get program => _work.program;
 
+  /// What this proposes to do, as far as its input alone says: a reader
+  /// tells a trajectory open notice from a reply by it, as
+  /// `AnswersEvent(answer: TrajectoryOpened())` in a pattern. An
+  /// [AnswersEvent]'s requests are built only when it is decided, so here
+  /// they are always empty; the decision holds them.
+  Reach get reach => _work.reach;
+
   final _Work<Object?, Object?> _work;
 }
 
