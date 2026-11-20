@@ -17,7 +17,7 @@ import 'contract_test.dart'
         start,
         teams,
         teamsMessageOf,
-        webRequest,
+        replyWith,
         writeAndFormat;
 
 /// A trajectory's chain and the airlock's, in memory: each proposal the
@@ -219,19 +219,18 @@ void main() {
   });
 
   test(
-    'a web request proposed through the record sends a recorded reply',
+    'a reply proposed through the record is built, decided and sent',
     () async {
       final web = RecordedWeb();
       final airlock = LogAirlock();
       final reply = recordedReply(airlock, 'done');
       final path = start(airlock, [web], rules: {'$teams as $hart'});
+      final link = RecordedLink(path, airlock);
       expect(
-        await answerOf(
-          webRequest(teams, hart, drawnFrom: reply),
-          loopCrux(RecordedLink(path, airlock)),
-        ),
+        await answerOf(replyWith(reply), loopCrux(link)),
         '201 activity-1',
       );
+      expect(link.programs, [Program.answerEvent]);
       expect(web.requests.single.body, teamsMessageOf('done'));
     },
   );
@@ -269,37 +268,34 @@ void main() {
     final link = RecordedLink(path, airlock);
     final proposal = {
       'place': [1, 0],
-      'program': 'web',
+      'program': 'answer',
     };
-    Map<String, Object?> requestWith(Map<String, Object?> change) => {
-      'origin': '$teams',
-      'method': 'post',
-      'path': '/v3/conversations/c/activities',
-      'signIn': 'hart-bot',
-      'headers': <String, String>{},
-      'body': '{"type":"message","text":"done"}',
-      'projection': 'teams-message-from-model-reply',
-      'drawnFrom': '0' * 64,
+    Map<String, Object?> replyWith(Map<String, Object?> change) => {
+      'answer': 'reply',
+      'respondsTo': '0' * 64,
+      'reply': '1' * 64,
       ...change,
     };
     final answers = [
       for (final change in [
-        {'path': '//evil.example/x'},
-        {
-          'headers': {'Authorization': 'Bearer x'},
-        },
-        {'projection': 'teams-reply'},
-        {'drawnFrom': 'not an id'},
-        {'body': null},
+        {'answer': 'post'},
+        {'respondsTo': 'not an id'},
+        {'reply': null},
+        {'body': '{"type":"message","text":"case words"}'},
       ])
-        await link.proposeAsIs({...proposal, 'input': requestWith(change)}),
+        await link.proposeAsIs({...proposal, 'input': replyWith(change)}),
+      await link.proposeAsIs({
+        ...proposal,
+        'input': {'answer': 'trajectory-opened', 'body': 'x'},
+      }),
     ];
-    expect(link.rejected, hasLength(5));
-    expect(link.rejected[0], startsWith('input.path'));
-    expect(link.rejected[1], startsWith('input.headers'));
-    expect(link.rejected[2], startsWith('input.projection'));
-    expect(link.rejected[3], startsWith('input.drawnFrom'));
-    expect(link.rejected[4], startsWith('input.body'));
+    expect(link.rejected, [
+      startsWith('input.answer'),
+      startsWith('input.respondsTo'),
+      startsWith('input.reply'),
+      startsWith('input: unexpected (body)'),
+      startsWith('input: unexpected (body)'),
+    ]);
     expect(
       answers.map(
         (a) => decodeOutcome<Never>(a, (_, _) => throw StateError('ran')),
@@ -323,6 +319,8 @@ void main() {
       {'body': 'case words'},
       {'headers': <String, String>{}},
       {'keep': 'everything'},
+      {'path': '//evil.example/x'},
+      {'path': '/a/../b'},
     ]) {
       await link.proposeAsIs({
         'place': [1, 0],
@@ -334,6 +332,8 @@ void main() {
       startsWith('input: unexpected (body)'),
       startsWith('input: unexpected (headers)'),
       startsWith('input.keep'),
+      startsWith('input.path'),
+      startsWith('input.path'),
     ]);
     expect(airlock.log, isEmpty);
   });

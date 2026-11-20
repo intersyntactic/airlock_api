@@ -51,14 +51,26 @@ final class RecordedPrograms implements RunsPrograms {
 }
 
 /// Makes no request, keeps each one it was asked to make, and says the
-/// destination made `activity-1`.
+/// destination made `activity-<n>`, n counting from 1; or, for the request
+/// numbered [refuseAt], the destination answers 403, and for the one
+/// numbered [cannotSendAt], the driver itself refuses.
 final class RecordedWeb implements CarriesOutWebRequests {
+  RecordedWeb({this.refuseAt, this.cannotSendAt});
+
+  final int? refuseAt;
+  final int? cannotSendAt;
   final requests = <Request>[];
 
   @override
   Future<Outcome<WebResponse>> carryOutWebRequest(Request request) async {
     requests.add(request);
-    return const Ran(WebResponse(status: 201, created: 'activity-1'));
+    final n = requests.length;
+    if (n == cannotSendAt) return Refused('${request.signIn} is not held here');
+    return Ran(
+      n == refuseAt
+          ? const WebResponse(status: 403, refusedBecause: 'throttled')
+          : WebResponse(status: 201, created: 'activity-$n'),
+    );
   }
 }
 
@@ -90,8 +102,9 @@ String reachOf(Reach reach) => switch (reach) {
     program.value,
     ...args.args,
   ].join(' '),
-  MakesWebRequest(:final origin, :final signIn) =>
-    'request to $origin as $signIn',
+  AnswersEvent(:final requests) =>
+    'answer with ${requests.length} '
+        '[${requests.map((r) => '${r.origin} as ${r.signIn}').join(', ')}]',
   FetchesFromWeb(:final origin, :final path, :final signIn) =>
     'fetch $origin${path.value} as $signIn',
   CallsTheModel(:final model, :final signIn) => 'ask $model as $signIn',
@@ -157,18 +170,69 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
     Set<String> rules,
   ) async {
     decidedFor.add(trajectory);
-    return rules.contains(switch (reach) {
-          Reads() => 'read',
-          Writes() => 'write',
-          Starts(:final program) => program.value,
-          MakesWebRequest(:final origin, :final signIn) => '$origin as $signIn',
-          FetchesFromWeb(:final origin, :final signIn) =>
-            'fetch $origin as $signIn',
-          CallsTheModel(:final signIn) => 'model as $signIn',
-        })
+    final granted = switch (reach) {
+      Reads() => [rules.contains('read')],
+      Writes() => [rules.contains('write')],
+      Starts(:final program) => [rules.contains(program.value)],
+      AnswersEvent(:final requests) => [
+        for (final r in requests) rules.contains('${r.origin} as ${r.signIn}'),
+      ],
+      FetchesFromWeb(:final origin, :final signIn) => [
+        rules.contains('fetch $origin as $signIn'),
+      ],
+      CallsTheModel(:final signIn) => [rules.contains('model as $signIn')],
+    };
+    return granted.every((g) => g)
         ? const Allow(by: DecidedBy.rules)
         : const Deny('not in the rules', by: DecidedBy.rules);
   }
+
+  /// The admissions a reply may answer: each of an event that starts a
+  /// turn on the trajectory [start] starts.
+  final admissions = <EntryId>{admission};
+
+  /// Who the requests that answer an event go as.
+  SignIn answerAs = hart;
+
+  /// The reply each [replyRequests] was asked to build from, in order.
+  final builtFrom = <ModelReply>[];
+
+  /// A stand-in for an event system's module: one Teams message per part
+  /// of the reply's text, the parts split at `|`.
+  @override
+  Future<Outcome<List<Request>>> replyRequests(
+    TrajectoryId trajectory,
+    EntryId respondsTo,
+    ModelReply reply,
+  ) async {
+    builtFrom.add(reply);
+    if (!admissions.contains(respondsTo)) {
+      return Refused('entry $respondsTo admits no event that starts a turn');
+    }
+    return Ran([
+      for (final part in reply.text.split('|'))
+        Request(
+          teams,
+          method: Method.post,
+          path: conversation,
+          signIn: answerAs,
+          body: teamsMessageOf(part),
+        ),
+    ]);
+  }
+
+  @override
+  Future<Outcome<List<Request>>> trajectoryOpenedRequests(
+    TrajectoryId trajectory,
+  ) async => Ran([
+    Request(
+      teams,
+      method: Method.post,
+      path: conversation,
+      signIn: answerAs,
+      body: openCardBody,
+    ),
+  ]);
 
   @override
   Future<void> recordDecision(AirlockDecisionOnAction<int> decision) async {
@@ -252,8 +316,31 @@ final suit1 = Suit.parse('suit-1')!;
 
 final hart = SignIn.parse('hart-bot')!;
 final teams = Origin.parse('https://smba.trafficmanager.net')!;
+final conversation = WebPath.parse('/v3/conversations/c/activities')!;
 
-const teamsMessage = Projection.teamsMessageFromModelReply;
+/// The docking station's admission of an event that starts a turn on the
+/// trajectory [start] starts, as a [LogAirlock] knows it.
+final admission = EntryId.of(utf8.encode('an admission'));
+
+/// A Teams message whose text is [text], as the stand-in module builds one.
+String teamsMessageOf(String text) =>
+    jsonEncode({'type': 'message', 'text': text});
+
+/// The stand-in module's open card.
+const openCardBody = '{"card":"open"}';
+
+/// [answer] carried out, answered with each response's status and what the
+/// destination made of it.
+Result<String> answerWith(Answer answer) => Program.answerEvent.runOrRefusal(
+  answer,
+  then: (responses) =>
+      Done(responses.map((r) => '${r.status} ${r.created}').join(', ')),
+);
+
+/// The reply recorded as [reply], answering [respondsTo] (by default
+/// [admission]).
+Result<String> replyWith(EntryId reply, {EntryId? respondsTo}) =>
+    answerWith(ReplyToEvent(respondsTo: respondsTo ?? admission, reply: reply));
 
 /// A proposal of [program] with [input], as a loop writes one on [on]'s
 /// chain (by default the trajectory [start] starts).
@@ -305,28 +392,6 @@ EntryId recordedReply(LogAirlock airlock, String text, {TrajectoryId? on}) =>
       ),
       on: on,
     );
-
-/// A Teams message whose text is [text], as [teamsMessage] draws it.
-String teamsMessageOf(String text) =>
-    jsonEncode({'type': 'message', 'text': text});
-
-Result<String> webRequest(
-  Origin site,
-  SignIn signIn, {
-  EntryId? drawnFrom,
-  String? body,
-  Projection projection = teamsMessage,
-}) => Program.web.runOrRefusal(
-  WebRequest(
-    site,
-    path: WebPath.parse('/v3/conversations/c/activities')!,
-    signIn: signIn,
-    body: body ?? teamsMessageOf('done'),
-    projection: projection,
-    drawnFrom: drawnFrom ?? EntryId.of(utf8.encode('nothing recorded')),
-  ),
-  then: (answer) => Done('${answer.status} ${answer.created}'),
-);
 
 void main() {
   test('every entry is at the place its crux was given', () async {
@@ -520,379 +585,11 @@ void main() {
     );
   });
 
-  test('a web request is decided by its origin and sign-in together', () async {
-    final web = RecordedWeb();
-    final airlock = LogAirlock();
-    final reply = recordedReply(airlock, 'done');
-    final path = start(airlock, [web], rules: {'$teams as $hart'});
-    expect(
-      await answerOf(webRequest(teams, hart, drawnFrom: reply), path.at(1)),
-      '201 activity-1',
-    );
-    expect(
-      await answerOf(
-        webRequest(teams, SignIn.parse('other-bot')!, drawnFrom: reply),
-        path.at(2),
-      ),
-      'failed: not in the rules',
-    );
-    expect(web.requests.map((r) => r.signIn), [hart]);
-    expect(airlock.log, [
-      '1: allow request to $teams as hart-bot',
-      '1: ran request to $teams as hart-bot',
-      '2: deny request to $teams as other-bot: not in the rules',
-      '2: refused request to $teams as other-bot: not in the rules',
-    ]);
-  });
-
-  test(
-    'a web request shows its sign-in, and null only when it has none',
-    () async {
-      final path = start(LogAirlock(), [RecordedWeb()]);
-      final seen = <(Origin, SignIn?)>[];
-      path.decisions.listen((d) {
-        if (d.reach case MakesWebRequest(:final origin, :final signIn)) {
-          seen.add((origin, signIn));
-        }
-      });
-      for (final (i, signIn) in [hart, null].indexed) {
-        await Program.web
-            .run(
-              WebRequest(
-                teams,
-                signIn: signIn,
-                body: '',
-                projection: teamsMessage,
-                drawnFrom: EntryId.of(utf8.encode('nothing recorded')),
-              ),
-              then: (_) => const Done(''),
-            )
-            .next(path.at(i));
-      }
-      expect(seen, [(teams, hart), (teams, null)]);
-    },
-  );
-
-  test('a web request sends exactly the body its projection draws from a '
-      'recorded model reply, and the decision holds that body', () async {
-    final web = RecordedWeb();
-    final airlock = LogAirlock();
-    final asked = askedTheModel(airlock);
-    final reply = recordedOutcome(
-      airlock,
-      asked,
-      encodeOutcome<ModelReply>(
-        const Ran(FinishedReply(text: 'Clause 4 — rent is due monthly.')),
-        encodeModelReply,
-      ),
-    );
-    final path = start(airlock, [web], rules: {'$teams as $hart'});
-    final decided = <AirlockDecisionOnAction<int>>[];
-    path.decisions.listen(decided.add);
-    final body = teamsMessageOf('Clause 4 — rent is due monthly.');
-    expect(
-      await answerOf(
-        webRequest(teams, hart, drawnFrom: reply, body: body),
-        path.at(1),
-      ),
-      '201 activity-1',
-    );
-    expect(
-      web.requests.single.body,
-      '{"type":"message","text":"Clause 4 — rent is due monthly."}',
-    );
-    expect(airlock.readOn, [reply, asked]);
-    final MakesWebRequest(:request) = decided.single.reach as MakesWebRequest;
-    expect(request.body, body);
-    expect(request.drawnFrom, reply);
-  });
-
-  test('a body that is not what its projection draws from the record is '
-      'refused, for its own reason, and nothing is sent', () async {
-    final other = idOf('another trajectory');
-    final cases = <(String, String, EntryId Function(LogAirlock), String)>[
-      (
-        'other words',
-        teamsMessageOf('something else'),
-        (a) => recordedReply(a, 'done'),
-        'the body is not teams-message-from-model-reply of',
-      ),
-      (
-        'the same words, spaced',
-        '{"type": "message", "text": "done"}',
-        (a) => recordedReply(a, 'done'),
-        'the body is not teams-message-from-model-reply of',
-      ),
-      (
-        'a reply that was refused',
-        teamsMessageOf('done'),
-        (a) => a.remember(
-          jsonEncode(proposalRejectedToJson(askedTheModel(a), 'no')),
-          kind: outcomeOfProposedActionKind,
-        ),
-        'the body is not teams-message-from-model-reply of',
-      ),
-      (
-        'a result that did not run, though it holds text',
-        teamsMessageOf('done'),
-        (a) => a.remember(
-          jsonEncode({
-            'proposed': askedTheModel(a).hex,
-            'result': {'kind': 'refused', 'output': 'done'},
-          }),
-          kind: outcomeOfProposedActionKind,
-        ),
-        'the body is not teams-message-from-model-reply of',
-      ),
-      (
-        'not a result at all',
-        teamsMessageOf('done'),
-        (a) => a.remember('done', kind: outcomeOfProposedActionKind),
-        'names no proposal',
-      ),
-      (
-        'a reply to a proposal on another chain',
-        teamsMessageOf('done'),
-        (a) => recordedOutcome(
-          a,
-          askedTheModel(a, on: other),
-          encodeOutcome<ModelReply>(
-            const Ran(FinishedReply(text: 'done')),
-            encodeModelReply,
-          ),
-        ),
-        'is on another chain',
-      ),
-      (
-        'a reply naming an entry that is not a proposal',
-        teamsMessageOf('done'),
-        (a) => recordedOutcome(
-          a,
-          a.remember('{}', kind: ModelRequestPiece.kind),
-          encodeOutcome<ModelReply>(
-            const Ran(FinishedReply(text: 'done')),
-            encodeModelReply,
-          ),
-        ),
-        'is a model-request-piece, not a action-proposed-by-agent-loop',
-      ),
-      (
-        'a reply naming a proposal that is not one',
-        teamsMessageOf('done'),
-        (a) => recordedOutcome(
-          a,
-          a.remember('not json', kind: ActionProposedByAgentLoop.kind),
-          encodeOutcome<ModelReply>(
-            const Ran(FinishedReply(text: 'done')),
-            encodeModelReply,
-          ),
-        ),
-        'which asked no model',
-      ),
-      (
-        // A loop may write any body under its own kinds on its own chain.
-        'a reply-shaped body the loop wrote under another kind',
-        teamsMessageOf('anything the loop likes'),
-        (a) => a.remember(
-          jsonEncode(
-            outcomeOfProposedActionToJson(
-              EntryId.of(utf8.encode('p')),
-              encodeOutcome<ModelReply>(
-                const Ran(FinishedReply(text: 'anything the loop likes')),
-                encodeModelReply,
-              ),
-            ),
-          ),
-          kind: ModelRequestPiece.kind,
-        ),
-        'is a model-request-piece, not a outcome-of-proposed-action',
-      ),
-      (
-        "another trajectory's reply",
-        teamsMessageOf('done'),
-        (a) => recordedReply(a, 'done', on: other),
-        'is on another chain',
-      ),
-      (
-        'nothing recorded',
-        teamsMessageOf('done'),
-        (a) => EntryId.of(utf8.encode('never written')),
-        'is not recorded',
-      ),
-    ];
-    for (final (why, body, drawnFrom, said) in cases) {
-      final web = RecordedWeb();
-      final airlock = LogAirlock();
-      final answer = await answerOf(
-        webRequest(teams, hart, drawnFrom: drawnFrom(airlock), body: body),
-        start(airlock, [web], rules: {'$teams as $hart'}).at(1),
-      );
-      expect(
-        answer,
-        allOf(startsWith('failed: '), contains(said)),
-        reason: why,
-      );
-      expect(web.requests, isEmpty, reason: why);
-      expect(
-        airlock.log.last,
-        startsWith('1: refused request to $teams as hart-bot: '),
-        reason: why,
-      );
-    }
-  });
-
-  test("a file read's text is never sent as a model's reply", () async {
-    // A read's result is {"kind":"text","text":…}, which reads as a reply.
-    final web = RecordedWeb();
-    final airlock = LogAirlock();
-    final read = recordedProposal(airlock, 'read', 'secret.txt');
-    final answer = await answerOf(
-      webRequest(
-        teams,
-        hart,
-        drawnFrom: recordedOutcome(
-          airlock,
-          read,
-          encodeOutcome<ReadResult>(
-            const Ran(ReadText('the secret file')),
-            encodeReadResult,
-          ),
-        ),
-        body: teamsMessageOf('the secret file'),
-      ),
-      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
-    );
-    expect(answer, allOf(startsWith('failed: '), contains('asked no model')));
-    expect(web.requests, isEmpty);
-  });
-
-  test('a trajectory open card is sent only as its fixed bytes, drawn from '
-      'its own trajectory, and reads nothing', () async {
-    final own = EntryId.parse(idOf('started root').hex)!;
-    final cases = [
-      ('the card, from its trajectory', own, trajectoryOpenCardBody, true),
-      (
-        'from another trajectory',
-        EntryId.parse(idOf('another root').hex)!,
-        trajectoryOpenCardBody,
-        false,
-      ),
-      ('another body', own, teamsMessageOf('done'), false),
-    ];
-    for (final (why, drawnFrom, body, sent) in cases) {
-      final web = RecordedWeb();
-      final airlock = LogAirlock();
-      final answer = await answerOf(
-        webRequest(
-          teams,
-          hart,
-          drawnFrom: drawnFrom,
-          body: body,
-          projection: Projection.trajectoryOpenCard,
-        ),
-        start(airlock, [web], rules: {'$teams as $hart'}).at(1),
-      );
-      expect(answer, sent ? '201 activity-1' : startsWith('failed: '));
-      expect(
-        [for (final r in web.requests) r.body],
-        [if (sent) trajectoryOpenCardBody],
-        reason: why,
-      );
-      expect(airlock.readOn, isEmpty, reason: why);
-    }
-    expect(
-      Projection.trajectoryOpenCard.drawnFrom(
-        jsonEncode(
-          outcomeOfProposedActionToJson(
-            own,
-            encodeOutcome<ModelReply>(
-              Ran(FinishedReply(text: 'hi')),
-              encodeModelReply,
-            ),
-          ),
-        ),
-      ),
-      isNull,
-    );
-    expect(trajectoryOpenCardBody, contains('"verb":"close"'));
-    expect(trajectoryOpenCardBody, contains('● Open · trajectory started'));
-    expect(
-      Projection.parse('trajectory-open-card'),
-      Projection.trajectoryOpenCard,
-    );
-  });
-
   test('the airlock decides knowing which trajectory acts', () async {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles()], rules: {'write', 'dart'});
     await answerOf(writeAndFormat('a.dart'), path.at(1));
     expect(airlock.decidedFor, [path.id, path.id]);
-  });
-
-  test('a denied web request never has its entry read', () async {
-    final airlock = LogAirlock();
-    final answer = await answerOf(
-      webRequest(teams, hart, drawnFrom: recordedReply(airlock, 'done')),
-      start(airlock, [RecordedWeb()], rules: const {}).at(1),
-    );
-    expect(answer, 'failed: not in the rules');
-    expect(airlock.readOn, isEmpty);
-  });
-
-  test(
-    'nothing is read or sent when the decision cannot be recorded',
-    () async {
-      final web = RecordedWeb();
-      final airlock = LogAirlock(failWriting: FailWriting.decision);
-      await expectLater(
-        answerOf(
-          webRequest(teams, hart, drawnFrom: recordedReply(airlock, 'done')),
-          start(airlock, [web], rules: {'$teams as $hart'}).at(1),
-        ),
-        throwsStateError,
-      );
-      expect(airlock.log, isEmpty);
-      expect(airlock.readOn, isEmpty);
-      expect(web.requests, isEmpty);
-    },
-  );
-
-  test('a web request cannot hold a credential, or a path to another site', () {
-    expect(
-      () => WebRequest(
-        teams,
-        body: '',
-        projection: teamsMessage,
-        drawnFrom: EntryId.of(utf8.encode('nothing recorded')),
-        headers: {'Authorization': 'Bearer x'},
-      ),
-      throwsArgumentError,
-    );
-    expect(
-      ['//evil.example', '/a/../b', '/@evil.example', 'v3'].map(WebPath.parse),
-      everyElement(isNull),
-    );
-  });
-
-  test('projections are named once, at the boundary', () {
-    expect(
-      Projection.parse('teams-message-from-model-reply'),
-      Projection.teamsMessageFromModelReply,
-    );
-    expect(
-      ['', 'teams-reply', 'teamsMessageFromModelReply'].map(Projection.parse),
-      everyElement(isNull),
-    );
-  });
-
-  test('a machine with no web driver makes no web request', () async {
-    expect(
-      await answerOf(
-        webRequest(teams, hart),
-        start(LogAirlock(), [MemoryFiles()], rules: {'$teams as $hart'}).at(1),
-      ),
-      'failed: this machine cannot run web',
-    );
   });
 
   test('names are checked once, at the boundary', () {

@@ -8,7 +8,7 @@ part of 'action.dart';
 
 /// [reach] as the program and input that make it.
 Object? _reachToJson(Reach reach) {
-  Object? as<I>(Program<I, Object?> program, I input) => {
+  Map<String, Object?> as<I>(Program<I, Object?> program, I input) => {
     ...program._wire.program,
     'input': program._wire.inputToJson(input),
   };
@@ -17,7 +17,10 @@ Object? _reachToJson(Reach reach) {
     Reads(:final path, as: ReadsAs.bytes) => as(Program.readBytes, path),
     Writes(:final file) => as(Program.write, file),
     Starts(:final program, :final args) => as(Executable(program), args),
-    MakesWebRequest(:final request) => as(Program.web, request),
+    AnswersEvent(:final answer, :final requests) => {
+      ...as(Program.answerEvent, answer),
+      'requests': [for (final r in requests) encodeRequest(r)],
+    },
     FetchesFromWeb(:final fetch) => as(Program.fetch, fetch),
     CallsTheModel(:final call) => as(Program.askTheModel, call),
   };
@@ -30,7 +33,14 @@ Reach _reachFromJson(JsonObject json, String field) {
   final program =
       _programNamed(name, json.raw('executable')) ??
       (throw FormatException('$field.program: not a program: $name'));
-  return program._work(json.raw('input'), '$field.input').reach;
+  final reach = program._work(json.raw('input'), '$field.input').reach;
+  if (reach case AnswersEvent(:final answer)) {
+    return AnswersEvent(answer, [
+      for (final (i, r) in (json.listOrNull('requests') ?? const []).indexed)
+        decodeRequest(r, '$field.requests[$i]'),
+    ]);
+  }
+  return reach;
 }
 
 Object? _decisionToJson(Decision decision) => {

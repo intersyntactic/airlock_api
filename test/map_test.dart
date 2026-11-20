@@ -31,6 +31,18 @@ final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
     TrajectoryId trajectory,
     EntryId entry,
   ) async => const Refused('nothing recorded');
+
+  @override
+  Future<Outcome<List<Request>>> replyRequests(
+    TrajectoryId trajectory,
+    EntryId respondsTo,
+    ModelReply reply,
+  ) async => const Refused('no module');
+
+  @override
+  Future<Outcome<List<Request>>> trajectoryOpenedRequests(
+    TrajectoryId trajectory,
+  ) async => const Refused('no module');
 }
 
 /// Writes nothing, and says it wrote.
