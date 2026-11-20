@@ -338,6 +338,34 @@ void main() {
     expect(airlock.log, isEmpty);
   });
 
+  test('a proposal read back says what it answers with, by its reach, '
+      'with no requests until it is decided', () {
+    Reach reachOf(Object? input) => switch (ActionProposedByAgentLoop.read(
+      jsonEncode({
+        'place': [0, 0],
+        'program': 'answer',
+        'input': input,
+      }),
+    )) {
+      ActionProposedByAgentLoop(:final reach) => reach,
+      Rejected(:final why) => throw StateError(why),
+    };
+    expect(
+      reachOf({'answer': 'trajectory-opened'}),
+      isA<AnswersEvent>()
+          .having((r) => r.answer, 'answer', isA<TrajectoryOpened>())
+          .having((r) => r.requests, 'requests', isEmpty),
+    );
+    expect(
+      reachOf({'answer': 'reply', 'respondsTo': '0' * 64, 'reply': '1' * 64}),
+      isA<AnswersEvent>().having(
+        (r) => r.answer,
+        'answer',
+        isA<ReplyToEvent>(),
+      ),
+    );
+  });
+
   test('what is not a proposal is rejected', () async {
     final airlock = LogAirlock();
     final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock);

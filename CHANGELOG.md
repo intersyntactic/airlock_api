@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.1
+
+- `ActionProposedByAgentLoop.reach`: what a proposal read back proposes to
+  do, as far as its input alone says, so a loop can tell its own
+  `AnswersEvent(answer: TrajectoryOpened())` from a reply in its history.
+  An `AnswersEvent`'s requests are empty here; they are built when it is
+  decided.
+
 ## 0.13.0
 
 Breaking, for the agent loop and the airlock alike. The airlock knows no
