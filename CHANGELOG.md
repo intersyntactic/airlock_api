@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.14.0
+
+Breaking. An action reaches a trajectory's drivers only through the
+record: the airlock service has no crux of its own.
+
+- `Trajectory.at(place)` is removed. It proposed actions inside the
+  airlock service's own process, with no `ActionProposedByAgentLoop`
+  logbook entry for the decision to answer. No production code called it.
+  `Crux.through(link, turn:)` is the only crux, and the airlock service
+  decides only what `Trajectory.consider` hands it from the record.
+- `AirlockDecisionOnAction.proposed` is a required `EntryId`, never null:
+  every decision names the proposal it answers. `fromJson` refuses a
+  decision without one, as 0.13 wrote for an action proposed in-process.
+- `DecidesAndRecordsActions.replyRequests(trajectory, place, respondsTo,
+  reply)` and `trajectoryOpenedRequests(trajectory, place)` take the place
+  the answer was proposed at, so the module that builds its requests can
+  show it (a Teams card prints "turn N"). It is the loop's claim; the
+  airlock checks nothing about it.
+- `RefusalNoticeToEvent(respondsTo:, refusal:)` (proposed as
+  `{"answer": "refusal-notice", …}`) answers an event with the notice that
+  an action was refused, and why, so the person who sent it decides what to
+  do. `refusal` names an outcome of a proposal on this trajectory whose
+  result is `Refused`; an outcome that ran is refused, so what an action
+  gave back never leaves as a notice. The module builds its requests
+  through the new `DecidesAndRecordsActions.refusalNoticeRequests(
+  trajectory, place, respondsTo, why)`, given only the recorded reason.
+- `DecidesAndRecordsActions.recordResult` always keeps an
+  `outcome-of-proposed-action` logbook entry; there is no decision without
+  a proposal to answer.
+- Tests that drove a trajectory with `.at` drive it through
+  `Crux.through` with an in-memory `ProposesActionsThroughTheRecord`
+  instead, which calls `Trajectory.consider` for each proposal it is
+  written.
+
 ## 0.13.1
 
 - `ActionProposedByAgentLoop.reach`: what a proposal read back proposes to

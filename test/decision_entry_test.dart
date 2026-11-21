@@ -53,9 +53,8 @@ final lease = EntryId.of(utf8.encode('a lease'));
 
 AirlockDecisionOnAction<PlaceInTrajectory> decided(
   Reach reach,
-  Decision decision, {
-  EntryId? proposed,
-}) => AirlockDecisionOnAction(
+  Decision decision,
+) => AirlockDecisionOnAction(
   idOf('started root'),
   place,
   reach,
@@ -81,23 +80,17 @@ void main() {
         Deny('leased elsewhere', by: DecidedBy.rules, reliedOn: [lease]),
         const Deny('stopped', by: DecidedBy.person),
       ]) {
-        for (final p in [null, proposed]) {
-          final d = decided(reach, decision, proposed: p);
-          final back = readBack(written(d));
-          final why = '${reach.runtimeType} ${decision.runtimeType} $p';
-          expect(back.trajectoryId, d.trajectoryId, reason: why);
-          expect(back.place, place, reason: why);
-          expect(back.reach.runtimeType, reach.runtimeType, reason: why);
-          expect(back.decision.runtimeType, decision.runtimeType, reason: why);
-          expect(back.decision.by, decision.by, reason: why);
-          expect(back.decision.reliedOn, decision.reliedOn, reason: why);
-          expect(back.proposed, p, reason: why);
-          expect(
-            jsonEncode(written(back)),
-            jsonEncode(written(d)),
-            reason: why,
-          );
-        }
+        final d = decided(reach, decision);
+        final back = readBack(written(d));
+        final why = '${reach.runtimeType} ${decision.runtimeType}';
+        expect(back.trajectoryId, d.trajectoryId, reason: why);
+        expect(back.place, place, reason: why);
+        expect(back.reach.runtimeType, reach.runtimeType, reason: why);
+        expect(back.decision.runtimeType, decision.runtimeType, reason: why);
+        expect(back.decision.by, decision.by, reason: why);
+        expect(back.decision.reliedOn, decision.reliedOn, reason: why);
+        expect(back.proposed, proposed, reason: why);
+        expect(jsonEncode(written(back)), jsonEncode(written(d)), reason: why);
       }
     }
   });
@@ -168,13 +161,7 @@ void main() {
 
   test('a malformed decision is refused, naming the part', () {
     final json = throughText(
-      written(
-        decided(
-          reaches[0],
-          const Allow(by: DecidedBy.rules),
-          proposed: proposed,
-        ),
-      ),
+      written(decided(reaches[0], const Allow(by: DecidedBy.rules))),
     ).asUncheckedMap();
     String? whyNot(String key, Object? value) {
       try {
@@ -191,6 +178,8 @@ void main() {
       ('place', 3, 'decided.place: not a place'),
       ('place', [3, -1], 'decided.place: not a place'),
       ('proposed', 'x', 'decided.proposed: not an entry id'),
+      // As 0.13 wrote a decision made in the airlock service's own process.
+      ('proposed', null, 'decided.proposed: not an entry id'),
       ('reach', {'program': 'delete', 'input': 'a'}, 'decided.reach.program'),
       ('reach', {'program': 'read', 'input': 42}, 'decided.reach.input'),
       ('reach', 'read a.dart', 'decided.reach'),

@@ -9,73 +9,18 @@ import 'contract_test.dart'
         FetchingWeb,
         LogAirlock,
         MemoryFiles,
+        RecordedLink,
         RecordedPrograms,
         RecordedWeb,
         answerOf,
         hart,
+        loopCrux,
         recordedReply,
         start,
         teams,
         teamsMessageOf,
         replyWith,
         writeAndFormat;
-
-/// A trajectory's chain and the airlock's, in memory: each proposal the
-/// loop writes goes through `jsonEncode` and back, as the logbook would keep
-/// it, and is named by the id the logbook gives it, as the loop's write
-/// returns it, never a hash of the body alone; the airlock service considers
-/// it on [path], and the loop is handed the result that names it, through
-/// `jsonEncode` and back, as loop_launcher would hand it.
-/// The airlock service considers each at its step. Keeps why each rejected
-/// entry was rejected.
-final class RecordedLink implements ProposesActionsThroughTheRecord {
-  RecordedLink(this.path, this.airlock);
-
-  final Trajectory<Set<String>, int> path;
-  final LogAirlock airlock;
-  final rejected = <String>[];
-
-  /// The program and place of each proposal read back, in order.
-  final programs = <Program<Object?, Object?>>[];
-  final places = <PlaceInTrajectory>[];
-
-  /// What loop_launcher would hand the loop for the outcome [body] and the
-  /// proposal it answers, when a test wants another answer.
-  String Function(String body, EntryId proposed) answerWith = (body, _) => body;
-
-  @override
-  Future<EntryId> writeProposal(String body) async {
-    final proposed = airlock.remember(
-      body,
-      kind: ActionProposedByAgentLoop.kind,
-    );
-    switch (ActionProposedByAgentLoop.read(body)) {
-      case Rejected(:final why):
-        rejected.add(why);
-        airlock.results[proposed] = proposalRejectedToJson(proposed, why);
-      case final ActionProposedByAgentLoop proposal:
-        programs.add(proposal.program);
-        places.add(proposal.place);
-        await path.consider(proposal, proposal.place.step, proposed: proposed);
-    }
-    return proposed;
-  }
-
-  @override
-  Future<String> outcomeNaming(EntryId proposed) async =>
-      answerWith(jsonEncode(airlock.results[proposed]), proposed);
-
-  /// [proposal] written as it is, bypassing the crux, and the result of
-  /// what the airlock recorded it came to.
-  Future<Object?> proposeAsIs(Object? proposal) async =>
-      readOutcomeOfProposedAction(
-        await outcomeNaming(await writeProposal(jsonEncode(proposal))),
-      )!.result;
-}
-
-/// The agent loop's crux for [turn] on [link]'s path.
-Crux loopCrux(RecordedLink link, {int turn = 1}) =>
-    Crux.through(link, turn: turn);
 
 void main() {
   test(
@@ -247,20 +192,6 @@ void main() {
     );
   });
 
-  test(
-    'an action proposed in-process has no entry in the record to answer',
-    () async {
-      final airlock = LogAirlock();
-      final path = start(airlock, [MemoryFiles()]);
-      final results = <AirlockDecisionOnAction<int>>[];
-      path.results.listen((r) => results.add(r.decision));
-      await answerOf(writeAndFormat('a.dart'), path.at(1));
-      expect(results, hasLength(2));
-      expect(results.map((d) => d.proposed), everyElement(isNull));
-      expect(airlock.results, isEmpty);
-    },
-  );
-
   test('input that its type would not accept is rejected at the boundary, '
       'naming the field, and answered refused', () async {
     final airlock = LogAirlock();
@@ -363,6 +294,31 @@ void main() {
         'answer',
         isA<ReplyToEvent>(),
       ),
+    );
+    expect(
+      reachOf({
+        'answer': 'refusal-notice',
+        'respondsTo': '0' * 64,
+        'refusal': '1' * 64,
+      }),
+      isA<AnswersEvent>().having(
+        (r) => r.answer,
+        'answer',
+        isA<RefusalNoticeToEvent>().having(
+          (a) => a.refusal.hex,
+          'refusal',
+          '1' * 64,
+        ),
+      ),
+    );
+    expect(
+      () => reachOf({
+        'answer': 'refusal-notice',
+        'respondsTo': '0' * 64,
+        'refusal': '1' * 64,
+        'why': 'words the loop chose',
+      }),
+      throwsStateError,
     );
   });
 

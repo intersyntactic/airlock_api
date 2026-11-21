@@ -7,6 +7,11 @@ Object? _answerToJson(Answer answer) => switch (answer) {
     'reply': reply.hex,
   },
   TrajectoryOpened() => {'answer': 'trajectory-opened'},
+  RefusalNoticeToEvent(:final respondsTo, :final refusal) => {
+    'answer': 'refusal-notice',
+    'respondsTo': respondsTo.hex,
+    'refusal': refusal.hex,
+  },
 };
 
 /// [input] as an [Answer], exactly its keys. Throws a [FormatException]
@@ -28,6 +33,12 @@ Answer _answerFromJson(Object? input, [String field = 'answer']) {
       case 'trajectory-opened':
         _exactly(field, json, const {'answer'});
         return const TrajectoryOpened();
+      case 'refusal-notice':
+        _exactly(field, json, const {'answer', 'respondsTo', 'refusal'});
+        return RefusalNoticeToEvent(
+          respondsTo: entry('respondsTo'),
+          refusal: entry('refusal'),
+        );
       case final other:
         throw FormatException('$field.answer: not an answer: $other');
     }

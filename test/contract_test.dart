@@ -129,6 +129,10 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   /// The body of each result kept for a proposal, by the proposal it
   /// answers, as the airlock would write it on the decision's chain.
   final results = <EntryId, Object?>{};
+
+  /// The id of the outcome entry each result was kept as, by the proposal
+  /// it answers.
+  final outcomeEntries = <EntryId, EntryId>{};
   final _logbook = <EntryId, ({String kind, String body})>{};
   final _chainOf = <EntryId, TrajectoryId>{};
   final _lastOn = <TrajectoryId, EntryId>{};
@@ -197,15 +201,47 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   /// The reply each [replyRequests] was asked to build from, in order.
   final builtFrom = <ModelReply>[];
 
+  /// The place each [replyRequests] or [trajectoryOpenedRequests] was asked
+  /// to build at, in order.
+  final builtAt = <int>[];
+
+  /// The reason each [refusalNoticeRequests] was asked to tell, in order.
+  final toldWhy = <String>[];
+
+  /// One Teams message telling [why], to an admission a reply may answer.
+  @override
+  Future<Outcome<List<Request>>> refusalNoticeRequests(
+    TrajectoryId trajectory,
+    int place,
+    EntryId respondsTo,
+    String why,
+  ) async {
+    toldWhy.add(why);
+    if (!admissions.contains(respondsTo)) {
+      return Refused('entry $respondsTo admits no event that starts a turn');
+    }
+    return Ran([
+      Request(
+        teams,
+        method: Method.post,
+        path: conversation,
+        signIn: answerAs,
+        body: teamsMessageOf('refused: $why'),
+      ),
+    ]);
+  }
+
   /// A stand-in for an event system's module: one Teams message per part
   /// of the reply's text, the parts split at `|`.
   @override
   Future<Outcome<List<Request>>> replyRequests(
     TrajectoryId trajectory,
+    int place,
     EntryId respondsTo,
     ModelReply reply,
   ) async {
     builtFrom.add(reply);
+    builtAt.add(place);
     if (!admissions.contains(respondsTo)) {
       return Refused('entry $respondsTo admits no event that starts a turn');
     }
@@ -224,15 +260,19 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
   @override
   Future<Outcome<List<Request>>> trajectoryOpenedRequests(
     TrajectoryId trajectory,
-  ) async => Ran([
-    Request(
-      teams,
-      method: Method.post,
-      path: conversation,
-      signIn: answerAs,
-      body: openCardBody,
-    ),
-  ]);
+    int place,
+  ) async {
+    builtAt.add(place);
+    return Ran([
+      Request(
+        teams,
+        method: Method.post,
+        path: conversation,
+        signIn: answerAs,
+        body: openCardBody,
+      ),
+    ]);
+  }
 
   @override
   Future<void> recordDecision(AirlockDecisionOnAction<int> decision) async {
@@ -252,15 +292,13 @@ final class LogAirlock implements DecidesAndRecordsActions<Set<String>, int> {
     required Object? resultAsJson,
   }) async {
     if (failWriting == FailWriting.result) throw StateError('disk full');
-    if (decision.proposed case final proposed?) {
-      final body = outcomeOfProposedActionToJson(proposed, resultAsJson);
-      results[proposed] = body;
-      remember(
-        jsonEncode(body),
-        kind: outcomeOfProposedActionKind,
-        on: decision.trajectoryId,
-      );
-    }
+    final body = outcomeOfProposedActionToJson(decision.proposed, resultAsJson);
+    results[decision.proposed] = body;
+    outcomeEntries[decision.proposed] = remember(
+      jsonEncode(body),
+      kind: outcomeOfProposedActionKind,
+      on: decision.trajectoryId,
+    );
     log.add(
       '${decision.place}: ${switch (result) {
         Ran() => 'ran ${reachOf(decision.reach)}',
@@ -309,6 +347,82 @@ Trajectory<Set<String>, int> start(
   airlock: airlock,
   rules: rules,
   suit: suit1,
+);
+
+/// A trajectory's chain and the airlock's, in memory: each proposal the
+/// loop writes goes through `jsonEncode` and back, as the logbook would keep
+/// it, and is named by the id the logbook gives it, as the loop's write
+/// returns it, never a hash of the body alone; the airlock service considers
+/// it on [path], and the loop is handed the result that names it, through
+/// `jsonEncode` and back, as loop_launcher would hand it.
+/// The airlock service considers each at [placeOf] its place, by default its
+/// step. Keeps why each rejected entry was rejected.
+final class RecordedLink implements ProposesActionsThroughTheRecord {
+  RecordedLink(this.path, this.airlock, {this.placeOf = _stepOf});
+
+  final Trajectory<Set<String>, int> path;
+  final LogAirlock airlock;
+  final int Function(PlaceInTrajectory place) placeOf;
+  final rejected = <String>[];
+
+  /// The program and place of each proposal read back, in order.
+  final programs = <Program<Object?, Object?>>[];
+  final places = <PlaceInTrajectory>[];
+
+  /// What loop_launcher would hand the loop for the outcome [body] and the
+  /// proposal it answers, when a test wants another answer.
+  String Function(String body, EntryId proposed) answerWith = (body, _) => body;
+
+  @override
+  Future<EntryId> writeProposal(String body) async {
+    final proposed = airlock.remember(
+      body,
+      kind: ActionProposedByAgentLoop.kind,
+    );
+    switch (ActionProposedByAgentLoop.read(body)) {
+      case Rejected(:final why):
+        rejected.add(why);
+        airlock.results[proposed] = proposalRejectedToJson(proposed, why);
+      case final ActionProposedByAgentLoop proposal:
+        programs.add(proposal.program);
+        places.add(proposal.place);
+        await path.consider(
+          proposal,
+          placeOf(proposal.place),
+          proposed: proposed,
+        );
+    }
+    return proposed;
+  }
+
+  @override
+  Future<String> outcomeNaming(EntryId proposed) async =>
+      answerWith(jsonEncode(airlock.results[proposed]), proposed);
+
+  /// [proposal] written as it is, bypassing the crux, and the result of
+  /// what the airlock recorded it came to.
+  Future<Object?> proposeAsIs(Object? proposal) async =>
+      readOutcomeOfProposedAction(
+        await outcomeNaming(await writeProposal(jsonEncode(proposal))),
+      )!.result;
+}
+
+int _stepOf(PlaceInTrajectory place) => place.step;
+
+/// The agent loop's crux for [turn] on [link]'s path.
+Crux loopCrux(RecordedLink link, {int turn = 1}) =>
+    Crux.through(link, turn: turn);
+
+/// The agent loop's crux for [turn] on [path], whose airlock is [airlock],
+/// through the record; the airlock service considers every action of the
+/// turn at [turn].
+Crux throughRecord(
+  Trajectory<Set<String>, int> path,
+  LogAirlock airlock, {
+  required int turn,
+}) => Crux.through(
+  RecordedLink(path, airlock, placeOf: (place) => place.turn),
+  turn: turn,
 );
 
 /// The suit loop_launcher hands a path in these tests.
@@ -394,15 +508,21 @@ EntryId recordedReply(LogAirlock airlock, String text, {TrajectoryId? on}) =>
     );
 
 void main() {
-  test('every entry is at the place its crux was given', () async {
+  test('every entry is at the place the airlock service read for it', () async {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles(), RecordedPrograms()]);
     expect(
-      await answerOf(writeAndFormat('a.dart'), path.at(1)),
+      await answerOf(
+        writeAndFormat('a.dart'),
+        throughRecord(path, airlock, turn: 1),
+      ),
       'Formatted 1 file',
     );
     expect(
-      await answerOf(writeAndFormat('b.dart'), path.at(2)),
+      await answerOf(
+        writeAndFormat('b.dart'),
+        throughRecord(path, airlock, turn: 2),
+      ),
       'Formatted 1 file',
     );
     expect(airlock.log, [
@@ -424,7 +544,7 @@ void main() {
       final airlock = LogAirlock();
       final answer = await answerOf(
         writeAndFormat('lib/a.dart'),
-        start(airlock, [files]).at(1),
+        throughRecord(start(airlock, [files]), airlock, turn: 1),
       );
       expect(files.files, {'lib/a.dart': 'void main() {}'});
       expect(answer, 'failed: this machine cannot run dart');
@@ -442,7 +562,7 @@ void main() {
     final airlock = LogAirlock();
     final answer = await answerOf(
       writeAndFormat('lib/a.dart'),
-      start(airlock, [files], rules: {'read'}).at(1),
+      throughRecord(start(airlock, [files], rules: {'read'}), airlock, turn: 1),
     );
     expect(files.files, isEmpty);
     expect(answer, 'failed: not in the rules');
@@ -454,9 +574,14 @@ void main() {
 
   test('a driver refuses in its own words, and nothing after runs', () async {
     final programs = RecordedPrograms();
+    final airlock = LogAirlock();
     final answer = await answerOf(
       writeAndFormat('.git/config'),
-      start(LogAirlock(), [MemoryFiles(), programs]).at(1),
+      throughRecord(
+        start(airlock, [MemoryFiles(), programs]),
+        airlock,
+        turn: 1,
+      ),
     );
     expect(answer, "failed: .git/config is git's own");
     expect(programs.started, isEmpty);
@@ -464,10 +589,11 @@ void main() {
 
   test('no driver is reached when the decision cannot be recorded', () async {
     final files = MemoryFiles();
+    final airlock = LogAirlock(failWriting: FailWriting.decision);
     await expectLater(
       answerOf(
         writeAndFormat('lib/a.dart'),
-        start(LogAirlock(failWriting: FailWriting.decision), [files]).at(1),
+        throughRecord(start(airlock, [files]), airlock, turn: 1),
       ),
       throwsStateError,
     );
@@ -477,13 +603,11 @@ void main() {
   test('an outcome that cannot be recorded does not flow on', () async {
     final files = MemoryFiles();
     final programs = RecordedPrograms();
+    final airlock = LogAirlock(failWriting: FailWriting.result);
     await expectLater(
       answerOf(
         writeAndFormat('lib/a.dart'),
-        start(LogAirlock(failWriting: FailWriting.result), [
-          files,
-          programs,
-        ]).at(1),
+        throughRecord(start(airlock, [files, programs]), airlock, turn: 1),
       ),
       throwsStateError,
     );
@@ -498,7 +622,10 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [files])..stop();
     expect(
-      await answerOf(writeAndFormat('lib/a.dart'), path.at(2)),
+      await answerOf(
+        writeAndFormat('lib/a.dart'),
+        throughRecord(path, airlock, turn: 2),
+      ),
       'failed: stopped',
     );
     expect(files.files, isEmpty);
@@ -510,18 +637,26 @@ void main() {
 
   test('the record says who decided: the rules, or the person', () async {
     final decided = <String>[];
-    final root = start(LogAirlock(), [MemoryFiles(), RecordedPrograms()]);
+    final airlock = LogAirlock();
+    final root = start(airlock, [MemoryFiles(), RecordedPrograms()]);
     root.decisions.listen(
       (d) => decided.add('${d.decision.runtimeType} by ${d.decision.by.name}'),
     );
-    await answerOf(writeAndFormat('a.dart'), root.at(1));
+    await answerOf(
+      writeAndFormat('a.dart'),
+      throughRecord(root, airlock, turn: 1),
+    );
     root.stop();
-    await answerOf(writeAndFormat('a.dart'), root.at(2));
+    await answerOf(
+      writeAndFormat('a.dart'),
+      throughRecord(root, airlock, turn: 2),
+    );
     expect(decided, ['Allow by rules', 'Allow by rules', 'Deny by person']);
   });
 
   test('each decision and result reaches the trajectory, naming it', () async {
-    final path = start(LogAirlock(), [MemoryFiles()], rules: {'write'});
+    final airlock = LogAirlock();
+    final path = start(airlock, [MemoryFiles()], rules: {'write'});
     final seen = <String>[];
     path.decisions.listen(
       (d) => seen.add('${d.trajectoryId == path.id} decision at ${d.place}'),
@@ -537,13 +672,14 @@ void main() {
         FileText(RelativePath('a'), ''),
         then: (_) => const Done('ok'),
       ),
-      path.at(2),
+      throughRecord(path, airlock, turn: 2),
     );
     expect(seen, ['true decision at 2', 'true Ran<Wrote> at 2']);
   });
 
   test('what drivers report while running reaches the live view', () async {
-    final path = start(LogAirlock(), [RecordedPrograms()], rules: {'dart'});
+    final airlock = LogAirlock();
+    final path = start(airlock, [RecordedPrograms()], rules: {'dart'});
     final seen = <String>[];
     path.underway.listen(
       (u) => seen.add(
@@ -555,8 +691,8 @@ void main() {
     );
     Result<String> format() =>
         dart.runOrRefusal(const Args(['format']), then: (e) => Done(e.stdout));
-    await answerOf(format(), path.at(2));
-    await answerOf(format(), path.at(3));
+    await answerOf(format(), throughRecord(path, airlock, turn: 2));
+    await answerOf(format(), throughRecord(path, airlock, turn: 3));
     expect(seen, [
       'at 2: stdout: Formatted 1 file',
       'at 3: stdout: Formatted 1 file',
@@ -579,8 +715,12 @@ void main() {
         },
       ),
     );
+    final airlock = LogAirlock();
     expect(
-      await answerOf(result, start(LogAirlock(), [files]).at(1)),
+      await answerOf(
+        result,
+        throughRecord(start(airlock, [files]), airlock, turn: 1),
+      ),
       'replaced true: new',
     );
   });
@@ -588,7 +728,10 @@ void main() {
   test('the airlock decides knowing which trajectory acts', () async {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles()], rules: {'write', 'dart'});
-    await answerOf(writeAndFormat('a.dart'), path.at(1));
+    await answerOf(
+      writeAndFormat('a.dart'),
+      throughRecord(path, airlock, turn: 1),
+    );
     expect(airlock.decidedFor, [path.id, path.id]);
   });
 

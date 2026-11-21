@@ -54,10 +54,6 @@ Object? _decisionToJson(Decision decision) => {
     'reliedOn': [for (final e in decision.reliedOn) e.hex],
 };
 
-EntryId? _proposedFromJson(JsonObject json, String field) =>
-    switch (json.stringOrNull('proposed')) {
-      null => null,
-      final hex =>
-        EntryId.parse(hex) ??
-            (throw FormatException('$field.proposed: not an entry id')),
-    };
+EntryId _proposedFromJson(JsonObject json, String field) =>
+    EntryId.parse(json.stringOrNull('proposed') ?? '') ??
+    (throw FormatException('$field.proposed: not an entry id'));

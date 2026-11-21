@@ -23,7 +23,8 @@ import 'contract_test.dart'
         replyWith,
         start,
         teams,
-        teamsMessageOf;
+        teamsMessageOf,
+        throughRecord;
 
 /// [json] as the logbook would hold it and give it back: JSON text.
 JsonObject throughText(Object? json) => JsonObject.decode(jsonEncode(json));
@@ -38,7 +39,7 @@ void main() {
     final decided = <AirlockDecisionOnAction<int>>[];
     path.decisions.listen(decided.add);
     expect(
-      await answerOf(replyWith(reply), path.at(1)),
+      await answerOf(replyWith(reply), throughRecord(path, airlock, turn: 1)),
       '201 activity-1, 201 activity-2',
     );
     expect(
@@ -70,7 +71,11 @@ void main() {
       final airlock = LogAirlock()..answerAs = SignIn.parse('other-bot')!;
       final answer = await answerOf(
         replyWith(recordedReply(airlock, 'done')),
-        start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+        throughRecord(
+          start(airlock, [web], rules: {'$teams as $hart'}),
+          airlock,
+          turn: 1,
+        ),
       );
       expect(answer, 'failed: not in the rules');
       expect(web.requests, isEmpty);
@@ -88,7 +93,10 @@ void main() {
     final path = start(airlock, [RecordedWeb()], rules: {'$teams as $hart'});
     final decided = <AirlockDecisionOnAction<int>>[];
     path.decisions.listen(decided.add);
-    await answerOf(replyWith(recordedReply(airlock, 'a|b')), path.at(4));
+    await answerOf(
+      replyWith(recordedReply(airlock, 'a|b')),
+      throughRecord(path, airlock, turn: 4),
+    );
     final written = decided.single.toJson((p) => p);
     final back = AirlockDecisionOnAction.fromJson(
       throughText(written),
@@ -217,7 +225,10 @@ void main() {
       final path = start(airlock, [web], rules: {'$teams as $hart'});
       final decided = <AirlockDecisionOnAction<int>>[];
       path.decisions.listen(decided.add);
-      final answer = await answerOf(replyWith(reply(airlock)), path.at(1));
+      final answer = await answerOf(
+        replyWith(reply(airlock)),
+        throughRecord(path, airlock, turn: 1),
+      );
       expect(
         answer,
         allOf(startsWith('failed: '), contains(said)),
@@ -250,7 +261,11 @@ void main() {
         recordedReply(airlock, 'done'),
         respondsTo: EntryId.of(utf8.encode('a join, not a message')),
       ),
-      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+      throughRecord(
+        start(airlock, [web], rules: {'$teams as $hart'}),
+        airlock,
+        turn: 1,
+      ),
     );
     expect(answer, allOf(startsWith('failed: '), contains('admits no event')));
     expect(web.requests, isEmpty);
@@ -263,7 +278,11 @@ void main() {
     final airlock = LogAirlock();
     final answer = await answerOf(
       replyWith(recordedReply(airlock, 'one|two|three')),
-      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+      throughRecord(
+        start(airlock, [web], rules: {'$teams as $hart'}),
+        airlock,
+        turn: 1,
+      ),
     );
     expect(answer, 'failed: sent 1 of 3: 403 throttled');
     expect(
@@ -278,10 +297,29 @@ void main() {
     final airlock = LogAirlock();
     final answer = await answerOf(
       replyWith(recordedReply(airlock, 'one|two|three')),
-      start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+      throughRecord(
+        start(airlock, [web], rules: {'$teams as $hart'}),
+        airlock,
+        turn: 1,
+      ),
     );
     expect(answer, 'failed: sent 1 of 3: hart-bot is not held here');
     expect(web.requests, hasLength(2));
+  });
+
+  test('the module builds each answer knowing the place it was proposed '
+      'at', () async {
+    final airlock = LogAirlock();
+    final path = start(airlock, [RecordedWeb()], rules: {'$teams as $hart'});
+    await answerOf(
+      answerWith(const TrajectoryOpened()),
+      throughRecord(path, airlock, turn: 0),
+    );
+    await answerOf(
+      replyWith(recordedReply(airlock, 'done')),
+      throughRecord(path, airlock, turn: 3),
+    );
+    expect(airlock.builtAt, [0, 3]);
   });
 
   test('a trajectory open notice is built, decided and sent like a reply, '
@@ -291,7 +329,11 @@ void main() {
     expect(
       await answerOf(
         answerWith(const TrajectoryOpened()),
-        start(airlock, [web], rules: {'$teams as $hart'}).at(0),
+        throughRecord(
+          start(airlock, [web], rules: {'$teams as $hart'}),
+          airlock,
+          turn: 0,
+        ),
       ),
       '201 activity-1',
     );
@@ -305,7 +347,11 @@ void main() {
     await expectLater(
       answerOf(
         replyWith(recordedReply(airlock, 'done')),
-        start(airlock, [web], rules: {'$teams as $hart'}).at(1),
+        throughRecord(
+          start(airlock, [web], rules: {'$teams as $hart'}),
+          airlock,
+          turn: 1,
+        ),
       ),
       throwsStateError,
     );
@@ -318,7 +364,10 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [web], rules: {'$teams as $hart'})..stop();
     expect(
-      await answerOf(replyWith(recordedReply(airlock, 'done')), path.at(1)),
+      await answerOf(
+        replyWith(recordedReply(airlock, 'done')),
+        throughRecord(path, airlock, turn: 1),
+      ),
       'failed: stopped',
     );
     expect(airlock.readOn, isEmpty);
@@ -326,12 +375,117 @@ void main() {
     expect(web.requests, isEmpty);
   });
 
+  group('a refusal notice', () {
+    /// Runs [program] on [input] at turn 1 and gives the entry the airlock
+    /// kept its outcome as, through the airlock's own record path.
+    Future<EntryId> outcomeOf<I>(
+      Trajectory<Set<String>, int> path,
+      LogAirlock airlock,
+      Program<I, Object?> program,
+      I input,
+    ) async {
+      final proposed = path.decisions.first;
+      await answerOf(
+        program.runOrRefusal(input, then: (_) => const Done('')),
+        throughRecord(path, airlock, turn: 1),
+      );
+      return airlock.outcomeEntries[(await proposed).proposed]!;
+    }
+
+    test('tells the person why an action was refused, as recorded', () async {
+      final web = RecordedWeb();
+      final airlock = LogAirlock();
+      final path = start(
+        airlock,
+        [web, MemoryFiles()],
+        rules: {'$teams as $hart'},
+      );
+      final refusal = await outcomeOf(
+        path,
+        airlock,
+        Program.write,
+        FileText(RelativePath('a.dart'), 'x'),
+      );
+      expect(
+        await answerOf(
+          answerWith(
+            RefusalNoticeToEvent(respondsTo: admission, refusal: refusal),
+          ),
+          throughRecord(path, airlock, turn: 2),
+        ),
+        '201 activity-1',
+      );
+      expect(airlock.toldWhy, ['not in the rules']);
+      expect(
+        [for (final r in web.requests) r.body],
+        [teamsMessageOf('refused: not in the rules')],
+      );
+    });
+
+    test('never tells what an action that ran gave back', () async {
+      final web = RecordedWeb();
+      final airlock = LogAirlock();
+      final files = MemoryFiles()..files['secret.txt'] = 'the secret';
+      final path = start(
+        airlock,
+        [web, files],
+        rules: {'read', '$teams as $hart'},
+      );
+      final ran = await outcomeOf(
+        path,
+        airlock,
+        Program.read,
+        RelativePath('secret.txt'),
+      );
+      expect(
+        await answerOf(
+          answerWith(RefusalNoticeToEvent(respondsTo: admission, refusal: ran)),
+          throughRecord(path, airlock, turn: 2),
+        ),
+        'failed: entry $ran is not the outcome of a refused action',
+      );
+      expect(airlock.toldWhy, isEmpty);
+      expect(web.requests, isEmpty);
+    });
+
+    test("never tells another trajectory's refusal", () async {
+      final web = RecordedWeb();
+      final airlock = LogAirlock();
+      final other = idOf('started other');
+      final theirs = recordedOutcome(
+        airlock,
+        recordedProposal(airlock, 'read', 'a.dart', on: other),
+        encodeOutcome<Never>(const Refused('their reason'), (_) => null),
+        on: other,
+      );
+      expect(
+        await answerOf(
+          answerWith(
+            RefusalNoticeToEvent(respondsTo: admission, refusal: theirs),
+          ),
+          throughRecord(
+            start(airlock, [web], rules: {'$teams as $hart'}),
+            airlock,
+            turn: 1,
+          ),
+        ),
+        'failed: entry $theirs is on another chain',
+      );
+      expect(airlock.toldWhy, isEmpty);
+      expect(web.requests, isEmpty);
+    });
+  });
+
   test('a machine with no web driver sends no answer', () async {
     final airlock = LogAirlock();
     expect(
       await answerOf(
         replyWith(recordedReply(airlock, 'done')),
-        start(airlock, [MemoryFiles()], rules: {'$teams as $hart'}).at(1),
+        throughRecord(
+          start(airlock, [MemoryFiles()], rules: {'$teams as $hart'}),
+          airlock,
+          turn: 1,
+        ),
       ),
       'failed: this machine cannot run answer',
     );

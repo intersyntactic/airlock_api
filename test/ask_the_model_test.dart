@@ -4,7 +4,8 @@ import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
-import 'contract_test.dart' show LogAirlock, answerOf, idOf, start;
+import 'contract_test.dart'
+    show LogAirlock, answerOf, idOf, start, throughRecord;
 
 /// Asks nothing: keeps each call it was given, streams the reply in two
 /// pieces, and answers with it whole.
@@ -87,7 +88,10 @@ void main() {
         Printed(:final text) => text,
       }),
     );
-    final answer = await answerOf(ask(recordedRequest(airlock)), path.at(1));
+    final answer = await answerOf(
+      ask(recordedRequest(airlock)),
+      throughRecord(path, airlock, turn: 1),
+    );
     expect(answer, 'Clause 4 says rent is due monthly.');
     expect(model.calls, [
       ['nick-claude-team', 'claude-opus-5-5', system.join(), asked.join()],
@@ -104,7 +108,10 @@ void main() {
     final airlock = LogAirlock();
     final model = RecordedModel();
     final path = start(airlock, [model], rules: {'model as someone-else'});
-    final answer = await answerOf(ask(recordedRequest(airlock)), path.at(1));
+    final answer = await answerOf(
+      ask(recordedRequest(airlock)),
+      throughRecord(path, airlock, turn: 1),
+    );
     expect(answer, 'failed: not in the rules');
     expect(model.calls, isEmpty);
   });
@@ -185,7 +192,10 @@ void main() {
       final airlock = LogAirlock();
       final model = RecordedModel();
       final path = start(airlock, [model], rules: rules);
-      final answer = await answerOf(ask(request(airlock)), path.at(1));
+      final answer = await answerOf(
+        ask(request(airlock)),
+        throughRecord(path, airlock, turn: 1),
+      );
       expect(
         answer,
         allOf(startsWith('failed: '), contains(said)),
@@ -203,7 +213,10 @@ void main() {
   test('with no model driver, the call is refused', () async {
     final airlock = LogAirlock();
     final path = start(airlock, [], rules: rules);
-    final answer = await answerOf(ask(recordedRequest(airlock)), path.at(1));
+    final answer = await answerOf(
+      ask(recordedRequest(airlock)),
+      throughRecord(path, airlock, turn: 1),
+    );
     expect(answer, 'failed: this machine cannot run model');
   });
 
