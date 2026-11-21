@@ -1,49 +1,8 @@
-import 'dart:convert';
-
 import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
-/// Allows everything, and keeps what it is asked to record, in order.
-final class _KeepingAirlock implements DecidesAndRecordsActions<String, int> {
-  final kept = <(String, int)>[];
-
-  @override
-  Future<Decision> decide(
-    TrajectoryId trajectory,
-    Reach reach,
-    String rules,
-  ) async => const Allow(by: DecidedBy.rules);
-
-  @override
-  Future<void> recordDecision(AirlockDecisionOnAction<int> decision) async =>
-      kept.add(('decision', decision.place));
-
-  @override
-  Future<void> recordResult(
-    AirlockDecisionOnAction<int> decision,
-    Outcome<Object?> result, {
-    required Object? resultAsJson,
-  }) async => kept.add(('result', decision.place));
-
-  @override
-  Future<Outcome<({String kind, String body})>> recordedOn(
-    TrajectoryId trajectory,
-    EntryId entry,
-  ) async => const Refused('nothing recorded');
-
-  @override
-  Future<Outcome<List<Request>>> replyRequests(
-    TrajectoryId trajectory,
-    EntryId respondsTo,
-    ModelReply reply,
-  ) async => const Refused('no module');
-
-  @override
-  Future<Outcome<List<Request>>> trajectoryOpenedRequests(
-    TrajectoryId trajectory,
-  ) async => const Refused('no module');
-}
+import 'contract_test.dart' show LogAirlock, start, throughRecord;
 
 /// Writes nothing, and says it wrote.
 final class _FileDriver implements ReadsAndWritesFiles {
@@ -68,15 +27,9 @@ void main() {
   test(
     'map runs nothing, and applies its function once the action answers',
     () async {
-      final airlock = _KeepingAirlock();
+      final airlock = LogAirlock();
       final files = _FileDriver();
-      final crux = Trajectory<String, int>(
-        id: TrajectoryId.of(utf8.encode('started a')),
-        drivers: [files],
-        airlock: airlock,
-        rules: 'all',
-        suit: Suit.parse('suit-1')!,
-      ).at(7);
+      final crux = throughRecord(start(airlock, [files]), airlock, turn: 7);
       final path = RelativePath('notes.txt');
       var applied = 0;
 
@@ -90,7 +43,7 @@ void main() {
       expect(result, isA<Action<String>>());
       expect(applied, 0);
       expect(files.written, isEmpty);
-      expect(airlock.kept, isEmpty);
+      expect(airlock.log, isEmpty);
 
       while (result is Action<String>) {
         result = await result.next(crux);
@@ -100,7 +53,10 @@ void main() {
       expect((result as Done<String>).value, 'created');
       expect(applied, 1);
       expect(files.written, [path]);
-      expect(airlock.kept, [('decision', 7), ('result', 7)]);
+      expect(airlock.log, [
+        '7: allow write notes.txt',
+        '7: ran write notes.txt',
+      ]);
     },
   );
 

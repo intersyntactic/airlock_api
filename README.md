@@ -81,10 +81,13 @@ ways, and neither lets it write a body.
   it. A proposal carrying a body or headers is rejected, not stripped.
 - `AnswerEvent` (proposed as `answer`) answers an event admitted to the
   mission, with an `Answer`: `ReplyToEvent(respondsTo:, reply:)`, a
-  model's reply to the admission of an event that starts a turn, or
-  `TrajectoryOpened()`. The requests that answer it are built first,
-  reaching nothing, by `DecidesAndRecordsActions.replyRequests` or
-  `trajectoryOpenedRequests`: the airlock checks the admission, picks the
+  model's reply to the admission of an event that starts a turn,
+  `TrajectoryOpened()`, or `RefusalNoticeToEvent(respondsTo:, refusal:)`,
+  why an action was refused, so the person decides what to do. The
+  requests that answer it are built first, reaching nothing, by
+  `DecidesAndRecordsActions.replyRequests`, `trajectoryOpenedRequests` or
+  `refusalNoticeRequests`, each given the place it was proposed at: the
+  airlock checks the admission, picks the
   module of the event's system and the sign-in, and the module builds them
   from what is recorded. Then one decision holds every exact request, as
   `AnswersEvent(answer, requests)`, so the airlock can refuse any of it
@@ -95,7 +98,9 @@ ways, and neither lets it write a body.
   a proposal to ask the model, both on the trajectory's own chain, read
   through `DecidesAndRecordsActions.recordedOn`: another program's result,
   such as a read's `{"kind":"text","text":…}`, can read as a reply. A
-  build that cannot be made is decided as `Deny(why)` with no requests,
+  refusal notice is drawn only from such an outcome whose result is
+  `Refused`, and tells only its recorded `why`, so a notice can never carry
+  what an action gave back. A build that cannot be made is decided as `Deny(why)` with no requests,
   so the loop is still answered.
 
 ## A model call
@@ -206,9 +211,10 @@ and what came back returns through the record
 (https://github.com/enspyrco/intersyntactic/pull/1157). The airlock decides
 and records, and only a driver carries an action out.
 
-- `Trajectory.at(place)` is a crux where the trajectory is, in the
-  airlock service. `Crux.through(link, turn:)` is one in the agent loop,
-  one per turn: it proposes each action of the turn at the next
+- `Crux.through(link, turn:)` is the only crux, made in the agent loop,
+  one per turn; the airlock service has none, and decides only what it
+  reads from the record with `Trajectory.consider`. It proposes each
+  action of the turn at the next
   `PlaceInTrajectory(turn, step)`, from step 0, so the model call, each
   action of a tool it asks for and the reply each get their own place, and
   a restarted loop gives each the same place again. `link`, which

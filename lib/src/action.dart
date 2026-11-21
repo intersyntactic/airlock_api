@@ -171,12 +171,13 @@ sealed class Program<I, O> {
   /// What [input] would do to the world, as far as the input alone says.
   Reach _reach(I input);
 
-  /// What [input] would do to the world on [trajectory], worked out before
-  /// it is decided, reaching no driver; or [Refused] with why it cannot be.
-  /// [_reach] for every program whose input says it all.
-  Future<Outcome<Reach>> _reachOn(
-    Trajectory<Object?, Object?> trajectory,
+  /// What [input] would do to the world at [place] on [trajectory], worked
+  /// out before it is decided, reaching no driver; or [Refused] with why it
+  /// cannot be. [_reach] for every program whose input says it all.
+  Future<Outcome<Reach>> _reachOn<P>(
+    Trajectory<Object?, P> trajectory,
     I input,
+    P place,
   ) async => Ran(_reach(input));
 
   /// How this program, its input and its output travel between the agent
@@ -389,8 +390,44 @@ Future<Outcome<String>> _modelReplyOutcome(
       },
     };
 
+/// Why the action [entry] answers was refused, when [entry] is an
+/// [outcomeOfProposedActionKind] logbook entry of [trajectory]'s whose
+/// result is [Refused]; or [Refused] with why it is not one. An outcome that
+/// ran is refused here, so what an action gave back, such as a file's
+/// text, never leaves as a notice.
+Future<Outcome<String>> _refusalWhy(
+  Trajectory<Object?, Object?> trajectory,
+  EntryId entry,
+) async =>
+    switch (await _bodyOf(trajectory, entry, outcomeOfProposedActionKind)) {
+      Refused(:final why) => Refused(why),
+      Ran(output: final recorded) => switch (readOutcomeOfProposedAction(
+        recorded,
+      )) {
+        null => Refused('entry $entry names no proposal'),
+        (proposed: _, :final result) => _whyRefused(result, entry),
+      },
+    };
+
+Outcome<String> _whyRefused(Object? result, EntryId entry) {
+  const notRefused = 'is not the outcome of a refused action';
+  try {
+    if (decodeOutcome<Never>(
+          result,
+          (_, field) => throw FormatException('$field: ran'),
+        )
+        case Refused(:final why)) {
+      return Ran(why);
+    }
+  } on FormatException {
+    return Refused('entry $entry $notRefused');
+  }
+  return Refused('entry $entry $notRefused');
+}
+
 /// Answers an event admitted to the trajectory's mission: with a model's
-/// reply, or with the notice that the trajectory is open.
+/// reply, with the notice that the trajectory is open, or with the notice
+/// that an action was refused.
 ///
 /// The airlock knows no chat: it asks [DecidesAndRecordsActions] to build
 /// the requests that answer the event, which a module of the event's own
@@ -415,9 +452,10 @@ final class AnswerEvent extends Program<Answer, List<WebResponse>> {
   Reach _reach(Answer answer) => AnswersEvent(answer, const []);
 
   @override
-  Future<Outcome<Reach>> _reachOn(
-    Trajectory<Object?, Object?> trajectory,
+  Future<Outcome<Reach>> _reachOn<P>(
+    Trajectory<Object?, P> trajectory,
     Answer input,
+    P place,
   ) async {
     final airlock = trajectory._airlock;
     final built = switch (input) {
@@ -429,6 +467,7 @@ final class AnswerEvent extends Program<Answer, List<WebResponse>> {
             (FinishedReply() || CutOffReply()) && final modelReply =>
               await airlock.replyRequests(
                 trajectory.id,
+                place,
                 respondsTo,
                 modelReply,
               ),
@@ -436,7 +475,18 @@ final class AnswerEvent extends Program<Answer, List<WebResponse>> {
         },
       TrajectoryOpened() => await airlock.trajectoryOpenedRequests(
         trajectory.id,
+        place,
       ),
+      RefusalNoticeToEvent(:final respondsTo, :final refusal) =>
+        switch (await _refusalWhy(trajectory, refusal)) {
+          Refused(:final why) => Refused(why),
+          Ran(output: final why) => await airlock.refusalNoticeRequests(
+            trajectory.id,
+            place,
+            respondsTo,
+            why,
+          ),
+        },
     };
     return switch (built) {
       Ran(output: final requests) => Ran(AnswersEvent(input, requests)),
@@ -705,6 +755,21 @@ final class TrajectoryOpened extends Answer {
   const TrajectoryOpened();
 }
 
+/// That an action was refused, and why, answering the event admitted by
+/// [respondsTo], so the person who sent it can decide what to do.
+///
+/// [refusal] is an outcome of a proposal on this trajectory, and its result
+/// must be [Refused]: only the `why` the airlock recorded is told, never
+/// what an action that ran gave back.
+final class RefusalNoticeToEvent extends Answer {
+  const RefusalNoticeToEvent({required this.respondsTo, required this.refusal});
+
+  /// The docking station's admission of the event: one that starts a turn
+  /// on this trajectory, as the airlock checks.
+  final EntryId respondsTo;
+  final EntryId refusal;
+}
+
 /// What an action would do to the world, typed, so the airlock can decide
 /// and record it without knowing the action's types: one per [Program].
 sealed class Reach {
@@ -833,13 +898,6 @@ final class Trajectory<R, P> {
   final _underway = StreamController<Underway<P>>.broadcast(sync: true);
   bool _stopped = false;
 
-  /// This trajectory's tip at [place], where its actions are proposed in
-  /// this process.
-  ///
-  /// Here, where [P] is known, so a place of another type does not compile;
-  /// whoever is handed the crux never sees [P].
-  Crux at(P place) => _AtPath(this, place);
-
   /// Refuses every action on this trajectory whose driver has not yet been
   /// reached. An action whose driver has been reached is not interrupted.
   /// Never undone.
@@ -866,12 +924,12 @@ final class Trajectory<R, P> {
     Program<I, O> program,
     I input,
     P place, {
-    EntryId? proposed,
+    required EntryId proposed,
   }) async {
     const stoppedByPerson = Deny('stopped', by: DecidedBy.person);
     final built = stopped
         ? Ran(program._reach(input))
-        : await program._reachOn(this, input);
+        : await program._reachOn(this, input, place);
     final reach = switch (built) {
       Ran(output: final reach) => reach,
       Refused() => program._reach(input),
@@ -912,9 +970,9 @@ final class Trajectory<R, P> {
   }
 
   /// [proposal], the logbook entry [proposed] on this path's chain,
-  /// considered at [place] as an action proposed at [at]'s crux would be:
-  /// decided and recorded, and carried out by a driver if it is allowed. Its
-  /// decision and its result both name [proposed].
+  /// considered at [place]: decided and recorded, and carried out by a
+  /// driver if it is allowed. Its decision and its result both name
+  /// [proposed]. The one way an action reaches this trajectory's drivers.
   ///
   /// Only for an entry on this path's own chain, which the logbook service
   /// takes only from this path's loop user. [place] is
@@ -932,12 +990,12 @@ final class Trajectory<R, P> {
 /// its airlock to decide, which records each entry at that place
 /// (https://github.com/enspyrco/intersyntactic/pull/1168).
 ///
-/// Made by [Trajectory.at] where the trajectory is, in the airlock
-/// service, and by [Crux.through] in the agent loop, which is another
-/// process: there an action's program and input go into the logbook as an
-/// [ActionProposedByAgentLoop], and its continuation stays behind, since it
-/// is the tool's own code. Either way, what comes after a tool's result
-/// takes a crux and never handles the place. Two agents on one machine have
+/// Made by [Crux.through] in the agent loop, a process of its own: an
+/// action's program and input go into the logbook as an
+/// [ActionProposedByAgentLoop], which the airlock service reads and
+/// decides, and its continuation stays behind, since it is the tool's own
+/// code. What comes after a tool's result takes a crux and never handles
+/// the place. Two agents on one machine have
 /// two cruxes; one step's two tool calls go through one trajectory's crux,
 /// at two places.
 sealed class Crux {
@@ -954,17 +1012,6 @@ sealed class Crux {
   }) = _ThroughRecord;
 
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
-}
-
-final class _AtPath<P> extends Crux {
-  const _AtPath(this._trajectory, this._place);
-
-  final Trajectory<Object?, P> _trajectory;
-  final P _place;
-
-  @override
-  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) =>
-      _trajectory._consider(program, input, _place);
 }
 
 /// Decides each action on a trajectory, and records it.
@@ -1008,9 +1055,8 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   /// [result] only once it is kept; an error thrown here ends the call. Kept
   /// as [recordDecision] keeps.
   ///
-  /// It extends [decision]'s chain, its previous the decision. When
-  /// [decision] answers a proposal,
-  /// its body is [outcomeOfProposedActionToJson] of
+  /// It extends [decision]'s chain, its previous the decision. Its body is
+  /// [outcomeOfProposedActionToJson] of
   /// [AirlockDecisionOnAction.proposed] and [resultAsJson], under
   /// [outcomeOfProposedActionKind]: the one copy of what the action
   /// returned, which the loop that proposed it is waiting for.
@@ -1040,22 +1086,39 @@ abstract interface class DecidesAndRecordsActions<R, P> {
   );
 
   /// The requests that answer the event [respondsTo] admitted with [reply],
-  /// as the module of that event's system builds them, reaching nothing;
-  /// or [Refused] with why there are none. Refused unless [respondsTo] is
-  /// an admission of an event that starts a turn on [trajectory].
+  /// proposed at [place], as the module of that event's system builds them,
+  /// reaching nothing; or [Refused] with why there are none. Refused unless
+  /// [respondsTo] is an admission of an event that starts a turn on
+  /// [trajectory].
+  ///
+  /// [place] is where the loop said it proposed the answer, so a module may
+  /// show it; the airlock checks nothing about it.
   ///
   /// The airlock picks the module and the sign-in the requests go as; the
   /// decision on them then grants each one's origin and sign-in.
   Future<Outcome<List<Request>>> replyRequests(
     TrajectoryId trajectory,
+    P place,
     EntryId respondsTo,
     ModelReply reply,
   );
 
   /// The requests that tell the event that started [trajectory] that it is
-  /// open, built as [replyRequests] builds a reply's.
+  /// open, proposed at [place], built as [replyRequests] builds a reply's.
   Future<Outcome<List<Request>>> trajectoryOpenedRequests(
     TrajectoryId trajectory,
+    P place,
+  );
+
+  /// The requests that tell the event [respondsTo] admitted that an action
+  /// was refused, and [why], proposed at [place], built as [replyRequests]
+  /// builds a reply's. [why] is a refusal's reason as the airlock recorded
+  /// it, never anything an action gave back.
+  Future<Outcome<List<Request>>> refusalNoticeRequests(
+    TrajectoryId trajectory,
+    P place,
+    EntryId respondsTo,
+    String why,
   );
 }
 
@@ -1099,7 +1162,7 @@ final class AirlockDecisionOnAction<P> {
     this.place,
     this.reach,
     this.decision, {
-    this.proposed,
+    required this.proposed,
   });
 
   /// The kind of the logbook entry the airlock keeps it as.
@@ -1134,7 +1197,7 @@ final class AirlockDecisionOnAction<P> {
     'place': placeToJson(place),
     'reach': _reachToJson(reach),
     'decision': _decisionToJson(decision),
-    'proposed': proposed?.hex,
+    'proposed': proposed.hex,
   };
 
   final TrajectoryId trajectoryId;
@@ -1143,9 +1206,8 @@ final class AirlockDecisionOnAction<P> {
   final Decision decision;
 
   /// The [ActionProposedByAgentLoop] logbook entry that asked for the
-  /// action; null for an action proposed in the airlock service's own
-  /// process.
-  final EntryId? proposed;
+  /// action.
+  final EntryId proposed;
 }
 
 /// What a driver reported, [progress], while the action doing [reach] was
