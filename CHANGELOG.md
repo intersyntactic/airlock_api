@@ -30,15 +30,19 @@ proposal builds what it sends, and the airlock decides where it may go.
   `recordedOn` → `entryOn`; `RecordedText` → `TextFromPieces`. The docs
   and README say "the logbook" and "entry" throughout. Entry kinds are
   unchanged.
-- `PlaceInTrajectory` is sealed: `ProposedForAnIntent(turn, intent,
-  action)`, written `[turn, intent, action]`, or `ProposedByTheLoop(turn,
-  which)` for a `LoopProposal` (`modelCall`, `reply`), written
-  `[turn, "model-call"]` or `[turn, "reply"]`. A place is fixed by where an
-  action sits in the model's reply, never by the order things ran in, so
-  two tools running at once can no longer swap places across a restart.
-  0.14's `[turn, step]` is not a place. `Crux.through` is gone:
-  `Crux.forIntent(link, turn:, intent:)` numbers one intent's actions, and
-  `Crux.forTheLoop(link, turn:, which:)` carries exactly one action.
+- `PlaceInTrajectory` is sealed: `ProposedForTheModelCall(turn)`, written
+  `[turn, "model-call"]`; `ProposedForAnIntent(turn, intent, action)`,
+  written `[turn, intent, action]`; or `ProposedForTheReply(turn, action)`,
+  written `[turn, "reply", action]`, in that order within a turn. A place is
+  fixed by where an action sits in the model's reply, never by the order
+  things ran in, so two tools running at once can no longer swap places
+  across a restart. 0.14's `[turn, step]` is not a place. `Crux.through` is
+  gone: `Crux.forTheModelCall(link, turn:)` carries exactly one action, and
+  `Crux.forIntent(link, turn:, intent:)` and `Crux.forTheReply(link,
+  turn:)` number theirs. A reply has several actions because the message
+  is built by a program on the box (such as a `teams-message` app, run by
+  name through the program driver) and then sent exactly as built, so the
+  airlock never holds a module's code.
 - README: the example and the trajectory section no longer show
   `Trajectory.at`, which 0.14.0 removed.
 

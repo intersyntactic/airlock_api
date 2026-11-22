@@ -157,7 +157,8 @@ void main() {
     }
 
     expect(whyNot('place', [3, 0, 1]), isNull);
-    expect(whyNot('place', [3, 'reply']), isNull);
+    expect(whyNot('place', [3, 'reply', 1]), isNull);
+    expect(whyNot('place', [3, 'model-call']), isNull);
     for (final (key, value, said) in [
       ('trajectory', 'x', 'decided.trajectory'),
       ('place', 3, 'decided.place: not a place'),

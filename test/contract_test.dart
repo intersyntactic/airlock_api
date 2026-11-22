@@ -331,11 +331,12 @@ final class LogbookLink implements ProposesActionsThroughTheLogbook {
       )!.result;
 }
 
-/// An intent's action by its number; the loop's own proposals below 0, so
-/// they never share a place with an action.
+/// An intent's action by its number; the model call and the reply's actions
+/// below 0, so they never share a place with an intent's action.
 int _stepOf(PlaceInTrajectory place) => switch (place) {
   ProposedForAnIntent(:final action) => action,
-  ProposedByTheLoop(:final which) => -1 - which.index,
+  ProposedForTheModelCall() => -1,
+  ProposedForTheReply(:final action) => -2 - action,
 };
 
 /// The agent loop's crux for intent 0 of [turn] on [link]'s path.

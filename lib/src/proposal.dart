@@ -24,28 +24,28 @@ abstract interface class ProposesActionsThroughTheLogbook {
 }
 
 /// Where in its trajectory a loop proposed an action: in a [turn], one model
-/// call and what it caused, either one of the loop's own proposals or an
-/// action of one of the intents the model's reply holds. Each is fixed by
-/// what the logbook already holds, never by the order things ran in, so a
-/// loop that restarts proposes the same actions at the same places, and a
-/// place the logbook already answers is one it need not propose again.
+/// call and what it caused, either the model call, an action of one of the
+/// intents the model's reply holds, or an action of the reply the loop
+/// makes from the turn's final text. Each is fixed by what the logbook
+/// already holds, never by the order things ran in, so a loop that restarts
+/// proposes the same actions at the same places, and a place the logbook
+/// already answers is one it need not propose again.
 ///
-/// Written `[turn, intent, action]` or `[turn, "model-call" | "reply"]`.
-/// Within a turn the model call comes first, then each intent's actions by
-/// intent and action, then the reply.
+/// Written `[turn, "model-call"]`, `[turn, intent, action]` or
+/// `[turn, "reply", action]`, in that order within a turn.
 sealed class PlaceInTrajectory implements Comparable<PlaceInTrajectory> {
   const PlaceInTrajectory._(this.turn);
 
   /// [json], as [toJson] writes it, read back; null when it is not one.
   static PlaceInTrajectory? parse(Object? json) => switch (json) {
-    [final int turn, final String wire] when turn >= 0 =>
-      LoopProposal.values
-          .where((which) => which._wire == wire)
-          .map((which) => ProposedByTheLoop._(turn, which))
-          .firstOrNull,
+    [final int turn, ProposedForTheModelCall._wire] when turn >= 0 =>
+      ProposedForTheModelCall._(turn),
     [final int turn, final int intent, final int action]
         when turn >= 0 && intent >= 0 && action >= 0 =>
       ProposedForAnIntent._(turn, intent, action),
+    [final int turn, ProposedForTheReply._wire, final int action]
+        when turn >= 0 && action >= 0 =>
+      ProposedForTheReply._(turn, action),
     _ => null,
   };
 
@@ -73,47 +73,68 @@ sealed class PlaceInTrajectory implements Comparable<PlaceInTrajectory> {
   }
 }
 
-/// Which of its own proposals the loop makes in a turn, which no intent
-/// draws: the model call, and the reply it makes from the turn's final
-/// text.
-enum LoopProposal {
-  modelCall('model-call'),
-  reply('reply');
+/// The place of [turn]'s model call, which no intent draws: one action, the
+/// first of the turn.
+final class ProposedForTheModelCall extends PlaceInTrajectory {
+  const ProposedForTheModelCall._(super.turn) : super._();
 
-  const LoopProposal(this._wire);
-
-  final String _wire;
-}
-
-/// The place of one of the loop's own proposals in [turn].
-final class ProposedByTheLoop extends PlaceInTrajectory {
-  const ProposedByTheLoop._(super.turn, this.which) : super._();
-
-  /// [which] of [turn], counted from 0.
-  factory ProposedByTheLoop.at(int turn, LoopProposal which) => turn >= 0
-      ? ProposedByTheLoop._(turn, which)
+  /// Counted from 0.
+  factory ProposedForTheModelCall.at(int turn) => turn >= 0
+      ? ProposedForTheModelCall._(turn)
       : throw ArgumentError('a turn is counted from 0: $turn');
 
-  final LoopProposal which;
+  static const _wire = 'model-call';
 
   @override
-  Object? toJson() => [turn, which._wire];
+  Object? toJson() => [turn, _wire];
 
   @override
-  (int, int, int) get _withinTurn => switch (which) {
-    LoopProposal.modelCall => (0, 0, 0),
-    LoopProposal.reply => (2, 0, 0),
-  };
+  (int, int, int) get _withinTurn => (0, 0, 0);
 
   @override
   bool operator ==(Object other) =>
-      other is ProposedByTheLoop && other.turn == turn && other.which == which;
+      other is ProposedForTheModelCall && other.turn == turn;
 
   @override
-  int get hashCode => Object.hash(turn, which);
+  int get hashCode => Object.hash(turn, _wire);
 
   @override
-  String toString() => '$turn.${which._wire}';
+  String toString() => '$turn.$_wire';
+}
+
+/// The place of [action] of [turn]'s reply, which the loop makes from the
+/// turn's final text and no intent draws, such as running the program that
+/// builds the message and then sending what it built; the last of the turn.
+final class ProposedForTheReply extends PlaceInTrajectory {
+  const ProposedForTheReply._(super.turn, this.action) : super._();
+
+  /// Both counted from 0.
+  factory ProposedForTheReply.at(int turn, int action) =>
+      turn >= 0 && action >= 0
+      ? ProposedForTheReply._(turn, action)
+      : throw ArgumentError('a place is counted from 0: $turn, $action');
+
+  static const _wire = 'reply';
+
+  final int action;
+
+  @override
+  Object? toJson() => [turn, _wire, action];
+
+  @override
+  (int, int, int) get _withinTurn => (2, 0, action);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProposedForTheReply &&
+      other.turn == turn &&
+      other.action == action;
+
+  @override
+  int get hashCode => Object.hash(turn, _wire, action);
+
+  @override
+  String toString() => '$turn.$_wire.$action';
 }
 
 /// The place of [action] of [intent] in [turn]: the intent is a tool call
@@ -153,8 +174,8 @@ final class ProposedForAnIntent extends PlaceInTrajectory {
   String toString() => '$turn.$intent.$action';
 }
 
-/// A crux in the agent loop for one intent, or one of the loop's own
-/// proposals, in one turn: proposes each action's program and input through
+/// A crux in the agent loop for one turn's model call, one of its intents,
+/// or its reply: proposes each action's program and input through
 /// the logbook at its next place, and keeps the continuation.
 final class _ThroughLogbook extends Crux {
   /// Every action of [intent] in [turn], numbered from 0.
@@ -170,14 +191,25 @@ final class _ThroughLogbook extends Crux {
     );
   }
 
-  /// The one action of the loop's own proposal [which] in [turn].
-  factory _ThroughLogbook.forTheLoop(
+  /// The one action of [turn]'s model call.
+  factory _ThroughLogbook.forTheModelCall(
     ProposesActionsThroughTheLogbook link, {
     required int turn,
-    required LoopProposal which,
   }) {
-    final only = ProposedByTheLoop.at(turn, which);
+    final only = ProposedForTheModelCall.at(turn);
     return _ThroughLogbook._(link, (n) => n == 0 ? only : null);
+  }
+
+  /// Every action of [turn]'s reply, numbered from 0.
+  factory _ThroughLogbook.forTheReply(
+    ProposesActionsThroughTheLogbook link, {
+    required int turn,
+  }) {
+    final first = ProposedForTheReply.at(turn, 0);
+    return _ThroughLogbook._(
+      link,
+      (n) => n == 0 ? first : ProposedForTheReply._(turn, n),
+    );
   }
 
   _ThroughLogbook._(this._link, this._placeOf);
@@ -198,7 +230,7 @@ final class _ThroughLogbook extends Crux {
     final place =
         _placeOf(_proposed++) ??
         (throw StateError(
-          "a crux for the loop's own proposal carries one action, not "
+          'a crux for the model call carries one action, not '
           '${program.name} as well',
         ));
     final proposed = await _link.writeProposal(

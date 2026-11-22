@@ -199,10 +199,12 @@ and writes to the logbook, and only a driver carries an action out.
   `Crux.forIntent(link, turn:, intent:)`, one per tool call in the model's
   reply, proposes each action of that tool at the intent's next action,
   from 0, so two tools running at once never take each other's places.
-  `Crux.forTheLoop(link, turn:, which:)` carries the loop's own proposal,
-  the model call or the reply, and refuses a second action with a
-  `StateError` before writing it. A restarted loop gives each action the
-  same place again. `link`, which
+  `Crux.forTheModelCall(link, turn:)` carries the turn's one model call,
+  and refuses a second action with a `StateError` before writing it.
+  `Crux.forTheReply(link, turn:)` numbers the actions of the reply the loop
+  makes from the turn's final text, such as running the program that
+  builds the message and then sending what it built. A restarted loop
+  gives each action the same place again. `link`, which
   `ProposesActionsThroughTheLogbook`, is the transport, which this package
   does not have: `writeProposal(body)` writes an
   `action-proposed-by-agent-loop` logbook entry on the loop's trajectory's
@@ -212,11 +214,10 @@ and writes to the logbook, and only a driver carries an action out.
   joins the two and refuses an outcome naming another proposal, so a loop
   never works out an id.
 - `PlaceInTrajectory`, sealed: in a turn (one model call and what it
-  caused), either `ProposedForAnIntent(turn, intent, action)`, written
-  `[turn, intent, action]`, or `ProposedByTheLoop(turn, which)` for a
-  `LoopProposal` (`modelCall` or `reply`), written `[turn, "model-call"]`
-  or `[turn, "reply"]`. Within a turn the model call comes first, then
-  each intent's actions, then the reply. `parse` gives null for anything
+  caused), `ProposedForTheModelCall(turn)`, written `[turn, "model-call"]`;
+  `ProposedForAnIntent(turn, intent, action)`, written
+  `[turn, intent, action]`; or `ProposedForTheReply(turn, action)`, written
+  `[turn, "reply", action]`, in that order within a turn. `parse` gives null for anything
   else, 0.14's `[turn, step]` among them, and a proposal without one is
   `Rejected('not a place')`.
 - An `ActionProposedByAgentLoop` (kind `action-proposed-by-agent-loop`)

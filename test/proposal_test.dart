@@ -232,7 +232,7 @@ void main() {
       'send', () {
     final proposal = ActionProposedByAgentLoop.read(
       jsonEncode({
-        'place': [0, 'reply'],
+        'place': [0, 'reply', 1],
         'program': 'make-web-requests',
         'input': [encodeRequest(teamsPost('open'))],
       }),
@@ -316,19 +316,19 @@ void main() {
     );
   });
 
-  test('a place is an action of an intent or one of the loop\'s own, read '
-      'back strictly', () {
+  test('a place is the model call, an action of an intent, or an action of '
+      'the reply, read back strictly', () {
     final places = [
+      ProposedForTheModelCall.at(2),
       ProposedForAnIntent.at(2, 1, 5),
-      ProposedByTheLoop.at(2, LoopProposal.modelCall),
-      ProposedByTheLoop.at(2, LoopProposal.reply),
+      ProposedForTheReply.at(2, 1),
     ];
     expect(
       [for (final p in places) p.toJson()],
       [
-        [2, 1, 5],
         [2, 'model-call'],
-        [2, 'reply'],
+        [2, 1, 5],
+        [2, 'reply', 1],
       ],
     );
     for (final place in places) {
@@ -348,7 +348,10 @@ void main() {
       [-1, 0, 0],
       [0, -1, 0],
       [0, 0, -1],
-      [-1, 'reply'],
+      [-1, 'model-call'],
+      [0, 'reply'],
+      [0, 'reply', -1],
+      [0, 'model-call', 0],
       [0, 'open-card'],
       [0, 'modelCall'],
       ['1', '2', '3'],
@@ -356,29 +359,26 @@ void main() {
       expect(PlaceInTrajectory.parse(json), isNull, reason: '$json');
     }
     expect(() => ProposedForAnIntent.at(0, -1, 0), throwsArgumentError);
-    expect(
-      () => ProposedByTheLoop.at(-1, LoopProposal.reply),
-      throwsArgumentError,
-    );
+    expect(() => ProposedForTheModelCall.at(-1), throwsArgumentError);
+    expect(() => ProposedForTheReply.at(0, -1), throwsArgumentError);
     expect(
       ProposedForAnIntent.at(1, 0, 0),
       isNot(ProposedForAnIntent.at(1, 1, 0)),
     );
-    expect(
-      ProposedByTheLoop.at(1, LoopProposal.reply),
-      isNot(ProposedByTheLoop.at(1, LoopProposal.modelCall)),
-    );
+    expect(ProposedForTheReply.at(1, 0), isNot(ProposedForTheReply.at(1, 1)));
+    expect(ProposedForTheModelCall.at(1), isNot(ProposedForTheModelCall.at(2)));
   });
 
   test('within a turn the model call comes first, then each intent, then the '
-      'reply', () {
+      "reply's actions", () {
     final inOrder = <PlaceInTrajectory>[
-      ProposedByTheLoop.at(1, LoopProposal.modelCall),
+      ProposedForTheModelCall.at(1),
       ProposedForAnIntent.at(1, 0, 0),
       ProposedForAnIntent.at(1, 0, 9),
       ProposedForAnIntent.at(1, 1, 0),
-      ProposedByTheLoop.at(1, LoopProposal.reply),
-      ProposedByTheLoop.at(2, LoopProposal.modelCall),
+      ProposedForTheReply.at(1, 0),
+      ProposedForTheReply.at(1, 1),
+      ProposedForTheModelCall.at(2),
     ];
     expect(inOrder.reversed.toList()..sort(), inOrder);
   });
@@ -410,19 +410,32 @@ void main() {
     ]);
   });
 
-  test("a crux for the loop's own proposal carries one action and refuses a "
-      'second before writing it', () async {
+  test('a crux for the model call carries one action and refuses a second '
+      'before writing it', () async {
     final airlock = LogAirlock();
     final link = LogbookLink(
       start(airlock, [MemoryFiles(), RecordedPrograms()]),
       airlock,
     );
-    final crux = Crux.forTheLoop(link, turn: 1, which: LoopProposal.reply);
     await expectLater(
-      answerOf(writeAndFormat('a.dart'), crux),
+      answerOf(writeAndFormat('a.dart'), Crux.forTheModelCall(link, turn: 1)),
       throwsStateError,
     );
-    expect(link.places, [ProposedByTheLoop.at(1, LoopProposal.reply)]);
+    expect(link.places, [ProposedForTheModelCall.at(1)]);
+  });
+
+  test("a reply's actions are numbered: build the message, then send what was "
+      'built', () async {
+    final airlock = LogAirlock();
+    final link = LogbookLink(
+      start(airlock, [MemoryFiles(), RecordedPrograms()]),
+      airlock,
+    );
+    await answerOf(writeAndFormat('a.dart'), Crux.forTheReply(link, turn: 4));
+    expect(link.places, [
+      ProposedForTheReply.at(4, 0),
+      ProposedForTheReply.at(4, 1),
+    ]);
   });
 
   test('the logbook kinds name what they hold', () {

@@ -822,8 +822,8 @@ final class Trajectory<R, P> {
 /// its airlock to decide, which writes each entry at that place
 /// (https://github.com/enspyrco/intersyntactic/pull/1168).
 ///
-/// Made by [Crux.forIntent] or [Crux.forTheLoop] in the agent loop, a
-/// process of its own: an action's program and input go into the logbook
+/// Made by [Crux.forTheModelCall], [Crux.forIntent] or [Crux.forTheReply]
+/// in the agent loop, a process of its own: an action's program and input go into the logbook
 /// as an [ActionProposedByAgentLoop], which the airlock service reads and
 /// decides, and its continuation stays behind, since it is the tool's own
 /// code. What comes after a tool's result takes a crux and never handles
@@ -844,14 +844,21 @@ sealed class Crux {
     required int intent,
   }) = _ThroughLogbook.forIntent;
 
-  /// The crux for the loop's own proposal [which] of [turn], the model call
-  /// or the reply: it carries exactly one action, and a second throws a
-  /// [StateError] before anything is written.
-  factory Crux.forTheLoop(
+  /// The crux for [turn]'s model call: it carries exactly one action, and a
+  /// second throws a [StateError] before anything is written.
+  factory Crux.forTheModelCall(
     ProposesActionsThroughTheLogbook link, {
     required int turn,
-    required LoopProposal which,
-  }) = _ThroughLogbook.forTheLoop;
+  }) = _ThroughLogbook.forTheModelCall;
+
+  /// The crux for [turn]'s reply, which the loop makes from the turn's final
+  /// text: it proposes each of the reply's actions at its next action, from
+  /// 0, such as running the program that builds the message and then
+  /// sending what it built.
+  factory Crux.forTheReply(
+    ProposesActionsThroughTheLogbook link, {
+    required int turn,
+  }) = _ThroughLogbook.forTheReply;
 
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
 }
