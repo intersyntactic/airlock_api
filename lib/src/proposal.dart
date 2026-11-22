@@ -8,12 +8,13 @@ part of 'action.dart';
 // loop. The airlock has no door of its own.
 
 /// Writes an [ActionProposedByAgentLoop] logbook entry and waits for what the
-/// airlock recorded it came to: the transport, which this package does not
+/// airlock wrote it came to: the transport, which this package does not
 /// have. This package joins the two, so a loop never works out an id.
-abstract interface class ProposesActionsThroughTheRecord {
+abstract interface class ProposesActionsThroughTheLogbook {
   /// Writes [body] as an [ActionProposedByAgentLoop.kind] logbook entry on
   /// the loop's trajectory's chain, and gives the id the logbook gave it:
-  /// the hash of the whole recorded entry, which covers the entry before it
+  /// the hash of the whole entry as the logbook keeps it, which covers the
+  /// entry before it
   /// on the chain. Never a hash of [body] alone.
   Future<EntryId> writeProposal(String body);
 
@@ -22,66 +23,184 @@ abstract interface class ProposesActionsThroughTheRecord {
   Future<String> outcomeNaming(EntryId proposed);
 }
 
-/// Where in its trajectory a loop proposed an action: the [turn], one model
-/// call and what it caused, and the [step] within it. The model call is
-/// step 0 and a tool call's actions follow it, so a loop that restarts
-/// proposes the same steps at the same places, and a place the record
-/// already answers is one it need not propose again.
-final class PlaceInTrajectory implements Comparable<PlaceInTrajectory> {
-  const PlaceInTrajectory._(this.turn, this.step);
-
-  /// The place [step] of [turn]; both are counted from 0.
-  factory PlaceInTrajectory.at(int turn, int step) => turn >= 0 && step >= 0
-      ? PlaceInTrajectory._(turn, step)
-      : throw ArgumentError('a place is counted from 0: $turn, $step');
+/// Where in its trajectory a loop proposed an action: in a [turn], one model
+/// call and what it caused, either one of the loop's own proposals or an
+/// action of one of the intents the model's reply holds. Each is fixed by
+/// what the logbook already holds, never by the order things ran in, so a
+/// loop that restarts proposes the same actions at the same places, and a
+/// place the logbook already answers is one it need not propose again.
+///
+/// Written `[turn, intent, action]` or `[turn, "model-call" | "reply"]`.
+/// Within a turn the model call comes first, then each intent's actions by
+/// intent and action, then the reply.
+sealed class PlaceInTrajectory implements Comparable<PlaceInTrajectory> {
+  const PlaceInTrajectory._(this.turn);
 
   /// [json], as [toJson] writes it, read back; null when it is not one.
   static PlaceInTrajectory? parse(Object? json) => switch (json) {
-    [final int turn, final int step] when turn >= 0 && step >= 0 =>
-      PlaceInTrajectory._(turn, step),
+    [final int turn, final String wire] when turn >= 0 =>
+      LoopProposal.values
+          .where((which) => which._wire == wire)
+          .map((which) => ProposedByTheLoop._(turn, which))
+          .firstOrNull,
+    [final int turn, final int intent, final int action]
+        when turn >= 0 && intent >= 0 && action >= 0 =>
+      ProposedForAnIntent._(turn, intent, action),
     _ => null,
   };
 
+  /// Counted from 0.
   final int turn;
-  final int step;
 
-  Object? toJson() => [turn, step];
+  Object? toJson();
 
-  /// By [turn], then by [step]: a trajectory's places in the order they
-  /// were proposed.
+  /// Where this sits within its turn: model call, intents, reply.
+  (int, int, int) get _withinTurn;
+
   @override
-  int compareTo(PlaceInTrajectory other) => turn != other.turn
-      ? turn.compareTo(other.turn)
-      : step.compareTo(other.step);
+  int compareTo(PlaceInTrajectory other) {
+    final (a1, a2, a3) = _withinTurn;
+    final (b1, b2, b3) = other._withinTurn;
+    for (final c in [
+      turn.compareTo(other.turn),
+      a1.compareTo(b1),
+      a2.compareTo(b2),
+      a3.compareTo(b3),
+    ]) {
+      if (c != 0) return c;
+    }
+    return 0;
+  }
+}
+
+/// Which of its own proposals the loop makes in a turn, which no intent
+/// draws: the model call, and the reply it makes from the turn's final
+/// text.
+enum LoopProposal {
+  modelCall('model-call'),
+  reply('reply');
+
+  const LoopProposal(this._wire);
+
+  final String _wire;
+}
+
+/// The place of one of the loop's own proposals in [turn].
+final class ProposedByTheLoop extends PlaceInTrajectory {
+  const ProposedByTheLoop._(super.turn, this.which) : super._();
+
+  /// [which] of [turn], counted from 0.
+  factory ProposedByTheLoop.at(int turn, LoopProposal which) => turn >= 0
+      ? ProposedByTheLoop._(turn, which)
+      : throw ArgumentError('a turn is counted from 0: $turn');
+
+  final LoopProposal which;
+
+  @override
+  Object? toJson() => [turn, which._wire];
+
+  @override
+  (int, int, int) get _withinTurn => switch (which) {
+    LoopProposal.modelCall => (0, 0, 0),
+    LoopProposal.reply => (2, 0, 0),
+  };
 
   @override
   bool operator ==(Object other) =>
-      other is PlaceInTrajectory && other.turn == turn && other.step == step;
+      other is ProposedByTheLoop && other.turn == turn && other.which == which;
 
   @override
-  int get hashCode => Object.hash(turn, step);
+  int get hashCode => Object.hash(turn, which);
 
   @override
-  String toString() => '$turn.$step';
+  String toString() => '$turn.${which._wire}';
 }
 
-/// A crux in the agent loop for one turn: proposes each action's program and
-/// input through the record at the turn's next step, and keeps the
-/// continuation.
-final class _ThroughRecord extends Crux {
-  _ThroughRecord(this._link, {required this._turn});
+/// The place of [action] of [intent] in [turn]: the intent is a tool call
+/// the model's reply holds, by its place in that reply, and the action is
+/// one the tool's steps propose, in the order they propose them.
+final class ProposedForAnIntent extends PlaceInTrajectory {
+  const ProposedForAnIntent._(super.turn, this.intent, this.action) : super._();
 
-  final ProposesActionsThroughTheRecord _link;
-  final int _turn;
-  int _nextStep = 0;
+  /// All three counted from 0.
+  factory ProposedForAnIntent.at(int turn, int intent, int action) =>
+      turn >= 0 && intent >= 0 && action >= 0
+      ? ProposedForAnIntent._(turn, intent, action)
+      : throw ArgumentError(
+          'a place is counted from 0: $turn, $intent, $action',
+        );
 
-  /// The outcome the airlock recorded. An answer that is not one, or that
-  /// names another proposal, throws a [FormatException], ending the call:
-  /// whether the action reached the world is then not known here, and the
-  /// airlock's record says.
+  final int intent;
+  final int action;
+
+  @override
+  Object? toJson() => [turn, intent, action];
+
+  @override
+  (int, int, int) get _withinTurn => (1, intent, action);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProposedForAnIntent &&
+      other.turn == turn &&
+      other.intent == intent &&
+      other.action == action;
+
+  @override
+  int get hashCode => Object.hash(turn, intent, action);
+
+  @override
+  String toString() => '$turn.$intent.$action';
+}
+
+/// A crux in the agent loop for one intent, or one of the loop's own
+/// proposals, in one turn: proposes each action's program and input through
+/// the logbook at its next place, and keeps the continuation.
+final class _ThroughLogbook extends Crux {
+  /// Every action of [intent] in [turn], numbered from 0.
+  factory _ThroughLogbook.forIntent(
+    ProposesActionsThroughTheLogbook link, {
+    required int turn,
+    required int intent,
+  }) {
+    final first = ProposedForAnIntent.at(turn, intent, 0);
+    return _ThroughLogbook._(
+      link,
+      (n) => n == 0 ? first : ProposedForAnIntent._(turn, intent, n),
+    );
+  }
+
+  /// The one action of the loop's own proposal [which] in [turn].
+  factory _ThroughLogbook.forTheLoop(
+    ProposesActionsThroughTheLogbook link, {
+    required int turn,
+    required LoopProposal which,
+  }) {
+    final only = ProposedByTheLoop.at(turn, which);
+    return _ThroughLogbook._(link, (n) => n == 0 ? only : null);
+  }
+
+  _ThroughLogbook._(this._link, this._placeOf);
+
+  final ProposesActionsThroughTheLogbook _link;
+
+  /// The place of the [n]th action proposed through this crux, or null when
+  /// it has none.
+  final PlaceInTrajectory? Function(int n) _placeOf;
+  int _proposed = 0;
+
+  /// The outcome the airlock wrote to the logbook. An answer that is not
+  /// one, or that names another proposal, throws a [FormatException],
+  /// ending the call: whether the action reached the world is then not
+  /// known here, and the airlock's entries in the logbook say.
   @override
   Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) async {
-    final place = PlaceInTrajectory.at(_turn, _nextStep++);
+    final place =
+        _placeOf(_proposed++) ??
+        (throw StateError(
+          "a crux for the loop's own proposal carries one action, not "
+          '${program.name} as well',
+        ));
     final proposed = await _link.writeProposal(
       jsonEncode({
         'place': place.toJson(),
@@ -203,11 +322,8 @@ final class ActionProposedByAgentLoop implements Received {
   /// a web request by it, as `program: AskTheModel()` in a pattern.
   Program<Object?, Object?> get program => _work.program;
 
-  /// What this proposes to do, as far as its input alone says: a reader
-  /// tells a trajectory open notice from a reply by it, as
-  /// `AnswersEvent(answer: TrajectoryOpened())` in a pattern. An
-  /// [AnswersEvent]'s requests are built only when it is decided, so here
-  /// they are always empty; the decision holds them.
+  /// What this proposes to do, which its input says in full: for a
+  /// [MakesWebRequests], the exact requests the decision will hold.
   Reach get reach => _work.reach;
 
   final _Work<Object?, Object?> _work;
@@ -238,7 +354,7 @@ Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
       ('read', null) => Program.read,
       ('read-bytes', null) => Program.readBytes,
       ('write', null) => Program.write,
-      ('answer', null) => Program.answerEvent,
+      ('make-web-requests', null) => Program.makeWebRequests,
       ('fetch', null) => Program.fetch,
       ('model', null) => Program.askTheModel,
       ('start', final String program) => Executable.parse(program),
@@ -270,7 +386,7 @@ const outcomeOfProposedActionKind = 'outcome-of-proposed-action';
 /// the [ActionProposedByAgentLoop] logbook entry [proposed]: [resultAsJson],
 /// as is_effects's `encodeOutcome` writes it with that program's codec.
 /// [proposed] is the id the logbook gave that entry, the hash of the whole
-/// recorded entry, never a hash of its body.
+/// entry as the logbook keeps it, never a hash of its body.
 Object? outcomeOfProposedActionToJson(EntryId proposed, Object? resultAsJson) =>
     {'proposed': proposed.hex, 'result': resultAsJson};
 

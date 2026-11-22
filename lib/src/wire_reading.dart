@@ -1,48 +1,36 @@
 part of 'action.dart';
 
-Object? _answerToJson(Answer answer) => switch (answer) {
-  ReplyToEvent(:final respondsTo, :final reply) => {
-    'answer': 'reply',
-    'respondsTo': respondsTo.hex,
-    'reply': reply.hex,
-  },
-  TrajectoryOpened() => {'answer': 'trajectory-opened'},
-  RefusalNoticeToEvent(:final respondsTo, :final refusal) => {
-    'answer': 'refusal-notice',
-    'respondsTo': respondsTo.hex,
-    'refusal': refusal.hex,
-  },
-};
+Object? _requestsToJson(List<Request> requests) => [
+  for (final r in requests) encodeRequest(r),
+];
 
-/// [input] as an [Answer], exactly its keys. Throws a [FormatException]
-/// naming the part.
-Answer _answerFromJson(Object? input, [String field = 'answer']) {
-  final json = _object(field, input);
-  EntryId entry(String key) =>
-      EntryId.parse(json.string(key)) ??
-      (throw FormatException('$field.$key: not an entry id'));
-  return _at(field, () {
-    // wire-ok: the answer's tag, read once into the sealed Answer
-    switch (json.string('answer')) {
-      case 'reply':
-        _exactly(field, json, const {'answer', 'respondsTo', 'reply'});
-        return ReplyToEvent(
-          respondsTo: entry('respondsTo'),
-          reply: entry('reply'),
-        );
-      case 'trajectory-opened':
-        _exactly(field, json, const {'answer'});
-        return const TrajectoryOpened();
-      case 'refusal-notice':
-        _exactly(field, json, const {'answer', 'respondsTo', 'refusal'});
-        return RefusalNoticeToEvent(
-          respondsTo: entry('respondsTo'),
-          refusal: entry('refusal'),
-        );
-      case final other:
-        throw FormatException('$field.answer: not an answer: $other');
-    }
-  });
+/// The only header a request sent from a proposal may carry; a sign-in's
+/// credential is added by the driver, never written here.
+const _headersSent = {'content-type'};
+
+/// [input] as the requests to send, each read by is_effects's own codec,
+/// then refused when it is a GET, which is a [FetchFromWeb], or carries a
+/// header other than `content-type`; and refused when there are none.
+/// Throws a [FormatException] naming the part.
+List<Request> _requestsFromJson(Object? input, [String field = 'requests']) {
+  if (input is! List<Object?>) throw FormatException('$field: not a list');
+  if (input.isEmpty) throw FormatException('$field: no requests');
+  return [
+    for (final (i, json) in input.indexed)
+      switch (decodeRequest(json, '$field[$i]')) {
+        Request(method: Method.get) => throw FormatException(
+          '$field[$i].method: a GET is a fetch',
+        ),
+        Request(:final headers)
+            when !headers.keys.every(
+              (h) => _headersSent.contains(h.toLowerCase()),
+            ) =>
+          throw FormatException(
+            '$field[$i].headers: only content-type may be sent',
+          ),
+        final request => request,
+      },
+  ];
 }
 
 Object? _webResponsesToJson(List<WebResponse> responses) => [
@@ -56,21 +44,6 @@ List<WebResponse> _webResponsesFromJson(Object? json, [String field = '']) =>
       ],
       _ => throw FormatException('$field: not a list'),
     };
-
-/// The model's reply [recorded] ran to, read with is_effects's own codec so
-/// a reply's shape is decided there alone; null when it holds none.
-ModelReply? _modelReplyIn(String recorded) {
-  final outcome = readOutcomeOfProposedAction(recorded);
-  if (outcome == null) return null;
-  try {
-    return switch (decodeOutcome(outcome.result, decodeModelReply)) {
-      Ran(:final output) => output,
-      Refused() => null,
-    };
-  } on FormatException {
-    return null;
-  }
-}
 
 Decision _decisionFromJson(JsonObject json, String field) => _at(field, () {
   final by =

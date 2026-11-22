@@ -8,7 +8,7 @@ part of 'action.dart';
 /// is named here, not by a chain: a path waiting before any user was handed
 /// to it has no chain yet.
 ///
-/// Recorded once, when a path that has no `assigned` entry yet has to wait;
+/// Written to the logbook once, when a path that has no `assigned` entry yet has to wait;
 /// its `assigned` ends the wait, and a path with users never waits to
 /// start. Why it waits goes to the operator only, so it is not here (Nick,
 /// 16 Nov: https://github.com/enspyrco/intersyntactic/pull/1158). What its

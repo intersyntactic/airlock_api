@@ -1,21 +1,18 @@
 part of 'action.dart';
 
-// A model call is an action the loop proposes for itself
-// (https://github.com/enspyrco/intersyntactic/pull/1168; Nick, 17 Nov:
-// "shit so the model call should really go through the airlock hey?", then
-// "we do it tonight"). What a step sends is in the record before it is
-// sent: the loop records each text it drew from its turns, the system
-// prompt and the request, as pieces (Nick, 12 Nov: byte ranges of the
-// exact bytes sent, joined and compared before sending, whole when it
-// won't split), then a
-// [ModelRequest] naming them. The airlock joins each text's pieces, checks
-// the join against its sha256, and hands the model driver exactly those
-// bytes, so what it allows is what is sent.
+// A model call is an action the loop proposes for itself, decided by the
+// airlock like any other (https://github.com/enspyrco/intersyntactic/pull/1168).
+// What a step sends is in the logbook before it is sent: the loop writes
+// each text it drew from its turns, the system prompt and the request, as
+// pieces, byte ranges of the exact bytes sent, whole when a text won't
+// split, then a [ModelRequest] naming them. The airlock joins each text's
+// pieces, checks the join against its sha256, and hands the model driver
+// exactly those bytes, so what it allows is what is sent.
 
 /// One run of a text a model request sends, in the order
-/// [RecordedText.pieces] names it: recorded as an entry of its own, and
-/// named by that entry, so the request shows each piece was recorded
-/// through the record service, by a sender it allows, before it was sent. A
+/// [TextFromPieces.pieces] names it: an entry of its own in the logbook, and
+/// named by that entry, so the request shows the logbook accepted each
+/// piece, from a sender it allows, before it was sent. A
 /// piece repeated from an earlier request (the history so far) is a new
 /// entry with a new id, since an entry's id hashes its previous too, but its
 /// bytes are kept once: the logbook stores an entry's content as an object,
@@ -46,11 +43,11 @@ final class ModelRequestPiece {
   Object? toJson() => {'text': text};
 }
 
-/// One text a model request sends, as the record holds it: the
+/// One text a model request sends, as the logbook keeps it: the
 /// [ModelRequestPiece] entries it is made of, in order, and the sha256 of
 /// its UTF-8 bytes, which is what is sent.
-final class RecordedText {
-  RecordedText({required Iterable<EntryId> pieces, required this.sha256})
+final class TextFromPieces {
+  TextFromPieces({required Iterable<EntryId> pieces, required this.sha256})
     : pieces = List.unmodifiable(pieces) {
     if (this.pieces.isEmpty) {
       throw ArgumentError.value(pieces, 'pieces', 'a text has a piece');
@@ -59,17 +56,18 @@ final class RecordedText {
 
   /// [json] read back, strictly, as [ModelRequest.fromJson] reads its
   /// parts.
-  static RecordedText fromJson(JsonObject json, String field) => _at(field, () {
-    _exactly(field, json, const {'pieces', 'sha256'});
-    final pieces = _entryIds('$field.pieces', json.strings('pieces'));
-    if (pieces.isEmpty) throw FormatException('$field.pieces: none');
-    return RecordedText(
-      pieces: pieces,
-      sha256:
-          ObjectId.parse(json.string('sha256')) ??
-          (throw FormatException('$field.sha256: not a sha256')),
-    );
-  });
+  static TextFromPieces fromJson(JsonObject json, String field) =>
+      _at(field, () {
+        _exactly(field, json, const {'pieces', 'sha256'});
+        final pieces = _entryIds('$field.pieces', json.strings('pieces'));
+        if (pieces.isEmpty) throw FormatException('$field.pieces: none');
+        return TextFromPieces(
+          pieces: pieces,
+          sha256:
+              ObjectId.parse(json.string('sha256')) ??
+              (throw FormatException('$field.sha256: not a sha256')),
+        );
+      });
 
   /// The [ModelRequestPiece] entries, in order; one, when the text is not
   /// split.
@@ -100,8 +98,9 @@ final class RecordedText {
   };
 }
 
-/// What a step sends the model, recorded before it is sent: its
-/// [systemPrompt] and its [request], each as a [RecordedText], and the
+/// What a step sends the model, written to the logbook before it is sent:
+/// its
+/// [systemPrompt] and its [request], each as a [TextFromPieces], and the
 /// turns they were drawn from.
 ///
 /// Written by the loop on its trajectory's chain, which only its loop user
@@ -125,23 +124,26 @@ final class ModelRequest {
   ]) => _at(field, () {
     _exactly(field, json, const {'systemPrompt', 'request', 'builtFrom'});
     return ModelRequest(
-      systemPrompt: RecordedText.fromJson(
+      systemPrompt: TextFromPieces.fromJson(
         json.object('systemPrompt'),
         '$field.systemPrompt',
       ),
-      request: RecordedText.fromJson(json.object('request'), '$field.request'),
+      request: TextFromPieces.fromJson(
+        json.object('request'),
+        '$field.request',
+      ),
       builtFrom: _entryIds('$field.builtFrom', json.strings('builtFrom')),
     );
   });
 
   /// The system prompt the model is given in place of its own.
-  final RecordedText systemPrompt;
+  final TextFromPieces systemPrompt;
 
   /// What it is asked: the API's JSON, or the one message a program reads.
-  final RecordedText request;
+  final TextFromPieces request;
 
   /// The turns the texts were drawn from, in order: where they came
-  /// from, for a reader of the record. Not checked here: the texts are what
+  /// from, for a reader of the logbook. Not checked here: the texts are what
   /// is sent.
   final List<EntryId> builtFrom;
 

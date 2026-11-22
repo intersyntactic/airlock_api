@@ -2,7 +2,7 @@ import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
-import 'contract_test.dart' show LogAirlock, start, throughRecord;
+import 'contract_test.dart' show LogAirlock, start, throughLogbook;
 
 /// Writes nothing, and says it wrote.
 final class _FileDriver implements ReadsAndWritesFiles {
@@ -29,7 +29,7 @@ void main() {
     () async {
       final airlock = LogAirlock();
       final files = _FileDriver();
-      final crux = throughRecord(start(airlock, [files]), airlock, turn: 7);
+      final crux = throughLogbook(start(airlock, [files]), airlock, turn: 7);
       final path = RelativePath('notes.txt');
       var applied = 0;
 
