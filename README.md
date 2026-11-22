@@ -59,6 +59,14 @@ while (result is Action<ExecResult>) {
   `MakesWebRequests(requests)` or `CallsTheModel(call)`. A rule grants a web
   request by origin, sign-in and path together, never the origin alone,
   and a model call by its model sign-in.
+- A rule grants `Starts` by the program's name, and the program driver
+  runs only the programs its box installed. That bounds what may be asked
+  for, not what a program can do once it runs: the wall is the suit, the OS
+  user the trajectory wears. A box that offers `sh`, `dart` or `git` has
+  given that bound away, since each can run anything the suit can. A
+  contained trajectory's box offers single-purpose programs, such as a
+  `teams-message` app that turns a reply's text and recorded address into
+  the exact requests to send.
 
 ## The web
 
