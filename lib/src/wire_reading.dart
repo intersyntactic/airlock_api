@@ -9,9 +9,10 @@ Object? _requestsToJson(List<Request> requests) => [
 const _headersSent = {'content-type'};
 
 /// [input] as the requests to send, each read by is_effects's own codec,
-/// then refused when it is a GET, which is a [FetchFromWeb], or carries a
-/// header other than `content-type`; and refused when there are none.
-/// Throws a [FormatException] naming the part.
+/// then refused when it is a GET, which is a [FetchFromWeb], carries a
+/// header other than `content-type`, or names a granted path prefix, which
+/// only a grant gives; and refused when there are none. Throws a
+/// [FormatException] naming the part.
 List<Request> _requestsFromJson(Object? input, [String field = 'requests']) {
   if (input is! List<Object?>) throw FormatException('$field: not a list');
   if (input.isEmpty) throw FormatException('$field: no requests');
@@ -28,6 +29,9 @@ List<Request> _requestsFromJson(Object? input, [String field = 'requests']) {
           throw FormatException(
             '$field[$i].headers: only content-type may be sent',
           ),
+        Request(grantedPathPrefix: _?) => throw FormatException(
+          '$field[$i].grantedPathPrefix: a grant gives it, never a proposal',
+        ),
         final request => request,
       },
   ];

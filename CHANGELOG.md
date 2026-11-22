@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.0
+
+Breaking, through is_effects ^0.13.0, whose types this API names.
+
+- `Executable.parse` refuses a name with `/`, a NUL, or `.` or `..` alone,
+  since a program is named, never located. `WebPath.parse` refuses a path
+  the URI parser would rewrite. A proposal carrying either is rejected.
+- A dependent can now take is_effects 0.13 alongside this package, for
+  its `PathPrefix`, `AddressPrefix` and `Request.grantedPathPrefix`.
+- A proposal's request that names a `grantedPathPrefix` is rejected: only
+  a grant gives one, never the tool.
+
 ## 0.15.0
 
 Breaking. The airlock knows no module: the tool on the other side of a

@@ -268,6 +268,18 @@ void main() {
       ]),
       await propose(<Object?>[]),
       await propose(encodeRequest(post)),
+      // A tool can't say what prefix it was granted, even a narrow one.
+      await propose([
+        encodeRequest(
+          Request(
+            teams,
+            method: Method.post,
+            path: conversation,
+            signIn: hart,
+            grantedPathPrefix: PathPrefix.parse('/')!,
+          ),
+        ),
+      ]),
     ];
     expect(link.rejected, [
       startsWith('input[0].method'),
@@ -275,6 +287,7 @@ void main() {
       startsWith('input[0].headers.authorization: carries a credential'),
       startsWith('input: no requests'),
       startsWith('input: not a list'),
+      startsWith('input[0].grantedPathPrefix'),
     ]);
     expect(
       answers.map(
