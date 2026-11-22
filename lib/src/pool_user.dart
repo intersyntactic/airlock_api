@@ -3,7 +3,7 @@ part of 'action.dart';
 // The OS users loop_launcher hands out, one from each pool, made ahead of
 // time on the box by infra, never by loop_launcher (Nick, 16 Nov: "a pool
 // made ahead of time"). Here, not in loop_launcher, since loop_launcher
-// records them in each path's `assigned` entry and the airlock service reads
+// writes them in each path's `assigned` entry and the airlock service reads
 // them from it: both sides need the one type.
 
 /// A user from the loop pool, `loop-<n>`: a trajectory's agent loop runs

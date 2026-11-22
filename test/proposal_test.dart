@@ -9,27 +9,28 @@ import 'contract_test.dart'
         FetchingWeb,
         LogAirlock,
         MemoryFiles,
-        RecordedLink,
+        LogbookLink,
         RecordedPrograms,
         RecordedWeb,
         answerOf,
         hart,
         loopCrux,
-        recordedReply,
+        makeWebRequests,
+        requestsToConversation,
         start,
         teams,
         teamsMessageOf,
-        replyWith,
+        teamsPost,
         writeAndFormat;
 
 void main() {
   test(
-    'an action proposed through the record is decided, recorded and '
+    'an action proposed through the logbook is decided, written to it and '
     'carried out as in the airlock, and its continuation runs in the loop',
     () async {
       final airlock = LogAirlock();
       final files = MemoryFiles();
-      final link = RecordedLink(
+      final link = LogbookLink(
         start(airlock, [files, RecordedPrograms()]),
         airlock,
       );
@@ -46,8 +47,8 @@ void main() {
       ]);
       expect(link.rejected, isEmpty);
       expect(link.places, [
-        PlaceInTrajectory.at(3, 0),
-        PlaceInTrajectory.at(3, 1),
+        ProposedForAnIntent.at(3, 0, 0),
+        ProposedForAnIntent.at(3, 0, 1),
       ]);
       expect(link.programs, [
         Program.write,
@@ -56,12 +57,13 @@ void main() {
     },
   );
 
-  test("what an action returned reaches the loop from the record, in full, and "
+  test("what an action returned reaches the loop from the logbook, in full, "
+      'and '
       'its entries name the proposal', () async {
     final airlock = LogAirlock();
     final files = MemoryFiles()..files['a.dart'] = 'the text';
     final path = start(airlock, [files]);
-    final link = RecordedLink(path, airlock);
+    final link = LogbookLink(path, airlock);
     final decisions = <AirlockDecisionOnAction<int>>[];
     final results = <AirlockDecisionOnAction<int>>[];
     path.decisions.listen(decisions.add);
@@ -87,12 +89,12 @@ void main() {
     expect(jsonEncode(airlock.results[proposed]), contains('the text'));
   });
 
-  test("a file's exact bytes reach the loop from the record, and the decision "
+  test("a file's exact bytes reach the loop from the logbook, and the decision "
       'names the bytes read', () async {
     final airlock = LogAirlock();
     final files = MemoryFiles()..files['report.docx'] = 'PK zip';
     final path = start(airlock, [files]);
-    final link = RecordedLink(path, airlock);
+    final link = LogbookLink(path, airlock);
     final decisions = <AirlockDecisionOnAction<int>>[];
     path.decisions.listen(decisions.add);
     expect(
@@ -116,7 +118,7 @@ void main() {
   });
 
   test('a fetch goes as a GET with no body or headers, keeps what it asks, '
-      'and its bytes reach the loop from the record', () async {
+      'and its bytes reach the loop from the logbook', () async {
     final web = FetchingWeb();
     final airlock = LogAirlock();
     final graph = Origin.parse('https://graph.microsoft.com')!;
@@ -134,7 +136,7 @@ void main() {
           _ => 'no bytes',
         }),
       ),
-      loopCrux(RecordedLink(path, airlock)),
+      loopCrux(LogbookLink(path, airlock)),
     );
     expect(answer, 'PK zip');
     final sent = web.requests.single;
@@ -146,100 +148,57 @@ void main() {
     expect(sent.keep, BodyToKeep.bytes);
   });
 
-  test('a fetch is not granted by a grant to post to the same site', () async {
-    final web = FetchingWeb();
-    final airlock = LogAirlock();
-    final path = start(airlock, [web], rules: {'$teams as $hart'});
-    expect(
-      await answerOf(
-        Program.fetch.runOrRefusal(
-          WebFetch(teams, signIn: hart, keep: BodyToKeep.text),
-          then: (_) => const Done('fetched'),
-        ),
-        loopCrux(RecordedLink(path, airlock)),
-      ),
-      'failed: not in the rules',
-    );
-    expect(web.requests, isEmpty);
-  });
-
   test(
-    'a reply proposed through the record is built, decided and sent',
+    'a fetch is not granted by a grant to make requests to the same site',
     () async {
-      final web = RecordedWeb();
+      final web = FetchingWeb();
       final airlock = LogAirlock();
-      final reply = recordedReply(airlock, 'done');
-      final path = start(airlock, [web], rules: {'$teams as $hart'});
-      final link = RecordedLink(path, airlock);
+      final path = start(airlock, [web], rules: {requestsToConversation});
       expect(
-        await answerOf(replyWith(reply), loopCrux(link)),
-        '201 activity-1',
+        await answerOf(
+          Program.fetch.runOrRefusal(
+            WebFetch(teams, signIn: hart, keep: BodyToKeep.text),
+            then: (_) => const Done('fetched'),
+          ),
+          loopCrux(LogbookLink(path, airlock)),
+        ),
+        'failed: not in the rules',
       );
-      expect(link.programs, [Program.answerEvent]);
-      expect(web.requests.single.body, teamsMessageOf('done'));
+      expect(web.requests, isEmpty);
     },
   );
 
-  test('a refusal comes back through the record in its own words', () async {
+  test('requests proposed through the logbook are decided and sent exactly '
+      'as the tool built them', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock();
+    final path = start(airlock, [web], rules: {requestsToConversation});
+    final link = LogbookLink(path, airlock);
+    expect(
+      await answerOf(makeWebRequests([teamsPost('done')]), loopCrux(link)),
+      '201 activity-1',
+    );
+    expect(link.programs, [Program.makeWebRequests]);
+    expect(web.requests.single.body, teamsMessageOf('done'));
+    expect(web.requests.single.headers, {'content-type': 'application/json'});
+  });
+
+  test('a refusal comes back through the logbook in its own words', () async {
     final airlock = LogAirlock();
     final path = start(airlock, [MemoryFiles()], rules: {'read'});
     expect(
       await answerOf(
         writeAndFormat('a.dart'),
-        loopCrux(RecordedLink(path, airlock)),
+        loopCrux(LogbookLink(path, airlock)),
       ),
       'failed: not in the rules',
     );
   });
 
-  test('input that its type would not accept is rejected at the boundary, '
-      'naming the field, and answered refused', () async {
-    final airlock = LogAirlock();
-    final path = start(airlock, [RecordedWeb()], rules: {'$teams as $hart'});
-    final link = RecordedLink(path, airlock);
-    final proposal = {
-      'place': [1, 0],
-      'program': 'answer',
-    };
-    Map<String, Object?> replyWith(Map<String, Object?> change) => {
-      'answer': 'reply',
-      'respondsTo': '0' * 64,
-      'reply': '1' * 64,
-      ...change,
-    };
-    final answers = [
-      for (final change in [
-        {'answer': 'post'},
-        {'respondsTo': 'not an id'},
-        {'reply': null},
-        {'body': '{"type":"message","text":"case words"}'},
-      ])
-        await link.proposeAsIs({...proposal, 'input': replyWith(change)}),
-      await link.proposeAsIs({
-        ...proposal,
-        'input': {'answer': 'trajectory-opened', 'body': 'x'},
-      }),
-    ];
-    expect(link.rejected, [
-      startsWith('input.answer'),
-      startsWith('input.respondsTo'),
-      startsWith('input.reply'),
-      startsWith('input: unexpected (body)'),
-      startsWith('input: unexpected (body)'),
-    ]);
-    expect(
-      answers.map(
-        (a) => decodeOutcome<Never>(a, (_, _) => throw StateError('ran')),
-      ),
-      everyElement(isA<Refused>()),
-    );
-    expect(airlock.log, isEmpty);
-  });
-
   test('a fetch carrying a body or headers is rejected at the boundary, not '
       'stripped', () async {
     final airlock = LogAirlock();
-    final link = RecordedLink(start(airlock, [FetchingWeb()]), airlock);
+    final link = LogbookLink(start(airlock, [FetchingWeb()]), airlock);
     final fetch = {
       'origin': '$teams',
       'path': '/x',
@@ -254,7 +213,7 @@ void main() {
       {'path': '/a/../b'},
     ]) {
       await link.proposeAsIs({
-        'place': [1, 0],
+        'place': [1, 0, 0],
         'program': 'fetch',
         'input': {...fetch, ...extra},
       });
@@ -269,64 +228,34 @@ void main() {
     expect(airlock.log, isEmpty);
   });
 
-  test('a proposal read back says what it answers with, by its reach, '
-      'with no requests until it is decided', () {
-    Reach reachOf(Object? input) => switch (ActionProposedByAgentLoop.read(
+  test('a proposal to make web requests read back says exactly what it would '
+      'send', () {
+    final proposal = ActionProposedByAgentLoop.read(
       jsonEncode({
-        'place': [0, 0],
-        'program': 'answer',
-        'input': input,
+        'place': [0, 'reply', 1],
+        'program': 'make-web-requests',
+        'input': [encodeRequest(teamsPost('open'))],
       }),
-    )) {
-      ActionProposedByAgentLoop(:final reach) => reach,
-      Rejected(:final why) => throw StateError(why),
-    };
-    expect(
-      reachOf({'answer': 'trajectory-opened'}),
-      isA<AnswersEvent>()
-          .having((r) => r.answer, 'answer', isA<TrajectoryOpened>())
-          .having((r) => r.requests, 'requests', isEmpty),
     );
     expect(
-      reachOf({'answer': 'reply', 'respondsTo': '0' * 64, 'reply': '1' * 64}),
-      isA<AnswersEvent>().having(
-        (r) => r.answer,
-        'answer',
-        isA<ReplyToEvent>(),
-      ),
-    );
-    expect(
-      reachOf({
-        'answer': 'refusal-notice',
-        'respondsTo': '0' * 64,
-        'refusal': '1' * 64,
-      }),
-      isA<AnswersEvent>().having(
-        (r) => r.answer,
-        'answer',
-        isA<RefusalNoticeToEvent>().having(
-          (a) => a.refusal.hex,
-          'refusal',
-          '1' * 64,
+      proposal,
+      isA<ActionProposedByAgentLoop>().having(
+        (p) => p.reach,
+        'reach',
+        isA<MakesWebRequests>().having(
+          (r) => r.requests.single.body,
+          'body',
+          teamsMessageOf('open'),
         ),
       ),
-    );
-    expect(
-      () => reachOf({
-        'answer': 'refusal-notice',
-        'respondsTo': '0' * 64,
-        'refusal': '1' * 64,
-        'why': 'words the loop chose',
-      }),
-      throwsStateError,
     );
   });
 
   test('what is not a proposal is rejected', () async {
     final airlock = LogAirlock();
-    final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock);
+    final link = LogbookLink(start(airlock, [MemoryFiles()]), airlock);
     final proposal = {
-      'place': [1, 0],
+      'place': [1, 0, 0],
       'input': 'a.dart',
     };
     for (final request in [
@@ -335,6 +264,11 @@ void main() {
       {...proposal, 'program': 'delete'},
       {...proposal, 'program': 'start'},
       {...proposal, 'program': 'read', 'place': 'first'},
+      {
+        ...proposal,
+        'program': 'read',
+        'place': [1, 0],
+      },
     ]) {
       await link.proposeAsIs(request);
     }
@@ -344,13 +278,14 @@ void main() {
       'not a program: delete',
       'not a program: start',
       'not a place',
+      'not a place',
     ]);
     expect(airlock.log, isEmpty);
   });
 
   test('an answer that is no outcome ends the call', () async {
     final airlock = LogAirlock();
-    final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock)
+    final link = LogbookLink(start(airlock, [MemoryFiles()]), airlock)
       ..answerWith = (_, proposed) => jsonEncode({
         'proposed': proposed.hex,
         'result': {'kind': 'maybe'},
@@ -364,7 +299,7 @@ void main() {
   test('an outcome that names another proposal ends the call', () async {
     final airlock = LogAirlock();
     final other = EntryId.of(utf8.encode('another proposal'));
-    final link = RecordedLink(start(airlock, [MemoryFiles()]), airlock)
+    final link = LogbookLink(start(airlock, [MemoryFiles()]), airlock)
       ..answerWith = (body, _) => body.replaceAll(
         readOutcomeOfProposedAction(body)!.proposed.hex,
         other.hex,
@@ -381,41 +316,126 @@ void main() {
     );
   });
 
-  test('a place is a turn and a step, read back strictly and in order', () {
-    final place = PlaceInTrajectory.at(2, 5);
-    expect(place.toJson(), [2, 5]);
+  test('a place is the model call, an action of an intent, or an action of '
+      'the reply, read back strictly', () {
+    final places = [
+      ProposedForTheModelCall.at(2),
+      ProposedForAnIntent.at(2, 1, 5),
+      ProposedForTheReply.at(2, 1),
+    ];
     expect(
-      PlaceInTrajectory.parse(jsonDecode(jsonEncode(place.toJson()))),
-      place,
+      [for (final p in places) p.toJson()],
+      [
+        [2, 'model-call'],
+        [2, 1, 5],
+        [2, 'reply', 1],
+      ],
     );
+    for (final place in places) {
+      expect(
+        PlaceInTrajectory.parse(jsonDecode(jsonEncode(place.toJson()))),
+        place,
+      );
+    }
     for (final json in [
       null,
       1,
       'first',
       [1],
-      [1, 2, 3],
-      [1.0, 2],
-      [-1, 0],
-      [0, -1],
-      ['1', '2'],
+      [1, 2],
+      [1, 2, 3, 4],
+      [1.0, 2, 3],
+      [-1, 0, 0],
+      [0, -1, 0],
+      [0, 0, -1],
+      [-1, 'model-call'],
+      [0, 'reply'],
+      [0, 'reply', -1],
+      [0, 'model-call', 0],
+      [0, 'open-card'],
+      [0, 'modelCall'],
+      ['1', '2', '3'],
     ]) {
       expect(PlaceInTrajectory.parse(json), isNull, reason: '$json');
     }
-    expect(() => PlaceInTrajectory.at(-1, 0), throwsArgumentError);
-    expect(PlaceInTrajectory.at(1, 0), isNot(PlaceInTrajectory.at(2, 0)));
-    expect(PlaceInTrajectory.at(1, 0), isNot(PlaceInTrajectory.at(1, 1)));
+    expect(() => ProposedForAnIntent.at(0, -1, 0), throwsArgumentError);
+    expect(() => ProposedForTheModelCall.at(-1), throwsArgumentError);
+    expect(() => ProposedForTheReply.at(0, -1), throwsArgumentError);
     expect(
-      [
-        PlaceInTrajectory.at(2, 0),
-        PlaceInTrajectory.at(1, 9),
-        PlaceInTrajectory.at(1, 0),
-      ]..sort(),
-      [
-        PlaceInTrajectory.at(1, 0),
-        PlaceInTrajectory.at(1, 9),
-        PlaceInTrajectory.at(2, 0),
-      ],
+      ProposedForAnIntent.at(1, 0, 0),
+      isNot(ProposedForAnIntent.at(1, 1, 0)),
     );
+    expect(ProposedForTheReply.at(1, 0), isNot(ProposedForTheReply.at(1, 1)));
+    expect(ProposedForTheModelCall.at(1), isNot(ProposedForTheModelCall.at(2)));
+  });
+
+  test('within a turn the model call comes first, then each intent, then the '
+      "reply's actions", () {
+    final inOrder = <PlaceInTrajectory>[
+      ProposedForTheModelCall.at(1),
+      ProposedForAnIntent.at(1, 0, 0),
+      ProposedForAnIntent.at(1, 0, 9),
+      ProposedForAnIntent.at(1, 1, 0),
+      ProposedForTheReply.at(1, 0),
+      ProposedForTheReply.at(1, 1),
+      ProposedForTheModelCall.at(2),
+    ];
+    expect(inOrder.reversed.toList()..sort(), inOrder);
+  });
+
+  test('two intents running at once each keep their own places', () async {
+    final airlock = LogAirlock();
+    final link = LogbookLink(
+      start(airlock, [MemoryFiles(), RecordedPrograms()]),
+      airlock,
+    );
+    Result<String> write(String name) => Program.write.runOrRefusal(
+      FileText(RelativePath(name), ''),
+      then: (_) => Done(name),
+    );
+    // Intent 1 starts first and takes two actions; intent 0 takes one.
+    final second = answerOf(
+      writeAndFormat('b.dart'),
+      Crux.forIntent(link, turn: 1, intent: 1),
+    );
+    final first = answerOf(
+      write('a.dart'),
+      Crux.forIntent(link, turn: 1, intent: 0),
+    );
+    await Future.wait([first, second]);
+    expect(link.places.toList()..sort(), [
+      ProposedForAnIntent.at(1, 0, 0),
+      ProposedForAnIntent.at(1, 1, 0),
+      ProposedForAnIntent.at(1, 1, 1),
+    ]);
+  });
+
+  test('a crux for the model call carries one action and refuses a second '
+      'before writing it', () async {
+    final airlock = LogAirlock();
+    final link = LogbookLink(
+      start(airlock, [MemoryFiles(), RecordedPrograms()]),
+      airlock,
+    );
+    await expectLater(
+      answerOf(writeAndFormat('a.dart'), Crux.forTheModelCall(link, turn: 1)),
+      throwsStateError,
+    );
+    expect(link.places, [ProposedForTheModelCall.at(1)]);
+  });
+
+  test("a reply's actions are numbered: build the message, then send what was "
+      'built', () async {
+    final airlock = LogAirlock();
+    final link = LogbookLink(
+      start(airlock, [MemoryFiles(), RecordedPrograms()]),
+      airlock,
+    );
+    await answerOf(writeAndFormat('a.dart'), Crux.forTheReply(link, turn: 4));
+    expect(link.places, [
+      ProposedForTheReply.at(4, 0),
+      ProposedForTheReply.at(4, 1),
+    ]);
   });
 
   test('the logbook kinds name what they hold', () {

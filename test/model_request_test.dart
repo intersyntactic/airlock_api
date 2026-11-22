@@ -4,9 +4,9 @@ import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
-/// [texts] as the record would hold them, each a piece entry, and the
-/// [RecordedText] naming them.
-RecordedText recorded(List<String> texts) => RecordedText(
+/// [texts] as the logbook would keep them, each a piece entry, and the
+/// [TextFromPieces] naming them.
+TextFromPieces piecesOf(List<String> texts) => TextFromPieces(
   pieces: [
     for (final (i, text) in texts.indexed)
       EntryId.of(utf8.encode('$i ${jsonEncode(ModelRequestPiece(text))}')),
@@ -23,12 +23,12 @@ void main() {
     'Turn 2: and how does it bear on the lease?\n',
   ];
   final request = ModelRequest(
-    systemPrompt: recorded(system),
-    request: recorded(asked),
+    systemPrompt: piecesOf(system),
+    request: piecesOf(asked),
     builtFrom: [EntryId.of(utf8.encode('turn 1'))],
   );
 
-  test('each text joins only as recorded, in order', () {
+  test('each text joins only as its pieces hold it, in order', () {
     expect((request.request.join(asked) as Ran<String>).output, asked.join());
     expect(
       (request.systemPrompt.join(system) as Ran<String>).output,

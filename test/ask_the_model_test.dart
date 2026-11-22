@@ -5,7 +5,7 @@ import 'package:is_effects/is_effects.dart';
 import 'package:test/test.dart';
 
 import 'contract_test.dart'
-    show LogAirlock, answerOf, idOf, start, throughRecord;
+    show LogAirlock, answerOf, idOf, start, throughLogbook;
 
 /// Asks nothing: keeps each call it was given, streams the reply in two
 /// pieces, and answers with it whole.
@@ -32,14 +32,14 @@ final opus = ModelName.parse('claude-opus-5-5')!;
 const system = ['You are reviewing a case file.'];
 const asked = ['Turn 1: what does clause 4 say?\n', 'Answer briefly.'];
 
-/// [texts] recorded as piece entries in [airlock]'s logbook, on [on]'s
-/// chain, and the [RecordedText] naming them.
-RecordedText recordedText(
+/// [texts] written as piece entries in [airlock]'s logbook, on [on]'s
+/// chain, and the [TextFromPieces] naming them.
+TextFromPieces textWrittenToLogbook(
   LogAirlock airlock,
   List<String> texts, {
   TrajectoryId? on,
   String? sha256Of,
-}) => RecordedText(
+}) => TextFromPieces(
   pieces: [
     for (final text in texts)
       airlock.remember(
@@ -51,17 +51,17 @@ RecordedText recordedText(
   sha256: ObjectId.of(utf8.encode(sha256Of ?? texts.join())),
 );
 
-/// A model request recorded in [airlock]'s logbook, and its entry.
-EntryId recordedRequest(
+/// A model request written in [airlock]'s logbook, and its entry.
+EntryId requestWrittenToLogbook(
   LogAirlock airlock, {
-  RecordedText? systemPrompt,
-  RecordedText? request,
+  TextFromPieces? systemPrompt,
+  TextFromPieces? request,
   TrajectoryId? on,
 }) => airlock.remember(
   jsonEncode(
     ModelRequest(
-      systemPrompt: systemPrompt ?? recordedText(airlock, system),
-      request: request ?? recordedText(airlock, asked),
+      systemPrompt: systemPrompt ?? textWrittenToLogbook(airlock, system),
+      request: request ?? textWrittenToLogbook(airlock, asked),
     ).toJson(),
   ),
   kind: ModelRequest.kind,
@@ -76,8 +76,8 @@ Result<String> ask(EntryId request) => Program.askTheModel.runOrRefusal(
 void main() {
   const rules = {'model as nick-claude-team'};
 
-  test('the model is asked exactly what was recorded, as the sign-in, and '
-      'its reply is recorded once', () async {
+  test('the model is asked exactly what the logbook holds, as the sign-in, '
+      'and its reply is written once', () async {
     final airlock = LogAirlock();
     final model = RecordedModel();
     final path = start(airlock, [model], rules: rules);
@@ -89,8 +89,8 @@ void main() {
       }),
     );
     final answer = await answerOf(
-      ask(recordedRequest(airlock)),
-      throughRecord(path, airlock, turn: 1),
+      ask(requestWrittenToLogbook(airlock)),
+      throughLogbook(path, airlock, turn: 1),
     );
     expect(answer, 'Clause 4 says rent is due monthly.');
     expect(model.calls, [
@@ -109,61 +109,65 @@ void main() {
     final model = RecordedModel();
     final path = start(airlock, [model], rules: {'model as someone-else'});
     final answer = await answerOf(
-      ask(recordedRequest(airlock)),
-      throughRecord(path, airlock, turn: 1),
+      ask(requestWrittenToLogbook(airlock)),
+      throughLogbook(path, airlock, turn: 1),
     );
     expect(answer, 'failed: not in the rules');
     expect(model.calls, isEmpty);
   });
 
-  test('a request that is not exactly as recorded is refused before the '
+  test('a request that is not exactly as the logbook holds it is refused '
+      'before the '
       'model is asked', () async {
     final other = idOf('another trajectory');
-    // Each refused for its own reason, so the record says what was wrong,
+    // Each refused for its own reason, so the logbook says what was wrong,
     // not only that the hash failed: the hash would catch most of these on
     // its own, and hide which.
     final cases = <(String, EntryId Function(LogAirlock), String)>[
       (
         'a piece not joining to its hash',
-        (a) => recordedRequest(
+        (a) => requestWrittenToLogbook(
           a,
-          request: recordedText(a, asked, sha256Of: 'something else'),
+          request: textWrittenToLogbook(a, asked, sha256Of: 'something else'),
         ),
         'the pieces do not join',
       ),
       (
         'a system prompt not joining to its hash',
-        (a) => recordedRequest(
+        (a) => requestWrittenToLogbook(
           a,
-          systemPrompt: recordedText(a, system, sha256Of: 'else'),
+          systemPrompt: textWrittenToLogbook(a, system, sha256Of: 'else'),
         ),
         'the pieces do not join',
       ),
       (
         'a piece on another chain',
-        (a) => recordedRequest(a, request: recordedText(a, asked, on: other)),
+        (a) => requestWrittenToLogbook(
+          a,
+          request: textWrittenToLogbook(a, asked, on: other),
+        ),
         'is on another chain',
       ),
       (
         'a request on another chain',
-        (a) => recordedRequest(a, on: other),
+        (a) => requestWrittenToLogbook(a, on: other),
         'is on another chain',
       ),
       (
-        'a piece not recorded',
-        (a) => recordedRequest(
+        'a piece not in the logbook',
+        (a) => requestWrittenToLogbook(
           a,
-          request: RecordedText(
-            pieces: [EntryId.of(utf8.encode('never recorded'))],
+          request: TextFromPieces(
+            pieces: [EntryId.of(utf8.encode('never written'))],
             sha256: ObjectId.of(utf8.encode(asked.join())),
           ),
         ),
-        'is not recorded',
+        'is not in the logbook',
       ),
       (
-        'a request not recorded',
+        'a request not in the logbook',
         (a) => EntryId.of(utf8.encode('nothing')),
-        'is not recorded',
+        'is not in the logbook',
       ),
       (
         'a model-request entry that does not read as one',
@@ -178,9 +182,9 @@ void main() {
       (
         // Hashed as if the piece were skipped, so only its own check refuses.
         'a piece that is not a model request piece',
-        (a) => recordedRequest(
+        (a) => requestWrittenToLogbook(
           a,
-          request: RecordedText(
+          request: TextFromPieces(
             pieces: [a.remember('"hello"', kind: ModelRequestPiece.kind)],
             sha256: ObjectId.of(utf8.encode('')),
           ),
@@ -194,7 +198,7 @@ void main() {
       final path = start(airlock, [model], rules: rules);
       final answer = await answerOf(
         ask(request(airlock)),
-        throughRecord(path, airlock, turn: 1),
+        throughLogbook(path, airlock, turn: 1),
       );
       expect(
         answer,
@@ -214,8 +218,8 @@ void main() {
     final airlock = LogAirlock();
     final path = start(airlock, [], rules: rules);
     final answer = await answerOf(
-      ask(recordedRequest(airlock)),
-      throughRecord(path, airlock, turn: 1),
+      ask(requestWrittenToLogbook(airlock)),
+      throughLogbook(path, airlock, turn: 1),
     );
     expect(answer, 'failed: this machine cannot run model');
   });
@@ -229,7 +233,7 @@ void main() {
     };
     String wire(Object? input) => jsonEncode({
       'program': 'model',
-      'place': [1, 0],
+      'place': [1, 'model-call'],
       'input': input,
     });
     expect(switch (ActionProposedByAgentLoop.read(wire(input))) {

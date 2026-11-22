@@ -14,21 +14,16 @@ final reaches = <Reach>[
   Reads(RelativePath('a.dart')),
   Writes(FileText(RelativePath('a.dart'), 'void main() {}')),
   Starts(ProgramName.parse('dart')!, Args(['format', 'a.dart'])),
-  AnswersEvent(
-    ReplyToEvent(
-      respondsTo: EntryId.of(utf8.encode('an admission')),
-      reply: EntryId.of(utf8.encode('a reply')),
+  MakesWebRequests([
+    Request(
+      teams,
+      method: Method.post,
+      path: WebPath.parse('/v3/conversations/c/activities')!,
+      signIn: hart,
+      headers: const {'content-type': 'application/json'},
+      body: teamsMessageOf('done'),
     ),
-    [
-      Request(
-        teams,
-        method: Method.post,
-        path: WebPath.parse('/v3/conversations/c/activities')!,
-        signIn: hart,
-        body: teamsMessageOf('done'),
-      ),
-    ],
-  ),
+  ]),
   CallsTheModel(
     ModelCall(
       signIn: ModelSignInName.parse('nick-claude-team')!,
@@ -47,7 +42,7 @@ final reaches = <Reach>[
   ),
 ];
 
-final place = PlaceInTrajectory.at(3, 1);
+final PlaceInTrajectory place = ProposedForAnIntent.at(3, 0, 1);
 final proposed = EntryId.of(utf8.encode('a proposal'));
 final lease = EntryId.of(utf8.encode('a lease'));
 
@@ -130,23 +125,12 @@ void main() {
     );
     expect(
       back.reach,
-      isA<AnswersEvent>()
+      isA<MakesWebRequests>()
           .having((r) => r.requests.single.body, 'body', teamsMessageOf('done'))
           .having((r) => r.requests.single.signIn, 'signIn', hart)
-          .having((r) => r.answer, 'answer', isA<ReplyToEvent>()),
-    );
-    expect(
-      readBack(
-        written(
-          decided(
-            AnswersEvent(const TrajectoryOpened(), const []),
-            const Deny('no module', by: DecidedBy.rules),
-          ),
-        ),
-      ).reach,
-      isA<AnswersEvent>()
-          .having((r) => r.answer, 'answer', isA<TrajectoryOpened>())
-          .having((r) => r.requests, 'requests', isEmpty),
+          .having((r) => r.requests.single.headers, 'headers', {
+            'content-type': 'application/json',
+          }),
     );
     expect(
       readBack(written(decided(reaches[4], const Allow(by: DecidedBy.rules))))
@@ -172,11 +156,15 @@ void main() {
       }
     }
 
-    expect(whyNot('place', [3, 1]), isNull);
+    expect(whyNot('place', [3, 0, 1]), isNull);
+    expect(whyNot('place', [3, 'reply', 1]), isNull);
+    expect(whyNot('place', [3, 'model-call']), isNull);
     for (final (key, value, said) in [
       ('trajectory', 'x', 'decided.trajectory'),
       ('place', 3, 'decided.place: not a place'),
-      ('place', [3, -1], 'decided.place: not a place'),
+      ('place', [3, 0, -1], 'decided.place: not a place'),
+      // As 0.14 wrote a place.
+      ('place', [3, 1], 'decided.place: not a place'),
       ('proposed', 'x', 'decided.proposed: not an entry id'),
       // As 0.13 wrote a decision made in the airlock service's own process.
       ('proposed', null, 'decided.proposed: not an entry id'),

@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.15.0
+
+Breaking. The airlock knows no module: the tool on the other side of a
+proposal builds what it sends, and the airlock decides where it may go.
+
+- `MakeWebRequests` (`Program.makeWebRequests`, proposed as
+  `make-web-requests`) replaces `AnswerEvent`. Its input is the exact
+  `Request`s the tool built, in is_effects's codec; its reach is
+  `MakesWebRequests(requests)`. The airlock grants each request's
+  origin, sign-in and path together, all or none, so the path prefix a
+  rule grants is what keeps a reply in its own conversation. It checks
+  where a body goes, never what it says. At the boundary, a GET (a fetch),
+  any header but `content-type`, and an empty list are refused. Sent in
+  order; the first failure stops the rest.
+- Removed: `AnswerEvent`, `Answer`, `ReplyToEvent`, `TrajectoryOpened`,
+  `RefusalNoticeToEvent`, `AnswersEvent`, and
+  `DecidesAndRecordsActions.replyRequests`, `trajectoryOpenedRequests` and
+  `refusalNoticeRequests`. An airlock no longer picks a module or builds
+  a request, so it never reads what strangers sent. A tool tells a person
+  why an action was refused by building that message itself.
+- With nothing left to build before deciding, a reach is always what its
+  input says; the "refused build is a Deny" path is gone.
+- The chain of entries is the logbook, never "the record", and the airlock
+  writes to it. Renamed, with no old names kept:
+  `ProposesActionsThroughTheRecord` → `ProposesActionsThroughTheLogbook`;
+  `DecidesAndRecordsActions` → `DecidesActionsAndWritesToTheLogbook`, with
+  `recordDecision` → `writeDecision`, `recordResult` → `writeResult` and
+  `recordedOn` → `entryOn`; `RecordedText` → `TextFromPieces`. The docs
+  and README say "the logbook" and "entry" throughout. Entry kinds are
+  unchanged.
+- `PlaceInTrajectory` is sealed: `ProposedForTheModelCall(turn)`, written
+  `[turn, "model-call"]`; `ProposedForAnIntent(turn, intent, action)`,
+  written `[turn, intent, action]`; or `ProposedForTheReply(turn, action)`,
+  written `[turn, "reply", action]`, in that order within a turn. A place is
+  fixed by where an action sits in the model's reply, never by the order
+  things ran in, so two tools running at once can no longer swap places
+  across a restart. 0.14's `[turn, step]` is not a place. `Crux.through` is
+  gone: `Crux.forTheModelCall(link, turn:)` carries exactly one action, and
+  `Crux.forIntent(link, turn:, intent:)` and `Crux.forTheReply(link,
+  turn:)` number theirs. A reply has several actions because the message
+  is built by a program on the box (such as a `teams-message` app, run by
+  name through the program driver) and then sent exactly as built, so the
+  airlock never holds a module's code.
+- README: the example and the trajectory section no longer show
+  `Trajectory.at`, which 0.14.0 removed.
+
 ## 0.14.0
 
 Breaking. An action reaches a trajectory's drivers only through the
