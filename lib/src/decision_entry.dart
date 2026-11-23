@@ -35,7 +35,13 @@ Reach _reachFromJson(JsonObject json, String field) {
 
 Object? _decisionToJson(Decision decision) => {
   ...switch (decision) {
-    Allow(:final by) => {'allow': true, 'by': by.name},
+    Allow(:final by, :final grantedPathPrefixes) => {
+      'allow': true,
+      'by': by.name,
+      // Absent when empty, as reliedOn is.
+      if (grantedPathPrefixes.isNotEmpty)
+        'grantedPathPrefixes': [for (final p in grantedPathPrefixes) p.value],
+    },
     Deny(:final why, :final by) => {'allow': false, 'why': why, 'by': by.name},
   },
   // Absent when empty, so a decision kept before it existed reads back to

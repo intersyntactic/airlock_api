@@ -59,13 +59,17 @@ final class RecordedWeb implements CarriesOutWebRequests {
 
   final int? refuseAt;
   final int? cannotSendAt;
-  final requests = <Request>[];
+  final requests = <GrantedRequest>[];
 
   @override
-  Future<Outcome<WebResponse>> carryOutWebRequest(Request request) async {
+  Future<Outcome<WebResponse>> carryOutWebRequest(
+    GrantedRequest request,
+  ) async {
     requests.add(request);
     final n = requests.length;
-    if (n == cannotSendAt) return Refused('${request.signIn} is not held here');
+    if (n == cannotSendAt) {
+      return Refused('${request.proposed.signIn} is not held here');
+    }
     return Ran(
       n == refuseAt
           ? const WebResponse(status: 403, refusedBecause: 'throttled')
@@ -77,15 +81,17 @@ final class RecordedWeb implements CarriesOutWebRequests {
 /// A web driver that keeps every request and answers 200 with the body
 /// each asked to keep: "PK zip" as bytes or text.
 final class FetchingWeb implements CarriesOutWebRequests {
-  final requests = <Request>[];
+  final requests = <GrantedRequest>[];
 
   @override
-  Future<Outcome<WebResponse>> carryOutWebRequest(Request request) async {
+  Future<Outcome<WebResponse>> carryOutWebRequest(
+    GrantedRequest request,
+  ) async {
     requests.add(request);
     return Ran(
       WebResponse(
         status: 200,
-        body: switch (request.keep) {
+        body: switch (request.proposed.keep) {
           BodyToKeep.none => const NoBody(),
           BodyToKeep.text => const TextBody('PK zip'),
           BodyToKeep.bytes => BytesBody(utf8.encode('PK zip')),
@@ -121,9 +127,13 @@ enum FailWriting { decision, result }
 
 final class LogAirlock
     implements DecidesActionsAndWritesToTheLogbook<Set<String>, int> {
-  LogAirlock({this.failWriting});
+  LogAirlock({this.failWriting, this.grantsPrefixes});
 
   final FailWriting? failWriting;
+
+  /// The prefixes it allows web requests under in place of those its rules
+  /// grant, as a faulty airlock would; null for its rules' own.
+  final List<PathPrefix>? grantsPrefixes;
   final log = <String>[];
 
   /// The body of each result kept for a proposal, by the proposal it
@@ -170,32 +180,55 @@ final class LogAirlock
     Set<String> rules,
   ) async {
     decidedFor.add(trajectory);
-    final granted = switch (reach) {
-      Reads() => [rules.contains('read')],
-      Writes() => [rules.contains('write')],
-      Starts(:final program) => [rules.contains(program.value)],
-      MakesWebRequests(:final requests) => [
-        for (final r in requests)
-          rules.any(
-            (rule) =>
-                rule.startsWith(makeWebRequestsRule) &&
-                rule.endsWith(' as ${r.signIn}') &&
-                '${r.origin}${r.path.value}'.startsWith(
-                  rule.substring(
-                    makeWebRequestsRule.length,
-                    rule.length - ' as ${r.signIn}'.length,
-                  ),
-                ),
-          ),
-      ],
-      FetchesFromWeb(:final origin, :final signIn) => [
-        rules.contains('fetch $origin as $signIn'),
-      ],
-      CallsTheModel(:final signIn) => [rules.contains('model as $signIn')],
+    const deny = Deny('not in the rules', by: DecidedBy.rules);
+    Decision allowIf(bool granted) =>
+        granted ? const Allow.withNoPaths(by: DecidedBy.rules) : deny;
+    Decision allowUnder(List<PathPrefix?> prefixes) => prefixes.contains(null)
+        ? deny
+        : Allow(
+            by: DecidedBy.rules,
+            grantedPathPrefixes: grantsPrefixes ?? prefixes.nonNulls.toList(),
+          );
+    return switch (reach) {
+      Reads() => allowIf(rules.contains('read')),
+      Writes() => allowIf(rules.contains('write')),
+      Starts(:final program) => allowIf(rules.contains(program.value)),
+      MakesWebRequests(:final requests) => allowUnder([
+        for (final r in requests) _prefixGranting(rules, r),
+      ]),
+      FetchesFromWeb(:final origin, :final signIn) => allowUnder([
+        if (rules.contains('fetch $origin as $signIn'))
+          PathPrefix.parse('/')
+        else
+          null,
+      ]),
+      CallsTheModel(:final signIn) => allowIf(
+        rules.contains('model as $signIn'),
+      ),
     };
-    return granted.every((g) => g)
-        ? const Allow(by: DecidedBy.rules)
-        : const Deny('not in the rules', by: DecidedBy.rules);
+  }
+
+  /// The path prefix of the rule in [rules] that grants [request], or null
+  /// when none does.
+  static PathPrefix? _prefixGranting(
+    Set<String> rules,
+    ProposedRequest request,
+  ) {
+    for (final rule in rules) {
+      final suffix = ' as ${request.signIn}';
+      if (!rule.startsWith(makeWebRequestsRule) || !rule.endsWith(suffix)) {
+        continue;
+      }
+      final site = '${request.origin}';
+      final granted = rule.substring(
+        makeWebRequestsRule.length,
+        rule.length - suffix.length,
+      );
+      if (!granted.startsWith(site)) continue;
+      final prefix = PathPrefix.parse(granted.substring(site.length));
+      if (prefix != null && prefix.covers(request.path)) return prefix;
+    }
+    return null;
   }
 
   @override
@@ -377,12 +410,12 @@ String teamsMessageOf(String text) =>
 
 /// A POST of the Teams message [text] to [path] (by default [conversation])
 /// as [signIn] (by default [hart]), as a tool builds one.
-Request teamsPost(
+ProposedRequest teamsPost(
   String text, {
   WebPath? path,
   SignIn? signIn,
   Map<String, String> headers = const {'content-type': 'application/json'},
-}) => Request(
+}) => ProposedRequest(
   teams,
   method: Method.post,
   path: path ?? conversation,
@@ -393,7 +426,7 @@ Request teamsPost(
 
 /// [requests] made, answered with each response's status and what the
 /// destination made of it.
-Result<String> makeWebRequests(List<Request> requests) =>
+Result<String> makeWebRequests(List<ProposedRequest> requests) =>
     Program.makeWebRequests.runOrRefusal(
       requests,
       then: (responses) =>

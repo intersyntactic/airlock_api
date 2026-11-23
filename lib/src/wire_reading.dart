@@ -1,7 +1,7 @@
 part of 'action.dart';
 
-Object? _requestsToJson(List<Request> requests) => [
-  for (final r in requests) encodeRequest(r),
+Object? _requestsToJson(List<ProposedRequest> requests) => [
+  for (final r in requests) encodeProposedRequest(r),
 ];
 
 /// The only header a request sent from a proposal may carry; a sign-in's
@@ -9,29 +9,29 @@ Object? _requestsToJson(List<Request> requests) => [
 const _headersSent = {'content-type'};
 
 /// [input] as the requests to send, each read by is_effects's own codec,
-/// then refused when it is a GET, which is a [FetchFromWeb], carries a
-/// header other than `content-type`, or names a granted path prefix, which
-/// only a grant gives; and refused when there are none. Throws a
+/// which refuses a granted path prefix, since only a grant gives one; then
+/// refused when it is a GET, which is a [FetchFromWeb], or carries a header
+/// other than `content-type`; and refused when there are none. Throws a
 /// [FormatException] naming the part.
-List<Request> _requestsFromJson(Object? input, [String field = 'requests']) {
+List<ProposedRequest> _requestsFromJson(
+  Object? input, [
+  String field = 'requests',
+]) {
   if (input is! List<Object?>) throw FormatException('$field: not a list');
   if (input.isEmpty) throw FormatException('$field: no requests');
   return [
     for (final (i, json) in input.indexed)
-      switch (decodeRequest(json, '$field[$i]')) {
-        Request(method: Method.get) => throw FormatException(
+      switch (decodeProposedRequest(json, '$field[$i]')) {
+        ProposedRequest(method: Method.get) => throw FormatException(
           '$field[$i].method: a GET is a fetch',
         ),
-        Request(:final headers)
+        ProposedRequest(:final headers)
             when !headers.keys.every(
               (h) => _headersSent.contains(h.toLowerCase()),
             ) =>
           throw FormatException(
             '$field[$i].headers: only content-type may be sent',
           ),
-        Request(grantedPathPrefix: _?) => throw FormatException(
-          '$field[$i].grantedPathPrefix: a grant gives it, never a proposal',
-        ),
         final request => request,
       },
   ];
@@ -58,9 +58,18 @@ Decision _decisionFromJson(JsonObject json, String field) => _at(field, () {
       EntryId.parse(hex) ??
           (throw FormatException('$field.reliedOn[$i]: not an entry id')),
   ];
-  return json.boolean('allow')
-      ? Allow(by: by, reliedOn: reliedOn)
-      : Deny(json.string('why'), by: by, reliedOn: reliedOn);
+  if (!json.boolean('allow')) {
+    return Deny(json.string('why'), by: by, reliedOn: reliedOn);
+  }
+  final prefixes = [
+    for (final (i, raw)
+        in (json.stringsOrNull('grantedPathPrefixes') ?? []).indexed)
+      PathPrefix.parse(raw) ??
+          (throw FormatException(
+            '$field.grantedPathPrefixes[$i]: not a path prefix',
+          )),
+  ];
+  return Allow(by: by, reliedOn: reliedOn, grantedPathPrefixes: prefixes);
 });
 
 /// What [read] reads from an object at [field], a field of the wrong shape
