@@ -15,7 +15,7 @@ final reaches = <Reach>[
   Writes(FileText(RelativePath('a.dart'), 'void main() {}')),
   Starts(ProgramName.parse('dart')!, Args(['format', 'a.dart'])),
   MakesWebRequests([
-    Request(
+    ProposedRequest(
       teams,
       method: Method.post,
       path: WebPath.parse('/v3/conversations/c/activities')!,
@@ -71,7 +71,11 @@ void main() {
       'bytes', () {
     for (final reach in reaches) {
       for (final decision in [
-        const Allow(by: DecidedBy.rules),
+        const Allow.withNoPaths(by: DecidedBy.rules),
+        Allow(
+          by: DecidedBy.rules,
+          grantedPathPrefixes: [PathPrefix.parse('/v3/conversations/')!],
+        ),
         Deny('leased elsewhere', by: DecidedBy.rules, reliedOn: [lease]),
         const Deny('stopped', by: DecidedBy.person),
       ]) {
@@ -84,6 +88,14 @@ void main() {
         expect(back.decision.runtimeType, decision.runtimeType, reason: why);
         expect(back.decision.by, decision.by, reason: why);
         expect(back.decision.reliedOn, decision.reliedOn, reason: why);
+        if (decision case Allow(:final grantedPathPrefixes)) {
+          expect(
+            (back.decision as Allow)
+                .grantedPathPrefixes, // cast-ok: same type checked above
+            grantedPathPrefixes,
+            reason: why,
+          );
+        }
         expect(back.proposed, proposed, reason: why);
         expect(jsonEncode(written(back)), jsonEncode(written(d)), reason: why);
       }
@@ -92,22 +104,28 @@ void main() {
 
   test("a decision's reach is written as the program and input that make "
       'it, as a proposal writes them', () {
-    Object? reachOf(Reach r) =>
-        throughText(written(decided(r, const Allow(by: DecidedBy.rules))))
-            .asUncheckedMap()['reach'];
+    Object? reachOf(Reach r) => throughText(
+      written(decided(r, const Allow.withNoPaths(by: DecidedBy.rules))),
+    ).asUncheckedMap()['reach'];
     expect(reachOf(reaches[0]), {'program': 'read', 'input': 'a.dart'});
     expect(reachOf(reaches[5]), {
       'program': 'read-bytes',
       'input': 'report.docx',
     });
     expect(
-      readBack(written(decided(reaches[5], const Allow(by: DecidedBy.rules))))
-          .reach,
+      readBack(
+        written(
+          decided(reaches[5], const Allow.withNoPaths(by: DecidedBy.rules)),
+        ),
+      ).reach,
       isA<Reads>().having((r) => r.as, 'as', ReadsAs.bytes),
     );
     expect(
-      readBack(written(decided(reaches[6], const Allow(by: DecidedBy.rules))))
-          .reach,
+      readBack(
+        written(
+          decided(reaches[6], const Allow.withNoPaths(by: DecidedBy.rules)),
+        ),
+      ).reach,
       isA<FetchesFromWeb>()
           .having((r) => r.path.value, 'path', '/v1.0/drives/d/items/i/content')
           .having((r) => r.signIn, 'signIn', hart)
@@ -121,7 +139,9 @@ void main() {
       ),
     );
     final back = readBack(
-      written(decided(reaches[3], const Allow(by: DecidedBy.rules))),
+      written(
+        decided(reaches[3], const Allow.withNoPaths(by: DecidedBy.rules)),
+      ),
     );
     expect(
       back.reach,
@@ -133,8 +153,11 @@ void main() {
           }),
     );
     expect(
-      readBack(written(decided(reaches[4], const Allow(by: DecidedBy.rules))))
-          .reach,
+      readBack(
+        written(
+          decided(reaches[4], const Allow.withNoPaths(by: DecidedBy.rules)),
+        ),
+      ).reach,
       isA<CallsTheModel>().having(
         (r) => r.model,
         'model',
@@ -143,9 +166,23 @@ void main() {
     );
   });
 
+  test('an allow granting no path writes no prefixes, so it keeps the bytes '
+      'it had before prefixes existed', () {
+    expect(
+      throughText(
+        written(
+          decided(reaches[0], const Allow.withNoPaths(by: DecidedBy.rules)),
+        ),
+      ).asUncheckedMap()['decision'],
+      {'allow': true, 'by': 'rules'},
+    );
+  });
+
   test('a malformed decision is refused, naming the part', () {
     final json = throughText(
-      written(decided(reaches[0], const Allow(by: DecidedBy.rules))),
+      written(
+        decided(reaches[0], const Allow.withNoPaths(by: DecidedBy.rules)),
+      ),
     ).asUncheckedMap();
     String? whyNot(String key, Object? value) {
       try {
@@ -172,6 +209,15 @@ void main() {
       ('reach', {'program': 'read', 'input': 42}, 'decided.reach.input'),
       ('reach', 'read a.dart', 'decided.reach'),
       ('decision', {'allow': true, 'by': 'robot'}, 'decided.decision.by'),
+      (
+        'decision',
+        {
+          'allow': true,
+          'by': 'rules',
+          'grantedPathPrefixes': ['/v3'],
+        },
+        'decided.decision.grantedPathPrefixes[0]: not a path prefix',
+      ),
     ]) {
       expect(whyNot(key, value), startsWith(said), reason: '$key: $value');
     }

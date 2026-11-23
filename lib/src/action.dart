@@ -183,12 +183,13 @@ sealed class Program<I, O> {
       _Work(this, _wire.inputFromJson(json, field));
 
   /// [input], whose reach is [reach], performed by [trajectory]'s driver
-  /// for this program, reporting to [report] while it runs, or null when it
-  /// has none.
+  /// for this program as [allowed], reporting to [report] while it runs, or
+  /// null when it has none.
   Future<Outcome<O>>? _on(
     Trajectory<Object?, Object?> trajectory,
     I input,
     Reach reach,
+    Allow allowed,
     Report report,
   );
 }
@@ -217,6 +218,7 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
     Trajectory<Object?, Object?> trajectory,
     RelativePath path,
     Reach reach,
+    Allow allowed,
     Report report,
   ) => trajectory._driver<ReadsAndWritesFiles>()?.read(path);
 }
@@ -248,6 +250,7 @@ final class ReadFileBytes extends Program<RelativePath, BytesReadResult> {
     Trajectory<Object?, Object?> trajectory,
     RelativePath path,
     Reach reach,
+    Allow allowed,
     Report report,
   ) => trajectory._driver<ReadsAndWritesFiles>()?.readBytes(path);
 }
@@ -276,6 +279,7 @@ final class WriteFile extends Program<FileText, Wrote> {
     Trajectory<Object?, Object?> trajectory,
     FileText file,
     Reach reach,
+    Allow allowed,
     Report report,
   ) => trajectory._driver<ReadsAndWritesFiles>()?.write(file);
 }
@@ -322,6 +326,7 @@ final class Executable extends Program<Args, ExecResult> {
     Trajectory<Object?, Object?> trajectory,
     Args args,
     Reach reach,
+    Allow allowed,
     Report report,
   ) => trajectory._driver<RunsPrograms>()?.runProgram(
     program,
@@ -346,7 +351,7 @@ Future<Outcome<String>> _bodyOf(
   ),
 };
 
-/// Makes [Request]s to the web, exactly these, in order, each to its origin
+/// Makes [ProposedRequest]s to the web, exactly these, in order, each to its origin
 /// as its sign-in: what the tool that proposed them built, such as a reply
 /// to the event that started the trajectory.
 ///
@@ -357,17 +362,18 @@ Future<Outcome<String>> _bodyOf(
 /// [FetchFromWeb], and a header other than `content-type` is refused, so
 /// nothing rides out in a header. Once allowed, the web driver sends them
 /// in order and stops at the first that fails, without retrying.
-final class MakeWebRequests extends Program<List<Request>, List<WebResponse>> {
+final class MakeWebRequests
+    extends Program<List<ProposedRequest>, List<WebResponse>> {
   const MakeWebRequests();
 
   @override
   String get name => 'make-web-requests';
 
   @override
-  Reach _reach(List<Request> requests) => MakesWebRequests(requests);
+  Reach _reach(List<ProposedRequest> requests) => MakesWebRequests(requests);
 
   @override
-  _Wire<List<Request>, List<WebResponse>> get _wire => const _Wire(
+  _Wire<List<ProposedRequest>, List<WebResponse>> get _wire => const _Wire(
     {'program': 'make-web-requests'},
     inputToJson: _requestsToJson,
     inputFromJson: _requestsFromJson,
@@ -378,17 +384,21 @@ final class MakeWebRequests extends Program<List<Request>, List<WebResponse>> {
   @override
   Future<Outcome<List<WebResponse>>>? _on(
     Trajectory<Object?, Object?> trajectory,
-    List<Request> requests,
+    List<ProposedRequest> requests,
     Reach reach,
+    Allow allowed,
     Report report,
   ) => switch (trajectory._driver<CarriesOutWebRequests>()) {
     null => null,
-    final web => _send(web, requests),
+    final web => switch (_granted(requests, allowed)) {
+      Refused(:final why) => Future.value(Refused(why)),
+      Ran(output: final granted) => _send(web, granted),
+    },
   };
 
   static Future<Outcome<List<WebResponse>>> _send(
     CarriesOutWebRequests web,
-    List<Request> requests,
+    List<GrantedRequest> requests,
   ) async {
     final responses = <WebResponse>[];
     for (final request in requests) {
@@ -442,15 +452,49 @@ final class FetchFromWeb extends Program<WebFetch, WebResponse> {
     Trajectory<Object?, Object?> trajectory,
     WebFetch fetch,
     Reach reach,
+    Allow allowed,
     Report report,
-  ) => trajectory._driver<CarriesOutWebRequests>()?.carryOutWebRequest(
-    Request(
-      fetch.origin,
-      path: fetch.path,
-      signIn: fetch.signIn,
-      keep: fetch.keep,
-    ),
-  );
+  ) => switch (trajectory._driver<CarriesOutWebRequests>()) {
+    null => null,
+    final web => switch (_granted([
+      ProposedRequest(
+        fetch.origin,
+        path: fetch.path,
+        signIn: fetch.signIn,
+        keep: fetch.keep,
+      ),
+    ], allowed)) {
+      Refused(:final why) => Future.value(Refused(why)),
+      Ran(:final output) => web.carryOutWebRequest(output.single),
+    },
+  };
+}
+
+/// Each of [requests] granted under its prefix in [allowed], in order; or
+/// refused when [allowed] has not exactly one prefix per request, or one
+/// doesn't cover its request's path, so nothing is sent unbounded.
+Outcome<List<GrantedRequest>> _granted(
+  List<ProposedRequest> requests,
+  Allow allowed,
+) {
+  final prefixes = allowed.grantedPathPrefixes;
+  if (prefixes.length != requests.length) {
+    return Refused(
+      'allowed with ${prefixes.length} granted path prefixes '
+      'for ${requests.length} requests',
+    );
+  }
+  final granted = <GrantedRequest>[];
+  for (final (i, request) in requests.indexed) {
+    if (!prefixes[i].covers(request.path)) {
+      return Refused(
+        'request ${i + 1}: ${request.path.value} is not under '
+        'its granted prefix ${prefixes[i]}',
+      );
+    }
+    granted.add(GrantedRequest.under(request, prefixes[i]));
+  }
+  return Ran(granted);
 }
 
 /// A GET a tool asks for: where to, as whom, and what of the response's
@@ -511,6 +555,7 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
     Trajectory<Object?, Object?> trajectory,
     ModelCall call,
     Reach reach,
+    Allow allowed,
     Report report,
   ) => switch (trajectory._driver<AsksTheModel>()) {
     null => null,
@@ -649,10 +694,10 @@ final class Starts extends Reach {
 /// empty, never a GET, and no header but `content-type`, as read from a
 /// proposal.
 final class MakesWebRequests extends Reach {
-  MakesWebRequests(List<Request> requests)
+  MakesWebRequests(List<ProposedRequest> requests)
     : requests = List.unmodifiable(requests);
 
-  final List<Request> requests;
+  final List<ProposedRequest> requests;
 }
 
 /// Reaches the world with an address alone: a GET goes to [origin], as
@@ -782,11 +827,12 @@ final class Trajectory<R, P> {
     _decisions.add(decided);
     final Outcome<O> result = switch (decision) {
       Deny(:final why) => Refused(why),
-      Allow() =>
+      final Allow allowed =>
         await program._on(
               this,
               input,
               reach,
+              allowed,
               (progress) => _underway.add(Underway(id, place, reach, progress)),
             ) ??
             Refused('this machine cannot run ${program.name}'),
@@ -949,8 +995,25 @@ sealed class Decision {
 }
 
 /// A driver may carry the action out.
+///
+/// [grantedPathPrefixes] is the prefix each web request was granted under,
+/// which bounds where it and its redirects may go on its origin: one per
+/// request of a [MakesWebRequests], in order, one for a [FetchesFromWeb],
+/// none for any other reach. A web action allowed with any other count is
+/// refused before a driver is reached, never sent unbounded. `/` grants the
+/// whole site.
 final class Allow extends Decision {
-  const Allow({required super.by, super.reliedOn});
+  Allow({
+    required super.by,
+    super.reliedOn,
+    required List<PathPrefix> grantedPathPrefixes,
+  }) : grantedPathPrefixes = List.unmodifiable(grantedPathPrefixes);
+
+  /// An allowed action that makes no web request, so is granted no path.
+  const Allow.withNoPaths({required super.by, super.reliedOn})
+    : grantedPathPrefixes = const [];
+
+  final List<PathPrefix> grantedPathPrefixes;
 }
 
 /// No driver carries the action out, because [why]; its continuation is handed

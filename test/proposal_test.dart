@@ -139,13 +139,33 @@ void main() {
       loopCrux(LogbookLink(path, airlock)),
     );
     expect(answer, 'PK zip');
-    final sent = web.requests.single;
+    expect(web.requests.single.grantedPathPrefix.value, '/');
+    final sent = web.requests.single.proposed;
     expect(sent.method, Method.get);
     expect(sent.path.value, '/v1.0/drives/d/items/i/content');
     expect(sent.signIn, hart);
     expect(sent.body, isNull);
     expect(sent.headers, isEmpty);
     expect(sent.keep, BodyToKeep.bytes);
+  });
+
+  test('a fetch allowed without its granted prefix is refused, and nothing '
+      'is fetched', () async {
+    final web = FetchingWeb();
+    final airlock = LogAirlock(grantsPrefixes: []);
+    final graph = Origin.parse('https://graph.microsoft.com')!;
+    final path = start(airlock, [web], rules: {'fetch $graph as $hart'});
+    expect(
+      await answerOf(
+        Program.fetch.runOrRefusal(
+          WebFetch(graph, signIn: hart, keep: BodyToKeep.text),
+          then: (_) => const Done('fetched'),
+        ),
+        loopCrux(LogbookLink(path, airlock)),
+      ),
+      'failed: allowed with 0 granted path prefixes for 1 requests',
+    );
+    expect(web.requests, isEmpty);
   });
 
   test(
@@ -179,8 +199,10 @@ void main() {
       '201 activity-1',
     );
     expect(link.programs, [Program.makeWebRequests]);
-    expect(web.requests.single.body, teamsMessageOf('done'));
-    expect(web.requests.single.headers, {'content-type': 'application/json'});
+    expect(web.requests.single.proposed.body, teamsMessageOf('done'));
+    expect(web.requests.single.proposed.headers, {
+      'content-type': 'application/json',
+    });
   });
 
   test('a refusal comes back through the logbook in its own words', () async {
@@ -234,7 +256,7 @@ void main() {
       jsonEncode({
         'place': [0, 'reply', 1],
         'program': 'make-web-requests',
-        'input': [encodeRequest(teamsPost('open'))],
+        'input': [encodeProposedRequest(teamsPost('open'))],
       }),
     );
     expect(

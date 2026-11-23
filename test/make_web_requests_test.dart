@@ -15,6 +15,7 @@ import 'contract_test.dart'
         conversation,
         hart,
         makeWebRequests,
+        makeWebRequestsRule,
         requestsToConversation,
         start,
         teams,
@@ -42,7 +43,7 @@ void main() {
       '201 activity-1, 201 activity-2',
     );
     expect(
-      [for (final r in web.requests) r.body],
+      [for (final r in web.requests) r.proposed.body],
       [teamsMessageOf('Clause 4 —'), teamsMessageOf('rent is due.')],
     );
     final MakesWebRequests(requests: held) =
@@ -110,6 +111,71 @@ void main() {
     expect(web.requests, isEmpty);
   });
 
+  test('each request reaches the driver under the prefix its own rule '
+      'granted', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock();
+    final channel = WebPath.parse('/v3/teams/t/channels/x')!;
+    await answerOf(
+      makeWebRequests([teamsPost('first'), teamsPost('second', path: channel)]),
+      throughLogbook(
+        start(
+          airlock,
+          [web],
+          rules: {
+            requestsToConversation,
+            '$makeWebRequestsRule$teams/v3/teams/ as $hart',
+          },
+        ),
+        airlock,
+        turn: 1,
+      ),
+    );
+    expect(
+      [for (final r in web.requests) r.grantedPathPrefix.value],
+      ['/v3/conversations/c/', '/v3/teams/'],
+    );
+  });
+
+  test('requests allowed without a granted prefix for each are refused, and '
+      'nothing is sent', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock(grantsPrefixes: []);
+    expect(
+      await answerOf(
+        makeWebRequests([teamsPost('first'), teamsPost('second')]),
+        throughLogbook(
+          start(airlock, [web], rules: {requestsToConversation}),
+          airlock,
+          turn: 1,
+        ),
+      ),
+      'failed: allowed with 0 granted path prefixes for 2 requests',
+    );
+    expect(web.requests, isEmpty);
+  });
+
+  test('a request allowed under a prefix that does not cover its path is '
+      'refused, and nothing is sent', () async {
+    final web = RecordedWeb();
+    final airlock = LogAirlock(
+      grantsPrefixes: [PathPrefix.parse('/v3/teams/')!],
+    );
+    expect(
+      await answerOf(
+        makeWebRequests([teamsPost('hi')]),
+        throughLogbook(
+          start(airlock, [web], rules: {requestsToConversation}),
+          airlock,
+          turn: 1,
+        ),
+      ),
+      'failed: request 1: $conversation is not under its granted prefix '
+      '/v3/teams/',
+    );
+    expect(web.requests, isEmpty);
+  });
+
   test('a decision to make web requests reads back from the logbook with every exact '
       'request', () async {
     final airlock = LogAirlock();
@@ -160,7 +226,7 @@ void main() {
       'failed: sent 1 of 3: 403 throttled',
     );
     expect(
-      [for (final r in web.requests) r.body],
+      [for (final r in web.requests) r.proposed.body],
       [teamsMessageOf('one'), teamsMessageOf('two')],
     );
   });
@@ -251,34 +317,37 @@ void main() {
     final post = teamsPost('hi');
     final answers = [
       await propose([
-        encodeRequest(Request(teams, path: conversation, signIn: hart)),
+        encodeProposedRequest(
+          ProposedRequest(teams, path: conversation, signIn: hart),
+        ),
       ]),
       await propose([
-        encodeRequest(teamsPost('hi', headers: {'x-note': 'the secret'})),
+        encodeProposedRequest(
+          teamsPost('hi', headers: {'x-note': 'the secret'}),
+        ),
       ]),
       await propose([
         {
-          ...encodeRequest(post)!
+          ...encodeProposedRequest(post)!
               as Map<
                 String,
                 Object?
-              >, // cast-ok: encodeRequest writes an object
+              >, // cast-ok: encodeProposedRequest writes an object
           'headers': {'authorization': 'Bearer x'},
         },
       ]),
       await propose(<Object?>[]),
-      await propose(encodeRequest(post)),
+      await propose(encodeProposedRequest(post)),
       // A tool can't say what prefix it was granted, even a narrow one.
       await propose([
-        encodeRequest(
-          Request(
-            teams,
-            method: Method.post,
-            path: conversation,
-            signIn: hart,
-            grantedPathPrefix: PathPrefix.parse('/')!,
-          ),
-        ),
+        {
+          ...encodeProposedRequest(post)!
+              as Map<
+                String,
+                Object?
+              >, // cast-ok: encodeProposedRequest writes an object
+          'grantedPathPrefix': '/',
+        },
       ]),
     ];
     expect(link.rejected, [
@@ -307,7 +376,7 @@ void main() {
       'place': [1, 0, 0],
       'program': 'make-web-requests',
       'input': [
-        encodeRequest(
+        encodeProposedRequest(
           teamsPost('hi', headers: {'Content-Type': 'application/json'}),
         ),
       ],

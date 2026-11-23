@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.17.0
+
+Breaking, through is_effects ^0.14.0, which splits `Request` into
+`ProposedRequest` and `GrantedRequest`.
+
+- `MakeWebRequests` takes `ProposedRequest`s, read and written with
+  `decodeProposedRequest` and `encodeProposedRequest`, which refuse a
+  `grantedPathPrefix`.
+- `Allow` names `grantedPathPrefixes`, required: one per request of a
+  `MakesWebRequests`, in order, and one for a `FetchesFromWeb`.
+  `Allow.withNoPaths` is for every other reach.
+- A web action reaches its driver only as `GrantedRequest`s built under
+  those prefixes, so a redirect on the same site stays where the rule
+  granted. Allowed with the wrong number of prefixes, or under one that
+  doesn't cover its path, it is refused and nothing is sent.
+- The decision entry writes `grantedPathPrefixes` and leaves it out when
+  empty, so a decision that grants no path keeps its bytes.
+
 ## 0.16.0
 
 Breaking, through is_effects ^0.13.0, whose types this API names.

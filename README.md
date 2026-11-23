@@ -82,7 +82,7 @@ may go.
   is its own, so a grant to post to a site is not a grant to fetch from
   it. A proposal carrying a body or headers is rejected, not stripped.
 - `MakeWebRequests` (proposed as `make-web-requests`) takes the exact
-  `Request`s a tool built, such as a reply to the event that started the
+  `ProposedRequest`s a tool built, such as a reply to the event that started the
   trajectory, as is_effects's codec writes them. One decision holds every
   one, as `MakesWebRequests(requests)`: the airlock grants each request's origin,
   sign-in and path together, all or none, so a reply reaches only the
@@ -93,6 +93,12 @@ may go.
   driver's to add), and so is an empty list, all at the boundary. Once
   allowed, they are sent in order; the first that fails stops the rest,
   `Refused('sent k of n: …')`, with no retry.
+- An `Allow` for either names the path prefix each request was granted
+  under, one per request, and the driver is handed only a `GrantedRequest`
+  that carries it, so a redirect on the same site stays under it too. `/`
+  grants the whole site. A web action allowed with any other number of
+  prefixes, or under one that doesn't cover its path, is refused before a
+  driver is reached.
 
 ## A model call
 
