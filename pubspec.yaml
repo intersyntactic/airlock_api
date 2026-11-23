@@ -4,7 +4,7 @@ description: >-
   are proposed on, and the airlock that decides and records each one.
 # Between releases main is `<next>-dev`, so whoever builds on it by path or
 # git ref can see it moves; the release commit drops `-dev`.
-version: 0.17.0-dev
+version: 0.17.0
 repository: https://github.com/intersyntactic/airlock_api
 
 environment:
@@ -20,10 +20,3 @@ dev_dependencies:
   analyzer: ^14.7.0
   lints: ^6.1.0
   test: ^1.25.0
-
-# Until is_effects 0.14.0 is published (https://github.com/intersyntactic/effects/pull/22).
-dependency_overrides:
-  is_effects:
-    git:
-      url: https://github.com/intersyntactic/effects
-      ref: 25b148f
