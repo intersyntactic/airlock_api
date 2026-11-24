@@ -81,7 +81,7 @@ abstract final class Action<A> extends Result<A> {
 
 /// An [Action] of a [Program] taking [I] and giving [O].
 ///
-/// Made only by its program ([Program.run], [Program.runOrRefusal]), so [I]
+/// Made only by its program ([Program.run], [Program.runOrFail]), so [I]
 /// is the program's own input type. Built from a program and an input side
 /// by side, inference would widen [I] to fit both, and a [WriteFile] given a
 /// `String` would compile.
@@ -156,9 +156,10 @@ sealed class Program<I, O> {
     required Result<A> Function(Outcome<O> outcome) then,
   }) => _Action(this, input, then);
 
-  /// An action whose refusal is the tool's failure: [then] is called only
-  /// with the output.
-  Action<A> runOrRefusal<A>(
+  /// An action that fails the tool unless it ran to the end: [then] is
+  /// called only with the output. Stopping partway says so in the failure,
+  /// since unlike nothing running, the world has changed.
+  Action<A> runOrFail<A>(
     I input, {
     required Result<A> Function(O output) then,
   }) => _Action(
@@ -166,7 +167,8 @@ sealed class Program<I, O> {
     input,
     (outcome) => switch (outcome) {
       Ran(:final output) => then(output),
-      Refused(:final why) => Failed(why),
+      NothingRan(:final why) => Failed(why),
+      StoppedPartway(:final why) => Failed('stopped partway: $why'),
     },
   );
 
@@ -336,17 +338,18 @@ final class Executable extends Program<Args, ExecResult> {
 }
 
 /// The body of [entry], which must belong to [trajectory] and be of [kind],
-/// as [DecidesActionsAndWritesToTheLogbook.entryOn] reads it; or [Refused] with why
-/// not. The kind is checked, since a loop may write a body of any shape
-/// under its own kinds on its own chain.
+/// as [DecidesActionsAndWritesToTheLogbook.entryOn] reads it; or
+/// [NothingRan] with why not, since a read leaves the world as it was. The
+/// kind is checked, since a loop may write a body of any shape under its
+/// own kinds on its own chain.
 Future<Outcome<String>> _bodyOf(
   Trajectory<Object?, Object?> trajectory,
   EntryId entry,
   String kind,
 ) async => switch (await trajectory._airlock.entryOn(trajectory.id, entry)) {
-  Refused(:final why) => Refused(why),
+  NothingRan(:final why) || StoppedPartway(:final why) => NothingRan(why),
   Ran(output: (kind: final kept, :final body)) when kept == kind => Ran(body),
-  Ran(output: (kind: final kept, body: _)) => Refused(
+  Ran(output: (kind: final kept, body: _)) => NothingRan(
     'entry $entry is a $kept, not a $kind',
   ),
 };
@@ -391,7 +394,8 @@ final class MakeWebRequests
   ) => switch (trajectory._driver<CarriesOutWebRequests>()) {
     null => null,
     final web => switch (_granted(requests, allowed)) {
-      Refused(:final why) => Future.value(Refused(why)),
+      NothingRan(:final why) ||
+      StoppedPartway(:final why) => Future.value(NothingRan(why)),
       Ran(output: final granted) => _send(web, granted),
     },
   };
@@ -402,15 +406,30 @@ final class MakeWebRequests
   ) async {
     final responses = <WebResponse>[];
     for (final request in requests) {
-      final sent = 'sent ${responses.length} of ${requests.length}';
+      final at = 'request ${responses.length + 1} of ${requests.length}';
       switch (await web.carryOutWebRequest(request)) {
-        case Refused(:final why):
-          return Refused('$sent: $why');
+        case NothingRan(:final why) when responses.isEmpty:
+          return NothingRan('$at: $why');
+        case NothingRan(:final why):
+          return StoppedPartway(why: '$at: $why', done: responses);
+        // done holds the requests that finished; this one went out with no
+        // response, and why says so.
+        case StoppedPartway(:final why, done: null):
+          return StoppedPartway(
+            why: '$at went out with no response: $why',
+            done: responses,
+          );
+        case StoppedPartway(:final why, done: final WebResponse response):
+          return StoppedPartway(
+            why: '$at: $why',
+            done: [...responses, response],
+          );
         case Ran(output: final response)
             when response.status < 200 || response.status > 299:
-          return Refused(
-            '$sent: ${response.status} ${response.refusedBecause ?? ''}'
+          return StoppedPartway(
+            why: '$at: ${response.status} ${response.refusedBecause ?? ''}'
                 .trimRight(),
+            done: [...responses, response],
           );
         case Ran(output: final response):
           responses.add(response);
@@ -464,7 +483,8 @@ final class FetchFromWeb extends Program<WebFetch, WebResponse> {
         keep: fetch.keep,
       ),
     ], allowed)) {
-      Refused(:final why) => Future.value(Refused(why)),
+      NothingRan(:final why) ||
+      StoppedPartway(:final why) => Future.value(NothingRan(why)),
       Ran(:final output) => web.carryOutWebRequest(output.single),
     },
   };
@@ -479,7 +499,7 @@ Outcome<List<GrantedRequest>> _granted(
 ) {
   final prefixes = allowed.grantedPathPrefixes;
   if (prefixes.length != requests.length) {
-    return Refused(
+    return NothingRan(
       'allowed with ${prefixes.length} granted path prefixes '
       'for ${requests.length} requests',
     );
@@ -487,7 +507,7 @@ Outcome<List<GrantedRequest>> _granted(
   final granted = <GrantedRequest>[];
   for (final (i, request) in requests.indexed) {
     if (!prefixes[i].covers(request.path)) {
-      return Refused(
+      return NothingRan(
         'request ${i + 1}: ${request.path.value} is not under '
         'its granted prefix ${prefixes[i]}',
       );
@@ -516,7 +536,7 @@ final class WebFetch {
 }
 
 /// Asks the model, through the model driver, as the [ModelCall]'s sign-in,
-/// with the system prompt and request its [ModelRequest] entry holds.
+/// with the system prompt and request its [ModelRequestFromPieces] entry holds.
 ///
 /// The one action the loop proposes for itself rather than drawing from an
 /// intent in the model's reply: the loop holds no sign-in and has no
@@ -525,7 +545,7 @@ final class WebFetch {
 /// allows it only as a sign-in the trajectory's rules let a model call go
 /// out as.
 ///
-/// Once allowed, the airlock reads the [ModelRequest] and each of its
+/// Once allowed, the airlock reads the [ModelRequestFromPieces] and each of its
 /// pieces from this trajectory's own chain, joins each text, checks it
 /// against its sha256, and hands the driver exactly those texts. Any piece
 /// missing, on another chain, or not joining to its hash refuses the call
@@ -568,30 +588,34 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
     ModelCall call,
     Report report,
   ) async {
-    final ModelRequest request;
-    switch (await _bodyOf(trajectory, call.request, ModelRequest.kind)) {
-      case Refused(:final why):
-        return Refused(why);
+    final ModelRequestFromPieces request;
+    switch (await _bodyOf(
+      trajectory,
+      call.request,
+      ModelRequestFromPieces.kind,
+    )) {
+      case NothingRan(:final why) || StoppedPartway(:final why):
+        return NothingRan(why);
       case Ran(output: final text):
         try {
-          request = ModelRequest.fromJson(JsonObject.decode(text));
+          request = ModelRequestFromPieces.fromJson(JsonObject.decode(text));
         } on FormatException catch (e) {
-          return Refused('not a model request: ${e.message}');
+          return NothingRan('not a model request: ${e.message}');
         }
     }
     Future<Outcome<String>> joined(TextFromPieces text) async {
       final texts = <String>[];
       for (final piece in text.pieces) {
         switch (await _bodyOf(trajectory, piece, ModelRequestPiece.kind)) {
-          case Refused(:final why):
-            return Refused(why);
+          case NothingRan(:final why) || StoppedPartway(:final why):
+            return NothingRan(why);
           case Ran(output: final text):
             try {
               texts.add(
                 ModelRequestPiece.fromJson(JsonObject.decode(text)).text,
               );
             } on FormatException catch (e) {
-              return Refused('not a model request piece: ${e.message}');
+              return NothingRan('not a model request piece: ${e.message}');
             }
         }
       }
@@ -601,7 +625,11 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
     final systemPrompt = await joined(request.systemPrompt);
     final asked = await joined(request.request);
     return switch ((systemPrompt, asked)) {
-      (Refused(:final why), _) || (_, Refused(:final why)) => Refused(why),
+      (NothingRan(:final why) || StoppedPartway(:final why), _) ||
+      (
+        _,
+        NothingRan(:final why) || StoppedPartway(:final why),
+      ) => NothingRan(why),
       (Ran(output: final system), Ran(output: final text)) =>
         await driver.askTheModel(
           call.signIn,
@@ -615,7 +643,7 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
 }
 
 /// A model call a loop proposes: as which of the person's model sign-ins,
-/// to which model, and the [ModelRequest] entry, written on its
+/// to which model, and the [ModelRequestFromPieces] entry, written on its
 /// trajectory's chain before this, that holds exactly what is sent.
 final class ModelCall {
   const ModelCall({
@@ -627,7 +655,7 @@ final class ModelCall {
   final ModelSignInName signIn;
   final ModelName model;
 
-  /// The [ModelRequest] entry.
+  /// The [ModelRequestFromPieces] entry.
   final EntryId request;
 }
 
@@ -720,7 +748,7 @@ final class FetchesFromWeb extends Reach {
 }
 
 /// Reaches the model: [call] goes out as its sign-in, to its model, with the
-/// texts its [ModelRequest] entry holds. A rule grants it by the sign-in,
+/// texts its [ModelRequestFromPieces] entry holds. A rule grants it by the sign-in,
 /// one the trajectory's rules let a model call go out as.
 final class CallsTheModel extends Reach {
   const CallsTheModel(this.call);
@@ -826,7 +854,7 @@ final class Trajectory<R, P> {
     await _airlock.writeDecision(decided);
     _decisions.add(decided);
     final Outcome<O> result = switch (decision) {
-      Deny(:final why) => Refused(why),
+      Deny(:final why) => NothingRan(why),
       final Allow allowed =>
         await program._on(
               this,
@@ -835,7 +863,7 @@ final class Trajectory<R, P> {
               allowed,
               (progress) => _underway.add(Underway(id, place, reach, progress)),
             ) ??
-            Refused('this machine cannot run ${program.name}'),
+            NothingRan('this machine cannot run ${program.name}'),
     };
     await _airlock.writeResult(
       decided,
@@ -963,7 +991,7 @@ abstract interface class DecidesActionsAndWritesToTheLogbook<R, P> {
   });
 
   /// The kind and body of [entry], when it belongs to [trajectory]: the
-  /// body as text, after its `<kind>\n<previous>\n` header. Or [Refused]
+  /// body as text, after its `<kind>\n<previous>\n` header. Or [NothingRan]
   /// with why not. Whoever reads it checks the kind it expects, since a
   /// loop may write a body of any shape under its own kinds.
   ///
@@ -973,7 +1001,7 @@ abstract interface class DecidesActionsAndWritesToTheLogbook<R, P> {
   /// on that chain. Only the airlock writes those, so a loop cannot make
   /// one. Any other entry is refused, never read: entry hashes are not
   /// secret, so without this a loop could name another trajectory's
-  /// [ModelRequest] or pieces and have them sent as its own. [AskTheModel]
+  /// [ModelRequestFromPieces] or pieces and have them sent as its own. [AskTheModel]
   /// reads its request and every piece through here.
   Future<Outcome<({String kind, String body})>> entryOn(
     TrajectoryId trajectory,
@@ -981,12 +1009,9 @@ abstract interface class DecidesActionsAndWritesToTheLogbook<R, P> {
   );
 }
 
-/// What the airlock decided about one action, and [by] whom, so the logbook
-/// tells "the rules let it through" from "the person said yes".
+/// What the airlock decided about one action.
 sealed class Decision {
-  const Decision({required this.by, this.reliedOn = const []});
-
-  final DecidedBy by;
+  const Decision({this.reliedOn = const []});
 
   /// The logbook entries the airlock read to decide, beyond the rules: what
   /// held for the trajectory at that moment, such as the lease of the bot it
@@ -1004,24 +1029,32 @@ sealed class Decision {
 /// whole site.
 final class Allow extends Decision {
   Allow({
-    required super.by,
+    required this.by,
     super.reliedOn,
     required List<PathPrefix> grantedPathPrefixes,
   }) : grantedPathPrefixes = List.unmodifiable(grantedPathPrefixes);
 
   /// An allowed action that makes no web request, so is granted no path.
-  const Allow.withNoPaths({required super.by, super.reliedOn})
+  const Allow.withNoPaths({required this.by, super.reliedOn})
     : grantedPathPrefixes = const [];
+
+  /// Whom it was allowed by, so the logbook tells "the rules let it
+  /// through" from "the person said yes"; null when no rule governs this
+  /// reach, such as a read or write bounded only by the file driver's root.
+  final DecidedBy? by;
 
   final List<PathPrefix> grantedPathPrefixes;
 }
 
 /// No driver carries the action out, because [why]; its continuation is handed
-/// [Refused] with that reason.
+/// [NothingRan] with that reason.
 final class Deny extends Decision {
-  const Deny(this.why, {required super.by, super.reliedOn});
+  const Deny(this.why, {required this.by, super.reliedOn});
 
   final String why;
+
+  /// Whom it was denied by.
+  final DecidedBy by;
 }
 
 /// What the airlock decided about an action that would do [reach], on the

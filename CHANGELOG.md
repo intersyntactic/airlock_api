@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.18.0
+
+Breaking, through is_effects ^0.15.0, which splits `Refused` by whether
+the world changed: `NothingRan(why)` or `StoppedPartway(why, done)`.
+
+- `runOrRefusal` is now `runOrFail`. A tool fails unless the program ran to
+  the end; one that stopped partway says so in its failure.
+- A denied action, one this machine has no driver for, and a model request
+  whose entries are missing or malformed are `NothingRan`.
+- `MakeWebRequests` is `NothingRan` only when its first request never went
+  out. After that it is `StoppedPartway`, its `done` the response to each
+  request that finished, a non-2xx one included. A request that went out
+  with no response is named in `why`, never in `done`.
+- A rejected proposal's result is written as `nothingRan`.
+- `Allow.by` is `DecidedBy?`, required but nullable: null means no rule
+  governs the reach, such as a read or write bounded only by the file
+  driver's root, so the logbook no longer says "rules" when none exist. It
+  is left out of the decision entry when null. `Deny.by` stays required,
+  and a denial read back without one is refused. `by` moved from
+  `Decision` onto `Allow` and `Deny`.
+- `ModelRequest` is now `ModelRequestFromPieces`, so it no longer shares a
+  name with is_model_vocabulary's `ModelRequest`, which is what the joined
+  request text holds. Its logbook kind stays `model-request`.
+
 ## 0.17.0
 
 Breaking, through is_effects ^0.14.0, which splits `Request` into

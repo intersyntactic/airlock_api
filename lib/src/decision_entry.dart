@@ -37,8 +37,8 @@ Object? _decisionToJson(Decision decision) => {
   ...switch (decision) {
     Allow(:final by, :final grantedPathPrefixes) => {
       'allow': true,
-      'by': by.name,
-      // Absent when empty, as reliedOn is.
+      // Absent when no rule governs the reach, and when empty, as reliedOn is.
+      if (by != null) 'by': by.name,
       if (grantedPathPrefixes.isNotEmpty)
         'grantedPathPrefixes': [for (final p in grantedPathPrefixes) p.value],
     },

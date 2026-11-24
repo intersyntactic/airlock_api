@@ -12,10 +12,10 @@ What an action takes and gives back, and the drivers that carry it out, are
 final dart = Executable.parse('dart')!;
 
 /// Writes [file], then formats it.
-Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrRefusal(
+Result<ExecResult> writeAndFormat(FileText file) => Program.write.runOrFail(
   file,
   then: (wrote) =>
-      dart.runOrRefusal(Args(['format', file.path.value]), then: Done.new),
+      dart.runOrFail(Args(['format', file.path.value]), then: Done.new),
 );
 
 // In the agent loop, one crux per intent (a tool call in the model's reply);
@@ -92,7 +92,11 @@ may go.
   header other than `content-type` is refused (a credential is the
   driver's to add), and so is an empty list, all at the boundary. Once
   allowed, they are sent in order; the first that fails stops the rest,
-  `Refused('sent k of n: …')`, with no retry.
+  with no retry. If that was the first and it never went out, nothing
+  ran. Otherwise it stopped partway, and `done` lists the response to
+  every request that finished, a non-2xx one included, since it was sent.
+  A request that went out with no response is not in `done`; its `why`
+  says so.
 - An `Allow` for either names the path prefix each request was granted
   under, one per request, and the driver is handed only a `GrantedRequest`
   that carries it, so a redirect on the same site stays under it too. `/`
@@ -112,14 +116,14 @@ makes the call.
 
 - The loop writes what it will send to the logbook first: each text, the
   system prompt and the request, as `ModelRequestPiece` entries (kind
-  `model-request-piece`, `{"text"}`), then a `ModelRequest` (kind
+  `model-request-piece`, `{"text"}`), then a `ModelRequestFromPieces` (kind
   `model-request`) naming them: `systemPrompt` and `request`, each a
   `TextFromPieces` (its pieces in order and the sha256 of its UTF-8
   bytes), and `builtFrom`, the turns they were drawn from. Pieces are named
   by entry, so the logbook kept each before it is sent; repeated history
   is still stored once, as one object under many entries.
 - `AskTheModel` (proposed as `model`) takes a `ModelCall`: the
-  `ModelSignInName` it goes as, the `ModelName`, and the `ModelRequest`
+  `ModelSignInName` it goes as, the `ModelName`, and the `ModelRequestFromPieces`
   entry. Its reach, `CallsTheModel`, is decided by the sign-in.
 - Once allowed, the airlock reads the request and each piece with
   `DecidesActionsAndWritesToTheLogbook.entryOn(trajectory, entry)`, which

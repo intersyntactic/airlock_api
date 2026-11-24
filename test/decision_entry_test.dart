@@ -72,6 +72,7 @@ void main() {
     for (final reach in reaches) {
       for (final decision in [
         const Allow.withNoPaths(by: DecidedBy.rules),
+        const Allow.withNoPaths(by: null),
         Allow(
           by: DecidedBy.rules,
           grantedPathPrefixes: [PathPrefix.parse('/v3/conversations/')!],
@@ -86,7 +87,7 @@ void main() {
         expect(back.place, place, reason: why);
         expect(back.reach.runtimeType, reach.runtimeType, reason: why);
         expect(back.decision.runtimeType, decision.runtimeType, reason: why);
-        expect(back.decision.by, decision.by, reason: why);
+        expect(byOf(back.decision), byOf(decision), reason: why);
         expect(back.decision.reliedOn, decision.reliedOn, reason: why);
         if (decision case Allow(:final grantedPathPrefixes)) {
           expect(
@@ -178,6 +179,14 @@ void main() {
     );
   });
 
+  test('an allow no rule governs writes no by, and reads back as null', () {
+    final json = throughText(
+      written(decided(reaches[0], const Allow.withNoPaths(by: null))),
+    ).asUncheckedMap();
+    expect(json['decision'], {'allow': true});
+    expect(byOf(readBack(json).decision), isNull);
+  });
+
   test('a malformed decision is refused, naming the part', () {
     final json = throughText(
       written(
@@ -211,6 +220,11 @@ void main() {
       ('decision', {'allow': true, 'by': 'robot'}, 'decided.decision.by'),
       (
         'decision',
+        {'allow': false, 'why': 'no'},
+        'decided.decision.by: missing on a denial',
+      ),
+      (
+        'decision',
         {
           'allow': true,
           'by': 'rules',
@@ -223,3 +237,8 @@ void main() {
     }
   });
 }
+
+/// Whom [decision] was made by; null for an allow no rule governs.
+DecidedBy? byOf(Decision decision) => switch (decision) {
+  Allow(by: final DecidedBy? by) || Deny(by: final DecidedBy? by) => by,
+};

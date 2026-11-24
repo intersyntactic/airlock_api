@@ -50,16 +50,23 @@ List<WebResponse> _webResponsesFromJson(Object? json, [String field = '']) =>
     };
 
 Decision _decisionFromJson(JsonObject json, String field) => _at(field, () {
-  final by =
-      DecidedBy.values.asNameMap()[json.string('by')] ??
-      (throw FormatException('$field.by: not rules or person'));
+  final by = switch (json.stringOrNull('by')) {
+    null => null,
+    final name =>
+      DecidedBy.values.asNameMap()[name] ??
+          (throw FormatException('$field.by: not rules or person')),
+  };
   final reliedOn = [
     for (final (i, hex) in (json.stringsOrNull('reliedOn') ?? []).indexed)
       EntryId.parse(hex) ??
           (throw FormatException('$field.reliedOn[$i]: not an entry id')),
   ];
   if (!json.boolean('allow')) {
-    return Deny(json.string('why'), by: by, reliedOn: reliedOn);
+    return Deny(
+      json.string('why'),
+      by: by ?? (throw FormatException('$field.by: missing on a denial')),
+      reliedOn: reliedOn,
+    );
   }
   final prefixes = [
     for (final (i, raw)

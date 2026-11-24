@@ -5,7 +5,7 @@ part of 'action.dart';
 // What a step sends is in the logbook before it is sent: the loop writes
 // each text it drew from its turns, the system prompt and the request, as
 // pieces, byte ranges of the exact bytes sent, whole when a text won't
-// split, then a [ModelRequest] naming them. The airlock joins each text's
+// split, then a [ModelRequestFromPieces] naming them. The airlock joins each text's
 // pieces, checks the join against its sha256, and hands the model driver
 // exactly those bytes, so what it allows is what is sent.
 
@@ -54,7 +54,7 @@ final class TextFromPieces {
     }
   }
 
-  /// [json] read back, strictly, as [ModelRequest.fromJson] reads its
+  /// [json] read back, strictly, as [ModelRequestFromPieces.fromJson] reads its
   /// parts.
   static TextFromPieces fromJson(JsonObject json, String field) =>
       _at(field, () {
@@ -78,18 +78,20 @@ final class TextFromPieces {
   final ObjectId sha256;
 
   /// The text, from [texts], the text of each of [pieces] in order, joined;
-  /// or [Refused] with why it is not the text this names. The airlock gives
+  /// or [NothingRan] with why it is not the text this names. The airlock gives
   /// the model driver nothing else.
   Outcome<String> join(List<String> texts) {
     if (texts.length != pieces.length) {
-      return Refused(
+      return NothingRan(
         '${texts.length} pieces given, the request names ${pieces.length}',
       );
     }
     final joined = texts.join();
     return ObjectId.of(utf8.encode(joined)) == sha256
         ? Ran(joined)
-        : const Refused('the pieces do not join to the text the request names');
+        : const NothingRan(
+            'the pieces do not join to the text the request names',
+          );
   }
 
   Object? toJson() => {
@@ -99,15 +101,14 @@ final class TextFromPieces {
 }
 
 /// What a step sends the model, written to the logbook before it is sent:
-/// its
-/// [systemPrompt] and its [request], each as a [TextFromPieces], and the
+/// its [systemPrompt] and its [request], each as a [TextFromPieces], and the
 /// turns they were drawn from.
 ///
 /// Written by the loop on its trajectory's chain, which only its loop user
 /// writes, so it names no trajectory, as an [ActionProposedByAgentLoop]
 /// names none.
-final class ModelRequest {
-  ModelRequest({
+final class ModelRequestFromPieces {
+  ModelRequestFromPieces({
     required this.systemPrompt,
     required this.request,
     Iterable<EntryId> builtFrom = const [],
@@ -118,12 +119,12 @@ final class ModelRequest {
 
   /// [json] read back, strictly: a key it does not know, or a part that is
   /// not what it names, throws a [FormatException] naming the part.
-  static ModelRequest fromJson(
+  static ModelRequestFromPieces fromJson(
     JsonObject json, [
     String field = 'modelRequest',
   ]) => _at(field, () {
     _exactly(field, json, const {'systemPrompt', 'request', 'builtFrom'});
-    return ModelRequest(
+    return ModelRequestFromPieces(
       systemPrompt: TextFromPieces.fromJson(
         json.object('systemPrompt'),
         '$field.systemPrompt',

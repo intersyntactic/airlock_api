@@ -70,7 +70,7 @@ void main() {
     path.results.listen((r) => results.add(r.decision));
     expect(
       await answerOf(
-        Program.read.runOrRefusal(
+        Program.read.runOrFail(
           RelativePath('a.dart'),
           then: (read) => Done(switch (read) {
             ReadText(:final text) => text,
@@ -99,7 +99,7 @@ void main() {
     path.decisions.listen(decisions.add);
     expect(
       await answerOf(
-        Program.readBytes.runOrRefusal(
+        Program.readBytes.runOrFail(
           RelativePath('report.docx'),
           then: (read) => Done(switch (read) {
             ReadBytes(:final bytes) => utf8.decode(bytes),
@@ -124,7 +124,7 @@ void main() {
     final graph = Origin.parse('https://graph.microsoft.com')!;
     final path = start(airlock, [web], rules: {'fetch $graph as $hart'});
     final answer = await answerOf(
-      Program.fetch.runOrRefusal(
+      Program.fetch.runOrFail(
         WebFetch(
           graph,
           path: WebPath.parse('/v1.0/drives/d/items/i/content')!,
@@ -157,7 +157,7 @@ void main() {
     final path = start(airlock, [web], rules: {'fetch $graph as $hart'});
     expect(
       await answerOf(
-        Program.fetch.runOrRefusal(
+        Program.fetch.runOrFail(
           WebFetch(graph, signIn: hart, keep: BodyToKeep.text),
           then: (_) => const Done('fetched'),
         ),
@@ -176,7 +176,7 @@ void main() {
       final path = start(airlock, [web], rules: {requestsToConversation});
       expect(
         await answerOf(
-          Program.fetch.runOrRefusal(
+          Program.fetch.runOrFail(
             WebFetch(teams, signIn: hart, keep: BodyToKeep.text),
             then: (_) => const Done('fetched'),
           ),
@@ -411,7 +411,7 @@ void main() {
       start(airlock, [MemoryFiles(), RecordedPrograms()]),
       airlock,
     );
-    Result<String> write(String name) => Program.write.runOrRefusal(
+    Result<String> write(String name) => Program.write.runOrFail(
       FileText(RelativePath(name), ''),
       then: (_) => Done(name),
     );
@@ -471,11 +471,11 @@ void main() {
     final refused = proposalRejectedToJson(id, 'why');
     expect(
       jsonEncode(refused),
-      '{"proposed":"${id.hex}","result":{"kind":"refused","why":"why"}}',
+      '{"proposed":"${id.hex}","result":{"kind":"nothingRan","why":"why"}}',
     );
     final back = readOutcomeOfProposedAction(jsonEncode(refused))!;
     expect(back.proposed, id);
-    expect(back.result, {'kind': 'refused', 'why': 'why'});
+    expect(back.result, {'kind': 'nothingRan', 'why': 'why'});
     for (final json in [
       null,
       'a line a person reads',

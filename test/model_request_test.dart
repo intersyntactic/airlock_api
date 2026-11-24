@@ -22,7 +22,7 @@ void main() {
     'Turn 1: what does clause 4 say?\n',
     'Turn 2: and how does it bear on the lease?\n',
   ];
-  final request = ModelRequest(
+  final request = ModelRequestFromPieces(
     systemPrompt: piecesOf(system),
     request: piecesOf(asked),
     builtFrom: [EntryId.of(utf8.encode('turn 1'))],
@@ -40,15 +40,15 @@ void main() {
       [asked[0]],
       [...asked, ''],
     ]) {
-      expect(request.request.join(wrong), isA<Refused>(), reason: '$wrong');
+      expect(request.request.join(wrong), isA<NothingRan>(), reason: '$wrong');
     }
     // Each half is checked against its own hash, never the other's.
-    expect(request.request.join(system), isA<Refused>());
-    expect(request.systemPrompt.join(asked), isA<Refused>());
+    expect(request.request.join(system), isA<NothingRan>());
+    expect(request.systemPrompt.join(asked), isA<NothingRan>());
   });
 
   test('a model request and its pieces read back as written', () {
-    final back = ModelRequest.fromJson(
+    final back = ModelRequestFromPieces.fromJson(
       JsonObject.decode(jsonEncode(request.toJson())),
     );
     expect(back.request.pieces, request.request.pieces);
@@ -63,7 +63,7 @@ void main() {
       ).text,
       asked[1],
     );
-    expect(ModelRequest.kind, 'model-request');
+    expect(ModelRequestFromPieces.kind, 'model-request');
     expect(ModelRequestPiece.kind, 'model-request-piece');
   });
 
@@ -90,7 +90,9 @@ void main() {
         {...good, 'request': bad},
     ]) {
       expect(
-        () => ModelRequest.fromJson(JsonObject.decode(jsonEncode(json))),
+        () => ModelRequestFromPieces.fromJson(
+          JsonObject.decode(jsonEncode(json)),
+        ),
         throwsFormatException,
         reason: '$json',
       );
