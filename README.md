@@ -65,7 +65,7 @@ while (result is Action<ExecResult>) {
   user the trajectory wears. A box that offers `sh`, `dart` or `git` has
   given that bound away, since each can run anything the suit can. A
   contained trajectory's box offers single-purpose programs, such as
-  `teams-reply-translator`, which turns a reply's text and recorded
+  `teams-reply-drawing`, which turns a reply's text and recorded
   address into the exact requests to send.
 
 ## The web
