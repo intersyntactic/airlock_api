@@ -72,7 +72,9 @@ abstract final class Action<A> extends Result<A> {
   /// action; the airlock writes what became of it to the logbook before the
   /// continuation sees it. If either entry cannot be written, its error ends
   /// the call: no driver is reached without a decision in the logbook, and
-  /// no outcome flows on that the logbook has not kept.
+  /// no outcome flows on that the logbook has not kept. A driver that throws
+  /// ends the call too, after its result is written as [StoppedPartway]
+  /// with `done` null, so the logbook never reads it as nothing ran.
   Future<Result<A>> next(Crux crux);
 
   @override
@@ -853,25 +855,47 @@ final class Trajectory<R, P> {
     );
     await _airlock.writeDecision(decided);
     _decisions.add(decided);
-    final Outcome<O> result = switch (decision) {
-      Deny(:final why) => NothingRan(why),
-      final Allow allowed =>
-        await program._on(
-              this,
-              input,
-              reach,
-              allowed,
-              (progress) => _underway.add(Underway(id, place, reach, progress)),
-            ) ??
-            NothingRan('this machine cannot run ${program.name}'),
-    };
+    final Outcome<O> result;
+    try {
+      result = switch (decision) {
+        Deny(:final why) => NothingRan(why),
+        final Allow allowed =>
+          await program._on(
+                this,
+                input,
+                reach,
+                allowed,
+                (progress) =>
+                    _underway.add(Underway(id, place, reach, progress)),
+              ) ??
+              NothingRan('this machine cannot run ${program.name}'),
+      };
+    } catch (thrown) {
+      // A driver that throws may have reached the world first, so its
+      // result says what it did is unknown, and the throw still ends the
+      // call.
+      await _written(
+        decided,
+        StoppedPartway<O>(why: 'the driver threw: $thrown', done: null),
+        program,
+      );
+      rethrow;
+    }
+    await _written(decided, result, program);
+    return result;
+  }
+
+  Future<void> _written<O>(
+    AirlockDecisionOnAction<P> decided,
+    Outcome<O> result,
+    Program<Object?, O> program,
+  ) async {
     await _airlock.writeResult(
       decided,
       result,
       resultAsJson: encodeOutcome(result, program._wire.outputToJson),
     );
     _results.add((decision: decided, result: result));
-    return result;
   }
 
   /// [proposal], the logbook entry [proposed] on this path's chain,

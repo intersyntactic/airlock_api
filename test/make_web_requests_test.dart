@@ -311,6 +311,29 @@ void main() {
     });
   });
 
+  test('a driver that throws partway still leaves a result saying what it did '
+      'is unknown, and the throw still ends the call', () async {
+    final web = RecordedWeb(throwAt: 2);
+    final airlock = LogAirlock();
+    await expectLater(
+      answerOf(
+        makeWebRequests([teamsPost('one'), teamsPost('two')]),
+        throughLogbook(
+          start(airlock, [web], rules: {requestsToConversation}),
+          airlock,
+          turn: 1,
+        ),
+      ),
+      throwsStateError,
+    );
+    expect(web.requests, hasLength(2));
+    expect(resultOf(airlock), {
+      'kind': 'stoppedPartway',
+      'why': 'the driver threw: Bad state: connection reset',
+      'done': null,
+    });
+  });
+
   test('nothing is sent when the decision cannot be written', () async {
     final web = RecordedWeb();
     final airlock = LogAirlock(failWriting: FailWriting.decision);
