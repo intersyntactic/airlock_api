@@ -55,8 +55,14 @@ final class RecordedPrograms implements RunsPrograms {
 /// numbered [refuseAt], the destination answers 403, and for the one
 /// numbered [cannotSendAt], the driver itself refuses.
 final class RecordedWeb implements CarriesOutWebRequests {
-  RecordedWeb({this.refuseAt, this.cannotSendAt, this.noResponseAt});
+  RecordedWeb({
+    this.refuseAt,
+    this.cannotSendAt,
+    this.noResponseAt,
+    this.throwAt,
+  });
 
+  final int? throwAt;
   final int? refuseAt;
   final int? cannotSendAt;
   final int? noResponseAt;
@@ -71,6 +77,7 @@ final class RecordedWeb implements CarriesOutWebRequests {
     if (n == cannotSendAt) {
       return NothingRan('${request.proposed.signIn} is not held here');
     }
+    if (n == throwAt) throw StateError('connection reset');
     if (n == noResponseAt) {
       return const StoppedPartway(why: 'body over the limit', done: null);
     }

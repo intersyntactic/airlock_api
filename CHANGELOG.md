@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.1
+
+- A driver that throws no longer leaves a decision with no result, which
+  reads the same as the airlock crashing. Its result is written as
+  `StoppedPartway` with `done` null, since it may have reached the world
+  first, and the throw still ends the call.
+
 ## 0.18.0
 
 Breaking, through is_effects ^0.15.0, which splits `Refused` by whether
