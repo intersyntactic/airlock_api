@@ -59,16 +59,16 @@ EntryId requestWrittenToLogbook(
   TrajectoryId? on,
 }) => airlock.remember(
   jsonEncode(
-    ModelRequest(
+    ModelRequestFromPieces(
       systemPrompt: systemPrompt ?? textWrittenToLogbook(airlock, system),
       request: request ?? textWrittenToLogbook(airlock, asked),
     ).toJson(),
   ),
-  kind: ModelRequest.kind,
+  kind: ModelRequestFromPieces.kind,
   on: on,
 );
 
-Result<String> ask(EntryId request) => Program.askTheModel.runOrRefusal(
+Result<String> ask(EntryId request) => Program.askTheModel.runOrFail(
   ModelCall(signIn: teamLogin, model: opus, request: request),
   then: (reply) => Done(reply.text),
 );
@@ -171,7 +171,7 @@ void main() {
       ),
       (
         'a model-request entry that does not read as one',
-        (a) => a.remember('"hello"', kind: ModelRequest.kind),
+        (a) => a.remember('"hello"', kind: ModelRequestFromPieces.kind),
         'not a model request',
       ),
       (

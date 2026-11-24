@@ -427,7 +427,7 @@ Object? outcomeOfProposedActionToJson(EntryId proposed, Object? resultAsJson) =>
 Object? proposalRejectedToJson(EntryId proposed, String why) =>
     outcomeOfProposedActionToJson(
       proposed,
-      encodeOutcome<Never>(Refused(why), (_) => null),
+      encodeOutcome<Never>(NothingRan(why), (_) => null),
     );
 
 /// [body] read back as an [outcomeOfProposedActionKind] logbook entry's

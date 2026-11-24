@@ -223,8 +223,16 @@ void main() {
           turn: 1,
         ),
       ),
-      'failed: sent 1 of 3: 403 throttled',
+      'failed: stopped partway: request 2 of 3: 403 throttled',
     );
+    expect(resultOf(airlock), {
+      'kind': 'stoppedPartway',
+      'why': 'request 2 of 3: 403 throttled',
+      'done': [
+        {'status': 201, 'created': 'activity-1', 'refusedBecause': null},
+        {'status': 403, 'created': null, 'refusedBecause': 'throttled'},
+      ],
+    });
     expect(
       [for (final r in web.requests) r.proposed.body],
       [teamsMessageOf('one'), teamsMessageOf('two')],
@@ -248,9 +256,59 @@ void main() {
           turn: 1,
         ),
       ),
-      'failed: sent 1 of 3: hart-bot is not held here',
+      'failed: stopped partway: request 2 of 3: hart-bot is not held here',
     );
     expect(web.requests, hasLength(2));
+    expect(resultOf(airlock), {
+      'kind': 'stoppedPartway',
+      'why': 'request 2 of 3: hart-bot is not held here',
+      'done': [
+        {'status': 201, 'created': 'activity-1', 'refusedBecause': null},
+      ],
+    });
+  });
+
+  test('a request that went out with no response is named in why, and done '
+      'keeps the requests that finished', () async {
+    final web = RecordedWeb(noResponseAt: 3);
+    final airlock = LogAirlock();
+    await answerOf(
+      makeWebRequests([teamsPost('one'), teamsPost('two'), teamsPost('three')]),
+      throughLogbook(
+        start(airlock, [web], rules: {requestsToConversation}),
+        airlock,
+        turn: 1,
+      ),
+    );
+    expect(resultOf(airlock), {
+      'kind': 'stoppedPartway',
+      'why': 'request 3 of 3 went out with no response: body over the limit',
+      'done': [
+        {'status': 201, 'created': 'activity-1', 'refusedBecause': null},
+        {'status': 201, 'created': 'activity-2', 'refusedBecause': null},
+      ],
+    });
+  });
+
+  test('when the first request is never sent, nothing ran', () async {
+    final web = RecordedWeb(cannotSendAt: 1);
+    final airlock = LogAirlock();
+    expect(
+      await answerOf(
+        makeWebRequests([teamsPost('one'), teamsPost('two')]),
+        throughLogbook(
+          start(airlock, [web], rules: {requestsToConversation}),
+          airlock,
+          turn: 1,
+        ),
+      ),
+      'failed: request 1 of 2: hart-bot is not held here',
+    );
+    expect(web.requests, hasLength(1));
+    expect(resultOf(airlock), {
+      'kind': 'nothingRan',
+      'why': 'request 1 of 2: hart-bot is not held here',
+    });
   });
 
   test('nothing is sent when the decision cannot be written', () async {
@@ -362,7 +420,7 @@ void main() {
       answers.map(
         (a) => decodeOutcome<Never>(a, (_, _) => throw StateError('ran')),
       ),
-      everyElement(isA<Refused>()),
+      everyElement(isA<NothingRan>()),
     );
     expect(airlock.log, isEmpty);
   });
@@ -385,3 +443,8 @@ void main() {
     expect(web.requests, hasLength(1));
   });
 }
+
+/// The single result [airlock] wrote, as the logbook keeps it.
+Object? resultOf(LogAirlock airlock) =>
+    (jsonDecode(jsonEncode(airlock.results.values.single))
+        as Map)['result']; // cast-ok: test reads back JSON it just encoded

@@ -34,7 +34,7 @@ void main() {
       var applied = 0;
 
       Result<String> result = Program.write
-          .runOrRefusal(FileText(path, 'hi'), then: Done.new)
+          .runOrFail(FileText(path, 'hi'), then: Done.new)
           .map((wrote) {
             applied++;
             return wrote.replaced ? 'replaced' : 'created';

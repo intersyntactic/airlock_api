@@ -25,7 +25,7 @@ final class MemoryFiles implements ReadsAndWritesFiles {
   @override
   Future<Outcome<Wrote>> write(FileText file) async {
     if (file.path.value.startsWith('.git/')) {
-      return Refused("${file.path} is git's own");
+      return NothingRan("${file.path} is git's own");
     }
     final replaced = files.containsKey(file.path.value);
     files[file.path.value] = file.text;
@@ -55,10 +55,11 @@ final class RecordedPrograms implements RunsPrograms {
 /// numbered [refuseAt], the destination answers 403, and for the one
 /// numbered [cannotSendAt], the driver itself refuses.
 final class RecordedWeb implements CarriesOutWebRequests {
-  RecordedWeb({this.refuseAt, this.cannotSendAt});
+  RecordedWeb({this.refuseAt, this.cannotSendAt, this.noResponseAt});
 
   final int? refuseAt;
   final int? cannotSendAt;
+  final int? noResponseAt;
   final requests = <GrantedRequest>[];
 
   @override
@@ -68,7 +69,10 @@ final class RecordedWeb implements CarriesOutWebRequests {
     requests.add(request);
     final n = requests.length;
     if (n == cannotSendAt) {
-      return Refused('${request.proposed.signIn} is not held here');
+      return NothingRan('${request.proposed.signIn} is not held here');
+    }
+    if (n == noResponseAt) {
+      return const StoppedPartway(why: 'body over the limit', done: null);
     }
     return Ran(
       n == refuseAt
@@ -169,8 +173,8 @@ final class LogAirlock
     EntryId entry,
   ) async => switch ((readOn..add(entry), _logbook[entry], _chainOf[entry])) {
     (_, final kept?, final chain) when chain == trajectory => Ran(kept),
-    (_, _?, _) => Refused('entry $entry is on another chain'),
-    (_, null, _) => Refused('entry $entry is not in the logbook'),
+    (_, _?, _) => NothingRan('entry $entry is on another chain'),
+    (_, null, _) => NothingRan('entry $entry is not in the logbook'),
   };
 
   @override
@@ -259,7 +263,8 @@ final class LogAirlock
     log.add(
       '${decision.place}: ${switch (result) {
         Ran() => 'ran ${reachOf(decision.reach)}',
-        Refused(:final why) => 'refused ${reachOf(decision.reach)}: $why',
+        NothingRan(:final why) => 'refused ${reachOf(decision.reach)}: $why',
+        StoppedPartway(:final why) => 'stopped partway ${reachOf(decision.reach)}: $why',
       }}',
     );
   }
@@ -268,12 +273,10 @@ final class LogAirlock
 final dart = Executable.parse('dart')!;
 
 /// Writes [path], then formats it: two actions, and what the second printed.
-Result<String> writeAndFormat(String path) => Program.write.runOrRefusal(
+Result<String> writeAndFormat(String path) => Program.write.runOrFail(
   FileText(RelativePath(path), 'void main() {}'),
-  then: (wrote) => dart.runOrRefusal(
-    Args(['format', path]),
-    then: (exec) => Done(exec.stdout),
-  ),
+  then: (wrote) =>
+      dart.runOrFail(Args(['format', path]), then: (exec) => Done(exec.stdout)),
 );
 
 /// [result] carried through at [crux] to an answer, or why there is none.
@@ -427,7 +430,7 @@ ProposedRequest teamsPost(
 /// [requests] made, answered with each response's status and what the
 /// destination made of it.
 Result<String> makeWebRequests(List<ProposedRequest> requests) =>
-    Program.makeWebRequests.runOrRefusal(
+    Program.makeWebRequests.runOrFail(
       requests,
       then: (responses) =>
           Done(responses.map((r) => '${r.status} ${r.created}').join(', ')),
@@ -571,7 +574,12 @@ void main() {
     final airlock = LogAirlock();
     final root = start(airlock, [MemoryFiles(), RecordedPrograms()]);
     root.decisions.listen(
-      (d) => decided.add('${d.decision.runtimeType} by ${d.decision.by.name}'),
+      (d) => decided.add(
+        '${d.decision.runtimeType} by ${switch (d.decision) {
+          Allow(:final by) => by?.name,
+          Deny(:final by) => by.name,
+        }}',
+      ),
     );
     await answerOf(
       writeAndFormat('a.dart'),
@@ -599,7 +607,7 @@ void main() {
       ),
     );
     await answerOf(
-      Program.write.runOrRefusal(
+      Program.write.runOrFail(
         FileText(RelativePath('a'), ''),
         then: (_) => const Done('ok'),
       ),
@@ -621,7 +629,7 @@ void main() {
       ),
     );
     Result<String> format() =>
-        dart.runOrRefusal(const Args(['format']), then: (e) => Done(e.stdout));
+        dart.runOrFail(const Args(['format']), then: (e) => Done(e.stdout));
     await answerOf(format(), throughLogbook(path, airlock, turn: 2));
     await answerOf(format(), throughLogbook(path, airlock, turn: 3));
     expect(seen, [
@@ -633,7 +641,7 @@ void main() {
   test('a read finds the file a write replaced', () async {
     final files = MemoryFiles()..files['notes.txt'] = 'old';
     final notes = RelativePath('notes.txt');
-    final Result<String> result = Program.write.runOrRefusal(
+    final Result<String> result = Program.write.runOrFail(
       FileText(notes, 'new'),
       then: (wrote) => Program.read.run(
         notes,
@@ -642,7 +650,8 @@ void main() {
             'replaced ${wrote.replaced}: $text',
           ),
           Ran(output: ReadMissing()) => const Failed('missing'),
-          Refused(:final why) => Failed(why),
+          NothingRan(:final why) => Failed(why),
+          StoppedPartway(:final why) => Failed(why),
         },
       ),
     );
