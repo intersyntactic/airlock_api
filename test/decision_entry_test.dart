@@ -42,7 +42,12 @@ final reaches = <Reach>[
       keep: BodyToKeep.bytes,
     ),
   ),
-  RepliesToOwnConversation(ReplyText.parse(' hello ')!),
+  RepliesToOwnConversation(
+    ReplyContent(
+      text: ReplyText.parse(' hello ')!,
+      footer: ReplyText.parse('turn 3'),
+    ),
+  ),
 ];
 
 final ownSlack = RepliesInSlackConversation(
@@ -88,7 +93,7 @@ void main() {
         ),
         Deny('leased elsewhere', by: DecidedBy.rules, reliedOn: [lease]),
         const Deny('stopped', by: DecidedBy.person),
-        Allow.toReplyTo(ownSlack, by: DecidedBy.rules),
+        Allow.toReplyTo(ownSlack, asSignIn: hart, by: DecidedBy.rules),
       ]) {
         final d = decided(reach, decision);
         final back = readBack(written(d));
@@ -108,8 +113,8 @@ void main() {
           );
           expect(
             (back.decision as Allow) // cast-ok: same type checked above
-                .grantedReplyEndpoint,
-            decision.grantedReplyEndpoint,
+                .grantedReply,
+            decision.grantedReply,
             reason: why,
           );
         }
@@ -244,13 +249,30 @@ void main() {
         {
           'allow': true,
           'grantedPathPrefixes': ['/v3/'],
-          'grantedReplyEndpoint': {
-            'case': 'in-slack-conversation',
-            'origin': 'https://slack.com',
-            'channel': 'C123',
+          'grantedReply': {
+            'to': {
+              'case': 'in-slack-conversation',
+              'origin': 'https://slack.com',
+              'channel': 'C123',
+            },
+            'asSignIn': 'hart-bot',
           },
         },
-        'decided.decision: grants both path prefixes and a reply endpoint',
+        'decided.decision: grants both path prefixes and a reply',
+      ),
+      (
+        'decision',
+        {
+          'allow': true,
+          'grantedReply': {
+            'to': {
+              'case': 'in-slack-conversation',
+              'origin': 'https://slack.com',
+              'channel': 'C123',
+            },
+          },
+        },
+        'decided.decision.grantedReply.asSignIn',
       ),
       (
         'decision',

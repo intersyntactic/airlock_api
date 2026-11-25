@@ -6,6 +6,7 @@ import 'package:checked_json/checked_json.dart';
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
 import 'package:is_model_vocabulary/is_model_vocabulary.dart';
+import 'package:is_reply_requests_api/is_reply_requests_api.dart';
 import 'package:is_reply_vocabulary/is_reply_vocabulary.dart';
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
@@ -498,30 +499,34 @@ final class FetchFromWeb extends Program<WebFetch, WebResponse> {
 }
 
 /// Replies to the conversation the trajectory was started from: posts the
-/// [ReplyText] there and nowhere else.
+/// [ReplyContent] there and nowhere else, as the sign-in the airlock chose.
 ///
-/// The model gives the text alone. Where it goes is
-/// [Allow.grantedReplyEndpoint], the endpoint the docking station recorded
-/// when it admitted the event that started the trajectory, so no proposal
-/// can name another conversation. A driver returns only the id its server
-/// gave each message it posted; each [PostedMessage] is made here with
+/// The model gives the content alone. Where it goes and as whom are
+/// [Allow.grantedReply]: the endpoint the docking station recorded when it
+/// admitted the event that started the trajectory, and the sign-in the
+/// rules let a reply to it go as. The module's writer for that kind of
+/// endpoint draws the web requests; each must be one the endpoint admits,
+/// and carry no sign-in, or nothing is sent. Each is then sent as the
+/// granted sign-in, under the endpoint's redirect bound, through the
+/// ordinary web driver, which knows nothing of the module. The writer reads
+/// what each response posted, and each [PostedMessage] is made here with
 /// `answering` from the granted endpoint, so the conversation the logbook
-/// records is the grant's, never the driver's.
+/// records is the grant's.
 final class ReplyToOwnConversation
-    extends Program<ReplyText, List<PostedMessage>> {
+    extends Program<ReplyContent, List<PostedMessage>> {
   const ReplyToOwnConversation();
 
   @override
   String get name => 'reply-to-own-conversation';
 
   @override
-  Reach _reach(ReplyText text) => RepliesToOwnConversation(text);
+  Reach _reach(ReplyContent content) => RepliesToOwnConversation(content);
 
   @override
-  _Wire<ReplyText, List<PostedMessage>> get _wire => const _Wire(
+  _Wire<ReplyContent, List<PostedMessage>> get _wire => const _Wire(
     {'program': 'reply-to-own-conversation'},
-    inputToJson: encodeReplyText,
-    inputFromJson: decodeReplyText,
+    inputToJson: encodeReplyContent,
+    inputFromJson: decodeReplyContent,
     outputToJson: _postedMessagesToJson,
     outputFromJson: _postedMessagesFromJson,
   );
@@ -529,46 +534,111 @@ final class ReplyToOwnConversation
   @override
   Future<Outcome<List<PostedMessage>>>? _on(
     Trajectory<Object?, Object?> trajectory,
-    ReplyText text,
+    ReplyContent content,
     Reach reach,
     Allow allowed,
     Report report,
-  ) => switch (allowed.grantedReplyEndpoint) {
-    null => Future.value(
-      const NothingRan('allowed with no reply endpoint granted'),
+  ) => switch ((
+    allowed.grantedReply,
+    trajectory._driver<CarriesOutWebRequests>(),
+  )) {
+    (null, _) => Future.value(
+      const NothingRan('allowed with no reply granted'),
     ),
-    final RepliesInSlackConversation to => switch (trajectory
-        ._driver<PostsRepliesInSlackConversations>()) {
-      null => null,
-      final slack => _answering(
-        slack.reply(to, text),
-        (timestamp) => PostedInSlackConversation.answering(to, timestamp),
-      ),
-    },
-    final RepliesUnderWebAddress to => switch (trajectory
-        ._driver<PostsRepliesUnderWebAddresses>()) {
-      null => null,
-      final web => _answering(
-        web.reply(to, text),
-        (id) => PostedUnderWebAddress.answering(to, id),
-      ),
-    },
+    (_, null) => null,
+    ((to: final RepliesInSlackConversation to, :final asSignIn), final web?) =>
+      switch (trajectory._slackReplies) {
+        null => null,
+        final writer => _postReply<SlackMessageTimestamp>(
+          to,
+          asSignIn,
+          writer.draw(to, trajectory.id, content),
+          web,
+          writer.posted,
+          (timestamp) => PostedInSlackConversation.answering(to, timestamp),
+        ),
+      },
+    ((to: final RepliesUnderWebAddress to, :final asSignIn), final web?) =>
+      switch (trajectory._webAddressReplies) {
+        null => null,
+        final writer => _postReply<ServerAssignedMessageId>(
+          to,
+          asSignIn,
+          writer.draw(to, trajectory.id, content),
+          web,
+          writer.posted,
+          (id) => PostedUnderWebAddress.answering(to, id),
+        ),
+      },
   };
 }
 
-/// What a reply driver [posted], each id it returned made a [PostedMessage]
-/// by [answer], in `done` too.
-Future<Outcome<List<PostedMessage>>> _answering<Id>(
-  Future<Outcome<List<Id>>> posted,
+/// Sends [drawn], the requests a writer drew for a reply to [to], as
+/// [signIn], in order, and reads what each posted with [posted], each id
+/// made a [PostedMessage] by [answer].
+///
+/// Nothing is sent unless every request goes to an address [to] admits and
+/// names no sign-in of its own. It stops at the first request that did not
+/// post: [NothingRan] when that was the first and the server said nothing
+/// posted; otherwise [StoppedPartway], with `done` the messages that
+/// posted, and its `why` naming a message whose fate is unknown.
+Future<Outcome<List<PostedMessage>>> _postReply<Id>(
+  ReplyEndpoint to,
+  SignIn signIn,
+  List<ProposedRequest> drawn,
+  CarriesOutWebRequests web,
+  Outcome<Id> Function(WebResponse response) posted,
   PostedMessage Function(Id id) answer,
-) async => switch (await posted) {
-  Ran(:final output) => Ran([for (final id in output) answer(id)]),
-  final NothingRan nothing => nothing,
-  StoppedPartway(:final why, :final done) => StoppedPartway(
-    why: why,
-    done: done == null ? null : [for (final id in done) answer(id)],
-  ),
-};
+) async {
+  if (drawn.isEmpty) return const NothingRan('the reply drew no requests');
+  for (final (i, request) in drawn.indexed) {
+    final at = 'request ${i + 1} of ${drawn.length}';
+    if (!to.admitsAddress(request.origin, request.path)) {
+      return NothingRan(
+        '$at: ${request.origin}${request.path.value} is not the reply '
+        "endpoint's address",
+      );
+    }
+    if (request.signIn != null) {
+      return NothingRan('$at: names its own sign-in');
+    }
+  }
+  final done = <PostedMessage>[];
+  for (final request in drawn) {
+    final at = 'message ${done.length + 1} of ${drawn.length}';
+    final granted = GrantedRequest.under(
+      ProposedRequest(
+        request.origin,
+        method: request.method,
+        path: request.path,
+        signIn: signIn,
+        headers: request.headers,
+        body: request.body,
+        keep: request.keep,
+      ),
+      to.redirectsStayUnder,
+    );
+    final Outcome<Id> read = switch (await web.carryOutWebRequest(granted)) {
+      Ran(output: final response) => posted(response),
+      final NothingRan nothing => nothing,
+      StoppedPartway(:final why) => StoppedPartway(why: why, done: null),
+    };
+    switch (read) {
+      case Ran(output: final id):
+        done.add(answer(id));
+      case NothingRan(:final why) when done.isEmpty:
+        return NothingRan('$at: $why');
+      case NothingRan(:final why):
+        return StoppedPartway(why: '$at did not post: $why', done: done);
+      case StoppedPartway(:final why):
+        return StoppedPartway(
+          why: '$at may have posted, unknown: $why',
+          done: done,
+        );
+    }
+  }
+  return Ran(done);
+}
 
 /// Each of [requests] granted under its prefix in [allowed], in order; or
 /// refused when [allowed] has not exactly one prefix per request, or one
@@ -827,15 +897,16 @@ final class FetchesFromWeb extends Reach {
   WebPath get path => fetch.path;
 }
 
-/// Reaches the world: posts [text] to the conversation the trajectory was
-/// started from, and only there. It names no conversation, since the
-/// airlock grants the trajectory's own endpoint with it, so a grant to
-/// reply is never a grant to post anywhere else. Holds the exact text, so
-/// the decision is about what will be sent.
+/// Reaches the world: posts [content] to the conversation the trajectory
+/// was started from, and only there. It names no conversation and no
+/// sign-in, since the airlock grants the trajectory's own endpoint and the
+/// sign-in to reply as, so a grant to reply is never a grant to post
+/// anywhere else. Holds the exact text and footer, so the decision is
+/// about what will be sent.
 final class RepliesToOwnConversation extends Reach {
-  const RepliesToOwnConversation(this.text);
+  const RepliesToOwnConversation(this.content);
 
-  final ReplyText text;
+  final ReplyContent content;
 }
 
 /// Reaches the model: [call] goes out as its sign-in, to its model, with the
@@ -871,13 +942,22 @@ final class Trajectory<R, P> {
   /// [id] is the hash of the logbook entry that started the path, which the
   /// docking station writes, so no two trajectories share one and nothing here
   /// mints one.
+  ///
+  /// [_slackReplies] and [_webAddressReplies] are the modules' writers that
+  /// draw a reply's web requests, for each kind of reply endpoint; a reply
+  /// to an endpoint this trajectory has no writer for runs nothing.
   Trajectory({
     required this.id,
     required Iterable<CarriesOutActions> drivers,
     required this._airlock,
     required this.rules,
     required this.suit,
+    this._slackReplies,
+    this._webAddressReplies,
   }) : _drivers = List.unmodifiable(drivers);
+
+  final WritesSlackReplyRequests? _slackReplies;
+  final WritesWebAddressReplyRequests? _webAddressReplies;
 
   /// Names this trajectory in every entry written for it.
   final TrajectoryId id;
@@ -1146,26 +1226,29 @@ final class Allow extends Decision {
     super.reliedOn,
     required List<PathPrefix> grantedPathPrefixes,
   }) : grantedPathPrefixes = List.unmodifiable(grantedPathPrefixes),
-       grantedReplyEndpoint = null;
+       grantedReply = null;
 
   /// An allowed action that makes no web request, so is granted no path.
   const Allow.withNoPaths({required this.by, super.reliedOn})
     : grantedPathPrefixes = const [],
-      grantedReplyEndpoint = null;
+      grantedReply = null;
 
   /// An allowed [RepliesToOwnConversation], granted the trajectory's own
-  /// [grantedReplyEndpoint] to post to.
-  const Allow.toReplyTo(
-    ReplyEndpoint this.grantedReplyEndpoint, {
+  /// endpoint [to] to post to, as [asSignIn].
+  Allow.toReplyTo(
+    ReplyEndpoint to, {
+    required SignIn asSignIn,
     required this.by,
     super.reliedOn,
-  }) : grantedPathPrefixes = const [];
+  }) : grantedPathPrefixes = const [],
+       grantedReply = (to: to, asSignIn: asSignIn);
 
-  /// Where an allowed [RepliesToOwnConversation] posts: the endpoint the
-  /// docking station recorded for the trajectory, never one the proposal
-  /// names. Null for every other reach, and a reply allowed without one is
-  /// refused before a driver is reached.
-  final ReplyEndpoint? grantedReplyEndpoint;
+  /// Where an allowed [RepliesToOwnConversation] posts and as whom: the
+  /// endpoint the docking station recorded for the trajectory, never one
+  /// the proposal names, and the sign-in the rules let a reply to it go as.
+  /// Null for every other reach, and a reply allowed without one is
+  /// refused before anything is sent.
+  final ({ReplyEndpoint to, SignIn asSignIn})? grantedReply;
 
   /// Whom it was allowed by, so the logbook tells "the rules let it
   /// through" from "the person said yes"; null when no rule governs this

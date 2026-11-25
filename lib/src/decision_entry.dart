@@ -20,9 +20,9 @@ Object? _reachToJson(Reach reach) {
     MakesWebRequests(:final requests) => as(Program.makeWebRequests, requests),
     FetchesFromWeb(:final fetch) => as(Program.fetch, fetch),
     CallsTheModel(:final call) => as(Program.askTheModel, call),
-    RepliesToOwnConversation(:final text) => as(
+    RepliesToOwnConversation(:final content) => as(
       Program.replyToOwnConversation,
-      text,
+      content,
     ),
   };
 }
@@ -39,17 +39,19 @@ Reach _reachFromJson(JsonObject json, String field) {
 
 Object? _decisionToJson(Decision decision) => {
   ...switch (decision) {
-    Allow(:final by, :final grantedPathPrefixes, :final grantedReplyEndpoint) =>
-      {
-        'allow': true,
-        // Each absent when no rule governs the reach, or when empty or not
-        // granted, as reliedOn is.
-        if (by != null) 'by': by.name,
-        if (grantedPathPrefixes.isNotEmpty)
-          'grantedPathPrefixes': [for (final p in grantedPathPrefixes) p.value],
-        if (grantedReplyEndpoint != null)
-          'grantedReplyEndpoint': encodeReplyEndpoint(grantedReplyEndpoint),
-      },
+    Allow(:final by, :final grantedPathPrefixes, :final grantedReply) => {
+      'allow': true,
+      // Each absent when no rule governs the reach, or when empty or not
+      // granted, as reliedOn is.
+      if (by != null) 'by': by.name,
+      if (grantedPathPrefixes.isNotEmpty)
+        'grantedPathPrefixes': [for (final p in grantedPathPrefixes) p.value],
+      if (grantedReply case (:final to, :final asSignIn))
+        'grantedReply': {
+          'to': encodeReplyEndpoint(to),
+          'asSignIn': encodeSignIn(asSignIn),
+        },
+    },
     Deny(:final why, :final by) => {'allow': false, 'why': why, 'by': by.name},
   },
   // Absent when empty, so a decision kept before it existed reads back to
