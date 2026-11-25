@@ -20,6 +20,8 @@ out moves to the packages that do it.
   `program.outcomeToJson` / `outcomeFromJson`, and
   `ActionProposedByAgentLoop.open`.
 - No longer depends on `is_reply_requests_api`.
+- Reply types come from `is_conversation_reply_vocabulary` ^0.1.0, the
+  renamed `is_reply_vocabulary` (same types).
 - A test fails on any `async` function in `lib`.
 
 ## 0.20.0
