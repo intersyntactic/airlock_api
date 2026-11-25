@@ -1,13 +1,14 @@
-/// The airlock's contract: what a tool returns for a call, the actions it
-/// describes, the trajectory each action is proposed on, and what the
-/// airlock implements to decide each one and write its decision to the
-/// logbook, [DecidesActionsAndWritesToTheLogbook].
+/// The airlock's contract: what a tool returns for a call, the programs its
+/// actions run, what each would do to the world ([Reach]), what the airlock
+/// decided ([AirlockDecisionOnAction]), and how proposals and their outcomes
+/// are written in the logbook.
 ///
-/// The airlock itself, which decides and writes to the logbook, is not
-/// here: this library
-/// holds only the types it and the tools agree on. What an action takes and
-/// gives back, and the drivers that carry it out, are `is_effects`'s; joining
-/// an `is_tools_api` definition to what a tool does is `is_tool`'s.
+/// Types and their JSON only. Proposing an action is the agent loop's,
+/// through [ProposesActions]; deciding and carrying one out is the
+/// airlock's (`is_airlock`), through [CarriesOutEachProgram]. What an action
+/// takes and gives back, and the drivers that carry it out, are
+/// `is_effects`'s; joining an `is_tools_api` definition to what a tool does
+/// is `is_tool`'s.
 library;
 
 export 'package:checked_json/checked_json.dart'

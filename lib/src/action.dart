@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert' show jsonEncode, utf8;
 
 import 'package:checked_json/checked_json.dart';
@@ -6,7 +5,6 @@ import 'package:checked_json/checked_json.dart';
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
 import 'package:is_model_vocabulary/is_model_vocabulary.dart';
-import 'package:is_reply_requests_api/is_reply_requests_api.dart';
 import 'package:is_reply_vocabulary/is_reply_vocabulary.dart';
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
@@ -23,12 +21,10 @@ part 'decision_entry.dart';
 /// before it can answer, its answer, or that it could not answer. [A] is the
 /// type of the answer, the tool's output type.
 ///
-/// A tool holds no driver and touches nothing. Its result is carried through
-/// at a [Crux], whose trajectory has each action decided and written to the
-/// logbook, and
-/// reached by a driver if it is allowed, and gives what became of it to the
-/// action's continuation. So a tool can describe nothing an action cannot
-/// express.
+/// A tool holds no driver and touches nothing. Each action it returns is
+/// proposed through [ProposesActions], which has it decided by the airlock
+/// and gives what became of it to the action's continuation. So a tool can
+/// describe nothing an action cannot express.
 ///
 /// Not an [Outcome], which is what happened to one action. An [Action] never
 /// reaches the model: [Done]'s value does, written out by the tool's
@@ -38,27 +34,24 @@ sealed class Result<A> {
 
   /// This result with its answer, once there is one, given to [f].
   ///
-  /// Reaches no driver: an action's continuation is extended, so [f] is
+  /// Proposes nothing: an action's continuation is extended, so [f] is
   /// applied when a later [Action.next] reaches an answer, and every action
-  /// on the way is still decided and written to the logbook. So whoever
-  /// turns a tool's
-  /// answer into what the model is told can do it without carrying out the
-  /// actions.
+  /// on the way is still proposed. So whoever turns a tool's answer into
+  /// what the model is told can do it without proposing the actions.
   Result<B> map<B>(B Function(A answer) f);
 }
 
 /// Run a program on an input, then continue with what became of it.
 ///
 /// One round trip to the world, which the airlock decides: what a tool asks
-/// for to carry out an intent (Nick, 17 Nov: "the airlock sits between
-/// intents and action"). A read, a write, `git diff` and a web request to a chat
-/// are all actions, each one of four programs on an input, and each has
+/// for to carry out an intent. A read, a write, `git diff` and a web request
+/// to a chat are all actions, each one program on an input, and each has
 /// exactly one [Outcome].
 ///
 /// The continuation travels with the action, not in the tool, so one tool
 /// can serve concurrent calls without keeping state for any of them. It is
-/// private: what it is given comes from [next], after the airlock's decision,
-/// never from whoever holds the action.
+/// private: what it is given comes from [next], never from whoever holds
+/// the action.
 ///
 /// Typed only by the answer it leads to, [A]. The program's input and output
 /// types stay inside, where [next] uses them, so whoever holds an action
@@ -68,22 +61,20 @@ sealed class Result<A> {
 abstract final class Action<A> extends Result<A> {
   const Action._();
 
-  /// This action proposed at [crux], and the result it leads to.
-  ///
-  /// The only way an action reaches the world. What it would do, its
-  /// [Reach], is worked out first; the trajectory's airlock decides it,
-  /// and writes the decision to the logbook, at the crux's place, before any
-  /// driver is reached; a driver of the trajectory carries out an allowed
-  /// action; the airlock writes what became of it to the logbook before the
-  /// continuation sees it. If either entry cannot be written, its error ends
-  /// the call: no driver is reached without a decision in the logbook, and
-  /// no outcome flows on that the logbook has not kept. A driver that throws
-  /// ends the call too, after its result is written as [StoppedPartway]
-  /// with `done` null, so the logbook never reads it as nothing ran.
-  Future<Result<A>> next(Crux crux);
+  /// This action proposed through [proposer], and the result it leads to.
+  Future<Result<A>> next(ProposesActions proposer);
 
   @override
   Action<B> map<B>(B Function(A answer) f);
+}
+
+/// Proposes an action and gives back what became of it: in the agent loop,
+/// through the logbook, for the airlock to decide and a driver to carry
+/// out.
+abstract interface class ProposesActions {
+  /// [program] run on [input], proposed; its outcome once the airlock has
+  /// decided it and, if allowed, a driver has carried it out.
+  Future<Outcome<O>> propose<I, O>(Program<I, O> program, I input);
 }
 
 /// An [Action] of a [Program] taking [I] and giving [O].
@@ -100,8 +91,8 @@ final class _Action<I, O, A> extends Action<A> {
   final Result<A> Function(Outcome<O> outcome) _then;
 
   @override
-  Future<Result<A>> next(Crux crux) async =>
-      _then(await crux._propose(_program, _input));
+  Future<Result<A>> next(ProposesActions proposer) =>
+      proposer.propose(_program, _input).then(_then);
 
   @override
   Action<B> map<B>(B Function(A answer) f) =>
@@ -135,15 +126,13 @@ final class Failed extends Result<Never> {
 /// back, [O].
 ///
 /// A closed set: [ReadFile], [ReadFileBytes], [WriteFile], [Executable],
-/// [MakeWebRequests], [FetchFromWeb] and [AskTheModel].
-/// Programs reach drivers, so they are part of what is trusted, with the
-/// drivers and the airlock; a new kind of action is a new driver and program
-/// here.
+/// [MakeWebRequests], [FetchFromWeb], [AskTheModel] and
+/// [ReplyToOwnConversation]. Whoever carries one out implements
+/// [CarriesOutEachProgram], which names each, so a new kind of action is a
+/// new program here and a new method there.
 ///
 /// A model call is one too, [AskTheModel]: the model is outside the
-/// station, so the case's words leave the machine with every call
-/// (https://github.com/enspyrco/intersyntactic/pull/1168, replacing the
-/// ruling that the model is the agent planning and is not decided).
+/// station, so the case's words leave the machine with every call.
 sealed class Program<I, O> {
   const Program();
 
@@ -180,8 +169,31 @@ sealed class Program<I, O> {
     },
   );
 
-  /// What [input] would do to the world, as far as the input alone says.
-  Reach _reach(I input);
+  /// What [input] would do to the world, as far as the input alone says:
+  /// what the airlock decides and the logbook keeps.
+  Reach reachOf(I input);
+
+  /// [input] carried out by [by]'s method for this program; null when [by]
+  /// cannot run it.
+  Future<Outcome<O>>? carriedOutBy(CarriesOutEachProgram by, I input);
+
+  /// The body of an [ActionProposedByAgentLoop.kind] logbook entry
+  /// proposing this program on [input] at [place].
+  String proposal(I input, {required PlaceInTrajectory at}) => jsonEncode({
+    'place': at.toJson(),
+    ..._wire.program,
+    'input': _wire.inputToJson(input),
+  });
+
+  /// [outcome] as the airlock writes it in an
+  /// [outcomeOfProposedActionKind] logbook entry, by this program's codec.
+  Object? outcomeToJson(Outcome<O> outcome) =>
+      encodeOutcome(outcome, _wire.outputToJson);
+
+  /// [json], as [outcomeToJson] wrote it, read back. Throws a
+  /// [FormatException] naming the field.
+  Outcome<O> outcomeFromJson(Object? json) =>
+      decodeOutcome(json, _wire.outputFromJson);
 
   /// How this program, its input and its output travel between the agent
   /// loop and the airlock.
@@ -191,16 +203,35 @@ sealed class Program<I, O> {
   /// when it holds none.
   _Work<I, O> _work(Object? json, [String field = 'input']) =>
       _Work(this, _wire.inputFromJson(json, field));
+}
 
-  /// [input], whose reach is [reach], performed by [trajectory]'s driver
-  /// for this program as [allowed], reporting to [report] while it runs, or
-  /// null when it has none.
-  Future<Outcome<O>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    I input,
-    Reach reach,
-    Allow allowed,
-    Report report,
+/// Carries out each kind of [Program]: one method per program, each given
+/// that program's own input type. What the airlock implements over its
+/// drivers. A method returns null when this machine cannot run that
+/// program.
+abstract interface class CarriesOutEachProgram {
+  Future<Outcome<ReadResult>>? readFile(RelativePath path);
+
+  Future<Outcome<BytesReadResult>>? readFileBytes(RelativePath path);
+
+  Future<Outcome<Wrote>>? writeFile(FileText file);
+
+  Future<Outcome<ExecResult>>? runExecutable(ProgramName program, Args args);
+
+  /// Exactly [requests], in order, each bounded by the path prefix the
+  /// airlock granted it.
+  Future<Outcome<List<WebResponse>>>? makeWebRequests(
+    List<ProposedRequest> requests,
+  );
+
+  Future<Outcome<WebResponse>>? fetchFromWeb(WebFetch fetch);
+
+  Future<Outcome<ModelReply>>? askTheModel(ModelCall call);
+
+  /// [content] posted to the endpoint and as the sign-in the airlock
+  /// granted, in [Allow.grantedReply].
+  Future<Outcome<List<PostedMessage>>>? replyToOwnConversation(
+    ReplyContent content,
   );
 }
 
@@ -212,7 +243,13 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
   String get name => 'read';
 
   @override
-  Reach _reach(RelativePath path) => Reads(path);
+  Reach reachOf(RelativePath path) => Reads(path);
+
+  @override
+  Future<Outcome<ReadResult>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    RelativePath path,
+  ) => by.readFile(path);
 
   @override
   _Wire<RelativePath, ReadResult> get _wire => const _Wire(
@@ -222,21 +259,11 @@ final class ReadFile extends Program<RelativePath, ReadResult> {
     outputToJson: encodeReadResult,
     outputFromJson: decodeReadResult,
   );
-
-  @override
-  Future<Outcome<ReadResult>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    RelativePath path,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => trajectory._driver<ReadsAndWritesFiles>()?.read(path);
 }
 
 /// Reads the exact bytes of the file at a path under the file driver's root,
 /// such as a .docx's zip. Every byte returned goes into the logbook, so the
-/// driver
-/// refuses a file over its size limit.
+/// driver refuses a file over its size limit.
 final class ReadFileBytes extends Program<RelativePath, BytesReadResult> {
   const ReadFileBytes();
 
@@ -244,7 +271,13 @@ final class ReadFileBytes extends Program<RelativePath, BytesReadResult> {
   String get name => 'read-bytes';
 
   @override
-  Reach _reach(RelativePath path) => Reads(path, as: ReadsAs.bytes);
+  Reach reachOf(RelativePath path) => Reads(path, as: ReadsAs.bytes);
+
+  @override
+  Future<Outcome<BytesReadResult>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    RelativePath path,
+  ) => by.readFileBytes(path);
 
   @override
   _Wire<RelativePath, BytesReadResult> get _wire => const _Wire(
@@ -254,15 +287,6 @@ final class ReadFileBytes extends Program<RelativePath, BytesReadResult> {
     outputToJson: encodeBytesReadResult,
     outputFromJson: decodeBytesReadResult,
   );
-
-  @override
-  Future<Outcome<BytesReadResult>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    RelativePath path,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => trajectory._driver<ReadsAndWritesFiles>()?.readBytes(path);
 }
 
 /// Writes a file, creating its folder.
@@ -273,7 +297,13 @@ final class WriteFile extends Program<FileText, Wrote> {
   String get name => 'write';
 
   @override
-  Reach _reach(FileText file) => Writes(file);
+  Reach reachOf(FileText file) => Writes(file);
+
+  @override
+  Future<Outcome<Wrote>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    FileText file,
+  ) => by.writeFile(file);
 
   @override
   _Wire<FileText, Wrote> get _wire => const _Wire(
@@ -283,15 +313,6 @@ final class WriteFile extends Program<FileText, Wrote> {
     outputToJson: encodeWrote,
     outputFromJson: decodeWrote,
   );
-
-  @override
-  Future<Outcome<Wrote>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    FileText file,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => trajectory._driver<ReadsAndWritesFiles>()?.write(file);
 }
 
 /// A program started as a process, such as `git`: its input is plain
@@ -311,7 +332,13 @@ final class Executable extends Program<Args, ExecResult> {
   String get name => program.value;
 
   @override
-  Reach _reach(Args args) => Starts(program, args);
+  Reach reachOf(Args args) => Starts(program, args);
+
+  @override
+  Future<Outcome<ExecResult>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    Args args,
+  ) => by.runExecutable(program, args);
 
   @override
   _Wire<Args, ExecResult> get _wire => _Wire(
@@ -330,41 +357,10 @@ final class Executable extends Program<Args, ExecResult> {
 
   @override
   int get hashCode => program.hashCode;
-
-  @override
-  Future<Outcome<ExecResult>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    Args args,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => trajectory._driver<RunsPrograms>()?.runProgram(
-    program,
-    args,
-    report: report,
-  );
 }
 
-/// The body of [entry], which must belong to [trajectory] and be of [kind],
-/// as [DecidesActionsAndWritesToTheLogbook.entryOn] reads it; or
-/// [NothingRan] with why not, since a read leaves the world as it was. The
-/// kind is checked, since a loop may write a body of any shape under its
-/// own kinds on its own chain.
-Future<Outcome<String>> _bodyOf(
-  Trajectory<Object?, Object?> trajectory,
-  EntryId entry,
-  String kind,
-) async => switch (await trajectory._airlock.entryOn(trajectory.id, entry)) {
-  NothingRan(:final why) || StoppedPartway(:final why) => NothingRan(why),
-  Ran(output: (kind: final kept, :final body)) when kept == kind => Ran(body),
-  Ran(output: (kind: final kept, body: _)) => NothingRan(
-    'entry $entry is a $kept, not a $kind',
-  ),
-};
-
 /// Makes [ProposedRequest]s to the web, exactly these, in order, each to its origin
-/// as its sign-in: what the tool that proposed them built, such as a reply
-/// to the event that started the trajectory.
+/// as its sign-in: what the tool that proposed them built.
 ///
 /// The airlock knows no chat and no module. It decides the exact requests,
 /// granting each one's origin, sign-in and path together, so the decision
@@ -381,7 +377,13 @@ final class MakeWebRequests
   String get name => 'make-web-requests';
 
   @override
-  Reach _reach(List<ProposedRequest> requests) => MakesWebRequests(requests);
+  Reach reachOf(List<ProposedRequest> requests) => MakesWebRequests(requests);
+
+  @override
+  Future<Outcome<List<WebResponse>>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    List<ProposedRequest> requests,
+  ) => by.makeWebRequests(requests);
 
   @override
   _Wire<List<ProposedRequest>, List<WebResponse>> get _wire => const _Wire(
@@ -391,60 +393,6 @@ final class MakeWebRequests
     outputToJson: _webResponsesToJson,
     outputFromJson: _webResponsesFromJson,
   );
-
-  @override
-  Future<Outcome<List<WebResponse>>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    List<ProposedRequest> requests,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => switch (trajectory._driver<CarriesOutWebRequests>()) {
-    null => null,
-    final web => switch (_granted(requests, allowed)) {
-      NothingRan(:final why) ||
-      StoppedPartway(:final why) => Future.value(NothingRan(why)),
-      Ran(output: final granted) => _send(web, granted),
-    },
-  };
-
-  static Future<Outcome<List<WebResponse>>> _send(
-    CarriesOutWebRequests web,
-    List<GrantedRequest> requests,
-  ) async {
-    final responses = <WebResponse>[];
-    for (final request in requests) {
-      final at = 'request ${responses.length + 1} of ${requests.length}';
-      switch (await web.carryOutWebRequest(request)) {
-        case NothingRan(:final why) when responses.isEmpty:
-          return NothingRan('$at: $why');
-        case NothingRan(:final why):
-          return StoppedPartway(why: '$at: $why', done: responses);
-        // done holds the requests that finished; this one went out with no
-        // response, and why says so.
-        case StoppedPartway(:final why, done: null):
-          return StoppedPartway(
-            why: '$at went out with no response: $why',
-            done: responses,
-          );
-        case StoppedPartway(:final why, done: final WebResponse response):
-          return StoppedPartway(
-            why: '$at: $why',
-            done: [...responses, response],
-          );
-        case Ran(output: final response)
-            when response.status < 200 || response.status > 299:
-          return StoppedPartway(
-            why: '$at: ${response.status} ${response.refusedBecause ?? ''}'
-                .trimRight(),
-            done: [...responses, response],
-          );
-        case Ran(output: final response):
-          responses.add(response);
-      }
-    }
-    return Ran(responses);
-  }
 }
 
 /// Fetches from a site, through the sign-in it names, with a GET that sends
@@ -463,7 +411,13 @@ final class FetchFromWeb extends Program<WebFetch, WebResponse> {
   String get name => 'fetch';
 
   @override
-  Reach _reach(WebFetch fetch) => FetchesFromWeb(fetch);
+  Reach reachOf(WebFetch fetch) => FetchesFromWeb(fetch);
+
+  @override
+  Future<Outcome<WebResponse>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    WebFetch fetch,
+  ) => by.fetchFromWeb(fetch);
 
   @override
   _Wire<WebFetch, WebResponse> get _wire => const _Wire(
@@ -473,29 +427,6 @@ final class FetchFromWeb extends Program<WebFetch, WebResponse> {
     outputToJson: encodeWebResponse,
     outputFromJson: decodeWebResponse,
   );
-
-  @override
-  Future<Outcome<WebResponse>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    WebFetch fetch,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => switch (trajectory._driver<CarriesOutWebRequests>()) {
-    null => null,
-    final web => switch (_granted([
-      ProposedRequest(
-        fetch.origin,
-        path: fetch.path,
-        signIn: fetch.signIn,
-        keep: fetch.keep,
-      ),
-    ], allowed)) {
-      NothingRan(:final why) ||
-      StoppedPartway(:final why) => Future.value(NothingRan(why)),
-      Ran(:final output) => web.carryOutWebRequest(output.single),
-    },
-  };
 }
 
 /// Replies to the conversation the trajectory was started from: posts the
@@ -504,14 +435,9 @@ final class FetchFromWeb extends Program<WebFetch, WebResponse> {
 /// The model gives the content alone. Where it goes and as whom are
 /// [Allow.grantedReply]: the endpoint the docking station recorded when it
 /// admitted the event that started the trajectory, and the sign-in the
-/// rules let a reply to it go as. The module's writer for that kind of
-/// endpoint draws the web requests; each must be one the endpoint admits,
-/// and carry no sign-in, or nothing is sent. Each is then sent as the
-/// granted sign-in, under the endpoint's redirect bound, through the
-/// ordinary web driver, which knows nothing of the module. The writer reads
-/// what each response posted, and each [PostedMessage] is made here with
-/// `answering` from the granted endpoint, so the conversation the logbook
-/// records is the grant's.
+/// rules let a reply to it go as. The outcome is each [PostedMessage],
+/// answering the granted endpoint, so the conversation the logbook records
+/// is the grant's.
 final class ReplyToOwnConversation
     extends Program<ReplyContent, List<PostedMessage>> {
   const ReplyToOwnConversation();
@@ -520,7 +446,13 @@ final class ReplyToOwnConversation
   String get name => 'reply-to-own-conversation';
 
   @override
-  Reach _reach(ReplyContent content) => RepliesToOwnConversation(content);
+  Reach reachOf(ReplyContent content) => RepliesToOwnConversation(content);
+
+  @override
+  Future<Outcome<List<PostedMessage>>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    ReplyContent content,
+  ) => by.replyToOwnConversation(content);
 
   @override
   _Wire<ReplyContent, List<PostedMessage>> get _wire => const _Wire(
@@ -530,141 +462,6 @@ final class ReplyToOwnConversation
     outputToJson: _postedMessagesToJson,
     outputFromJson: _postedMessagesFromJson,
   );
-
-  @override
-  Future<Outcome<List<PostedMessage>>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    ReplyContent content,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => switch ((
-    allowed.grantedReply,
-    trajectory._driver<CarriesOutWebRequests>(),
-  )) {
-    (null, _) => Future.value(
-      const NothingRan('allowed with no reply granted'),
-    ),
-    (_, null) => null,
-    ((to: final RepliesInSlackConversation to, :final asSignIn), final web?) =>
-      switch (trajectory._slackReplies) {
-        null => null,
-        final writer => _postReply<SlackMessageTimestamp>(
-          to,
-          asSignIn,
-          writer.draw(to, trajectory.id, content),
-          web,
-          writer.posted,
-          (timestamp) => PostedInSlackConversation.answering(to, timestamp),
-        ),
-      },
-    ((to: final RepliesUnderWebAddress to, :final asSignIn), final web?) =>
-      switch (trajectory._webAddressReplies) {
-        null => null,
-        final writer => _postReply<ServerAssignedMessageId>(
-          to,
-          asSignIn,
-          writer.draw(to, trajectory.id, content),
-          web,
-          writer.posted,
-          (id) => PostedUnderWebAddress.answering(to, id),
-        ),
-      },
-  };
-}
-
-/// Sends [drawn], the requests a writer drew for a reply to [to], as
-/// [signIn], in order, and reads what each posted with [posted], each id
-/// made a [PostedMessage] by [answer].
-///
-/// Nothing is sent unless every request goes to an address [to] admits and
-/// names no sign-in of its own. It stops at the first request that did not
-/// post: [NothingRan] when that was the first and the server said nothing
-/// posted; otherwise [StoppedPartway], with `done` the messages that
-/// posted, and its `why` naming a message whose fate is unknown.
-Future<Outcome<List<PostedMessage>>> _postReply<Id>(
-  ReplyEndpoint to,
-  SignIn signIn,
-  List<ProposedRequest> drawn,
-  CarriesOutWebRequests web,
-  Outcome<Id> Function(WebResponse response) posted,
-  PostedMessage Function(Id id) answer,
-) async {
-  if (drawn.isEmpty) return const NothingRan('the reply drew no requests');
-  for (final (i, request) in drawn.indexed) {
-    final at = 'request ${i + 1} of ${drawn.length}';
-    if (!to.admitsAddress(request.origin, request.path)) {
-      return NothingRan(
-        '$at: ${request.origin}${request.path.value} is not the reply '
-        "endpoint's address",
-      );
-    }
-    if (request.signIn != null) {
-      return NothingRan('$at: names its own sign-in');
-    }
-  }
-  final done = <PostedMessage>[];
-  for (final request in drawn) {
-    final at = 'message ${done.length + 1} of ${drawn.length}';
-    final granted = GrantedRequest.under(
-      ProposedRequest(
-        request.origin,
-        method: request.method,
-        path: request.path,
-        signIn: signIn,
-        headers: request.headers,
-        body: request.body,
-        keep: request.keep,
-      ),
-      to.redirectsStayUnder,
-    );
-    final Outcome<Id> read = switch (await web.carryOutWebRequest(granted)) {
-      Ran(output: final response) => posted(response),
-      final NothingRan nothing => nothing,
-      StoppedPartway(:final why) => StoppedPartway(why: why, done: null),
-    };
-    switch (read) {
-      case Ran(output: final id):
-        done.add(answer(id));
-      case NothingRan(:final why) when done.isEmpty:
-        return NothingRan('$at: $why');
-      case NothingRan(:final why):
-        return StoppedPartway(why: '$at did not post: $why', done: done);
-      case StoppedPartway(:final why):
-        return StoppedPartway(
-          why: '$at may have posted, unknown: $why',
-          done: done,
-        );
-    }
-  }
-  return Ran(done);
-}
-
-/// Each of [requests] granted under its prefix in [allowed], in order; or
-/// refused when [allowed] has not exactly one prefix per request, or one
-/// doesn't cover its request's path, so nothing is sent unbounded.
-Outcome<List<GrantedRequest>> _granted(
-  List<ProposedRequest> requests,
-  Allow allowed,
-) {
-  final prefixes = allowed.grantedPathPrefixes;
-  if (prefixes.length != requests.length) {
-    return NothingRan(
-      'allowed with ${prefixes.length} granted path prefixes '
-      'for ${requests.length} requests',
-    );
-  }
-  final granted = <GrantedRequest>[];
-  for (final (i, request) in requests.indexed) {
-    if (!prefixes[i].covers(request.path)) {
-      return NothingRan(
-        'request ${i + 1}: ${request.path.value} is not under '
-        'its granted prefix ${prefixes[i]}',
-      );
-    }
-    granted.add(GrantedRequest.under(request, prefixes[i]));
-  }
-  return Ran(granted);
 }
 
 /// A GET a tool asks for: where to, as whom, and what of the response's
@@ -690,18 +487,15 @@ final class WebFetch {
 ///
 /// The one action the loop proposes for itself rather than drawing from an
 /// intent in the model's reply: the loop holds no sign-in and has no
-/// network, so this is its only way to reach the model
-/// (https://github.com/enspyrco/intersyntactic/pull/1168). The airlock
-/// allows it only as a sign-in the trajectory's rules let a model call go
-/// out as.
+/// network, so this is its only way to reach the model. The airlock allows
+/// it only as a sign-in the trajectory's rules let a model call go out as.
 ///
-/// Once allowed, the airlock reads the [ModelRequestFromPieces] and each of its
-/// pieces from this trajectory's own chain, joins each text, checks it
+/// Once allowed, the airlock reads the [ModelRequestFromPieces] and each of
+/// its pieces from this trajectory's own chain, joins each text, checks it
 /// against its sha256, and hands the driver exactly those texts. Any piece
 /// missing, on another chain, or not joining to its hash refuses the call
-/// before the driver is reached. The reply streams as [ReplyArriving] in
-/// [Underway], never written to the logbook; the whole [ModelReply] is the
-/// outcome, written once.
+/// before the driver is reached. The whole [ModelReply] is the outcome,
+/// written once.
 final class AskTheModel extends Program<ModelCall, ModelReply> {
   const AskTheModel();
 
@@ -709,7 +503,13 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
   String get name => 'model';
 
   @override
-  Reach _reach(ModelCall call) => CallsTheModel(call);
+  Reach reachOf(ModelCall call) => CallsTheModel(call);
+
+  @override
+  Future<Outcome<ModelReply>>? carriedOutBy(
+    CarriesOutEachProgram by,
+    ModelCall call,
+  ) => by.askTheModel(call);
 
   @override
   _Wire<ModelCall, ModelReply> get _wire => const _Wire(
@@ -719,77 +519,6 @@ final class AskTheModel extends Program<ModelCall, ModelReply> {
     outputToJson: encodeModelReply,
     outputFromJson: decodeModelReply,
   );
-
-  @override
-  Future<Outcome<ModelReply>>? _on(
-    Trajectory<Object?, Object?> trajectory,
-    ModelCall call,
-    Reach reach,
-    Allow allowed,
-    Report report,
-  ) => switch (trajectory._driver<AsksTheModel>()) {
-    null => null,
-    final driver => _ask(driver, trajectory, call, report),
-  };
-
-  static Future<Outcome<ModelReply>> _ask(
-    AsksTheModel driver,
-    Trajectory<Object?, Object?> trajectory,
-    ModelCall call,
-    Report report,
-  ) async {
-    final ModelRequestFromPieces request;
-    switch (await _bodyOf(
-      trajectory,
-      call.request,
-      ModelRequestFromPieces.kind,
-    )) {
-      case NothingRan(:final why) || StoppedPartway(:final why):
-        return NothingRan(why);
-      case Ran(output: final text):
-        try {
-          request = ModelRequestFromPieces.fromJson(JsonObject.decode(text));
-        } on FormatException catch (e) {
-          return NothingRan('not a model request: ${e.message}');
-        }
-    }
-    Future<Outcome<String>> joined(TextFromPieces text) async {
-      final texts = <String>[];
-      for (final piece in text.pieces) {
-        switch (await _bodyOf(trajectory, piece, ModelRequestPiece.kind)) {
-          case NothingRan(:final why) || StoppedPartway(:final why):
-            return NothingRan(why);
-          case Ran(output: final text):
-            try {
-              texts.add(
-                ModelRequestPiece.fromJson(JsonObject.decode(text)).text,
-              );
-            } on FormatException catch (e) {
-              return NothingRan('not a model request piece: ${e.message}');
-            }
-        }
-      }
-      return text.join(texts);
-    }
-
-    final systemPrompt = await joined(request.systemPrompt);
-    final asked = await joined(request.request);
-    return switch ((systemPrompt, asked)) {
-      (NothingRan(:final why) || StoppedPartway(:final why), _) ||
-      (
-        _,
-        NothingRan(:final why) || StoppedPartway(:final why),
-      ) => NothingRan(why),
-      (Ran(output: final system), Ran(output: final text)) =>
-        await driver.askTheModel(
-          call.signIn,
-          call.model,
-          system,
-          text,
-          report: report,
-        ),
-    };
-  }
 }
 
 /// A model call a loop proposes: as which of the person's model sign-ins,
@@ -921,287 +650,6 @@ final class CallsTheModel extends Reach {
   ModelName get model => call.model;
 }
 
-/// One agent's own trajectory: the line its actions are proposed on, with
-/// rules [R] that say what it may do, and places [P] that say where in a
-/// turn each entry happened.
-///
-/// Its drivers are those it was given, acting for the path, each wherever
-/// it runs. They are reached only by an [Action] proposed at its crux, so
-/// every such action passes its airlock.
-///
-/// This is the airlock service's side of a trajectory, set up when the
-/// logbook shows the docking station started the path (its rules, in
-/// `admitted`) and loop_launcher handed it users (`assigned`). The airlock
-/// starts nothing. Whoever holds the drivers already has the power to touch
-/// the world, so setting up a side grants nothing new.
-final class Trajectory<R, P> {
-  /// The side of the trajectory named [id], on [drivers], decided and
-  /// written to the logbook by [airlock], under [rules], whose programs run
-  /// as [suit].
-  ///
-  /// [id] is the hash of the logbook entry that started the path, which the
-  /// docking station writes, so no two trajectories share one and nothing here
-  /// mints one.
-  ///
-  /// [_slackReplies] and [_webAddressReplies] are the modules' writers that
-  /// draw a reply's web requests, for each kind of reply endpoint; a reply
-  /// to an endpoint this trajectory has no writer for runs nothing.
-  Trajectory({
-    required this.id,
-    required Iterable<CarriesOutActions> drivers,
-    required this._airlock,
-    required this.rules,
-    required this.suit,
-    this._slackReplies,
-    this._webAddressReplies,
-  }) : _drivers = List.unmodifiable(drivers);
-
-  final WritesSlackReplyRequests? _slackReplies;
-  final WritesWebAddressReplyRequests? _webAddressReplies;
-
-  /// Names this trajectory in every entry written for it.
-  final TrajectoryId id;
-  final R rules;
-
-  /// The OS user this path's programs run as: the airlock service gives the
-  /// path a program driver that runs as it. One per path, kept for the
-  /// path's life.
-  final Suit suit;
-
-  final DecidesActionsAndWritesToTheLogbook<R, P> _airlock;
-  final List<CarriesOutActions> _drivers;
-  final _decisions = StreamController<AirlockDecisionOnAction<P>>.broadcast(
-    sync: true,
-  );
-  final _results =
-      StreamController<
-        ({AirlockDecisionOnAction<P> decision, Outcome<Object?> result})
-      >.broadcast(sync: true);
-  final _underway = StreamController<Underway<P>>.broadcast(sync: true);
-  bool _stopped = false;
-
-  /// Refuses every action on this trajectory whose driver has not yet been
-  /// reached. An action whose driver has been reached is not interrupted.
-  /// Never undone.
-  void stop() => _stopped = true;
-
-  bool get stopped => _stopped;
-
-  /// Each decision once the logbook has kept it.
-  Stream<AirlockDecisionOnAction<P>> get decisions => _decisions.stream;
-
-  /// Each action's result, or why it was refused, once the logbook has kept
-  /// it, with the decision it follows.
-  Stream<({AirlockDecisionOnAction<P> decision, Outcome<Object?> result})>
-  get results => _results.stream;
-
-  /// What drivers report while actions are underway: for a live view, and
-  /// never written to the logbook.
-  Stream<Underway<P>> get underway => _underway.stream;
-
-  D? _driver<D extends CarriesOutActions>() =>
-      _drivers.whereType<D>().firstOrNull;
-
-  Future<Outcome<O>> _consider<I, O>(
-    Program<I, O> program,
-    I input,
-    P place, {
-    required EntryId proposed,
-  }) async {
-    const stoppedByPerson = Deny('stopped', by: DecidedBy.person);
-    final reach = program._reach(input);
-    var decision = stopped
-        ? stoppedByPerson
-        : await _airlock.decide(id, reach, rules);
-    // A stop that came while the airlock decided still wins.
-    if (stopped) decision = stoppedByPerson;
-    final decided = AirlockDecisionOnAction(
-      id,
-      place,
-      reach,
-      decision,
-      proposed: proposed,
-    );
-    await _airlock.writeDecision(decided);
-    _decisions.add(decided);
-    final Outcome<O> result;
-    try {
-      result = switch (decision) {
-        Deny(:final why) => NothingRan(why),
-        final Allow allowed =>
-          await program._on(
-                this,
-                input,
-                reach,
-                allowed,
-                (progress) =>
-                    _underway.add(Underway(id, place, reach, progress)),
-              ) ??
-              NothingRan('this machine cannot run ${program.name}'),
-      };
-    } catch (thrown) {
-      // A driver that throws may have reached the world first, so its
-      // result says what it did is unknown, and the throw still ends the
-      // call.
-      await _written(
-        decided,
-        StoppedPartway<O>(why: 'the driver threw: $thrown', done: null),
-        program,
-      );
-      rethrow;
-    }
-    await _written(decided, result, program);
-    return result;
-  }
-
-  Future<void> _written<O>(
-    AirlockDecisionOnAction<P> decided,
-    Outcome<O> result,
-    Program<Object?, O> program,
-  ) async {
-    await _airlock.writeResult(
-      decided,
-      result,
-      resultAsJson: encodeOutcome(result, program._wire.outputToJson),
-    );
-    _results.add((decision: decided, result: result));
-  }
-
-  /// [proposal], the logbook entry [proposed] on this path's chain,
-  /// considered at [place]: decided and written to the logbook, and carried
-  /// out by a
-  /// driver if it is allowed. Its decision and its result both name
-  /// [proposed]. The one way an action reaches this trajectory's drivers.
-  ///
-  /// Only for an entry on this path's own chain, which the logbook service
-  /// takes only from this path's loop user. [place] is
-  /// [ActionProposedByAgentLoop.place] read as a [P] by the airlock service,
-  /// which knows [P].
-  Future<void> consider(
-    ActionProposedByAgentLoop proposal,
-    P place, {
-    required EntryId proposed,
-  }) => proposal._work.on(this, place, proposed);
-}
-
-/// A trajectory's crux, at one place in a turn: its agent loop, the one
-/// holder that extends the trajectory, proposing the next action there for
-/// its airlock to decide, which writes each entry at that place
-/// (https://github.com/enspyrco/intersyntactic/pull/1168).
-///
-/// Made by [Crux.forTheModelCall], [Crux.forIntent] or [Crux.forTheReply]
-/// in the agent loop, a process of its own: an action's program and input go into the logbook
-/// as an [ActionProposedByAgentLoop], which the airlock service reads and
-/// decides, and its continuation stays behind, since it is the tool's own
-/// code. What comes after a tool's result takes a crux and never handles
-/// the place. A turn's two tool calls are two intents, each through its
-/// own crux.
-sealed class Crux {
-  const Crux();
-
-  /// The crux for [intent] of [turn] of the trajectory whose chain [link]
-  /// writes to: it proposes each action of the intent's tool at the
-  /// intent's next action, from 0, so two intents running at once never
-  /// take each other's places, and a restarted loop gives each action the
-  /// same place again. Make one per intent and carry every action of its
-  /// tool through it.
-  factory Crux.forIntent(
-    ProposesActionsThroughTheLogbook link, {
-    required int turn,
-    required int intent,
-  }) = _ThroughLogbook.forIntent;
-
-  /// The crux for [turn]'s model call: it carries exactly one action, and a
-  /// second throws a [StateError] before anything is written.
-  factory Crux.forTheModelCall(
-    ProposesActionsThroughTheLogbook link, {
-    required int turn,
-  }) = _ThroughLogbook.forTheModelCall;
-
-  /// The crux for [turn]'s reply, which the loop makes from the turn's final
-  /// text: it proposes each of the reply's actions at its next action, from
-  /// 0, such as running the program that builds the message and then
-  /// sending what it built.
-  factory Crux.forTheReply(
-    ProposesActionsThroughTheLogbook link, {
-    required int turn,
-  }) = _ThroughLogbook.forTheReply;
-
-  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input);
-}
-
-/// Decides each action on a trajectory, and writes its decision to the
-/// logbook.
-///
-/// What intersyntactic's airlock implements. It guards the drivers it is
-/// given, not the mission: an agent that joins a mission with its own
-/// drivers is decided, or not, by its own.
-abstract interface class DecidesActionsAndWritesToTheLogbook<R, P> {
-  /// Whether a driver may carry out an action of [trajectory]'s that would
-  /// do [reach], under [rules].
-  ///
-  /// Given the reach, not the action, so the decision is about exactly what
-  /// the logbook keeps: for a [MakesWebRequests], every request it sends, each to be
-  /// granted by its origin, sign-in and path together. Given the trajectory,
-  /// so the airlock can read what holds for it now from its chain, such as
-  /// the bot leased to it, at the moment of deciding; the decision names
-  /// each entry it read in [Decision.reliedOn].
-  Future<Decision> decide(TrajectoryId trajectory, Reach reach, R rules);
-
-  /// Keeps [decision] in the logbook. An action's driver is reached only
-  /// once its decision is kept; an error thrown here ends the call.
-  ///
-  /// Kept means it survives the logbook service crashing or being killed,
-  /// not a power cut: the logbook service answers before forcing the entry
-  /// to disk, and a power cut can leave an entry with missing bytes, which
-  /// its `check()` reports. So "no driver is reached without a decision in
-  /// the logbook" holds across crashes
-  /// (https://github.com/intersyntactic/logbook/pull/12).
-  ///
-  /// A decision starts a chain of its own in the logbook (previous `-`):
-  /// the chain a proposal is on is its loop user's, which the airlock may not
-  /// extend. Its body is [AirlockDecisionOnAction.toJson], under
-  /// [AirlockDecisionOnAction.kind]. No two may be byte-identical, since the
-  /// logbook service refuses a repeated chain start, so one made for a
-  /// proposal names it.
-  Future<void> writeDecision(AirlockDecisionOnAction<P> decision);
-
-  /// Keeps in the logbook what the action [decision] was about came to:
-  /// [result], what it ran to or why it was refused, which [resultAsJson]
-  /// holds as its program's codec writes it. The action's continuation sees
-  /// [result] only once it is kept; an error thrown here ends the call. Kept
-  /// as [writeDecision] keeps.
-  ///
-  /// It extends [decision]'s chain, its previous the decision. Its body is
-  /// [outcomeOfProposedActionToJson] of
-  /// [AirlockDecisionOnAction.proposed] and [resultAsJson], under
-  /// [outcomeOfProposedActionKind]: the one copy of what the action
-  /// returned, which the loop that proposed it is waiting for.
-  Future<void> writeResult(
-    AirlockDecisionOnAction<P> decision,
-    Outcome<Object?> result, {
-    required Object? resultAsJson,
-  });
-
-  /// The kind and body of [entry], when it belongs to [trajectory]: the
-  /// body as text, after its `<kind>\n<previous>\n` header. Or [NothingRan]
-  /// with why not. Whoever reads it checks the kind it expects, since a
-  /// loop may write a body of any shape under its own kinds.
-  ///
-  /// An entry belongs to a trajectory when it is on the trajectory's own
-  /// chain, or when it is an [outcomeOfProposedActionKind] logbook entry the
-  /// airlock kept for one of the trajectory's proposals: its `proposed` is
-  /// on that chain. Only the airlock writes those, so a loop cannot make
-  /// one. Any other entry is refused, never read: entry hashes are not
-  /// secret, so without this a loop could name another trajectory's
-  /// [ModelRequestFromPieces] or pieces and have them sent as its own. [AskTheModel]
-  /// reads its request and every piece through here.
-  Future<Outcome<({String kind, String body})>> entryOn(
-    TrajectoryId trajectory,
-    EntryId entry,
-  );
-}
-
 /// What the airlock decided about one action.
 sealed class Decision {
   const Decision({this.reliedOn = const []});
@@ -1329,15 +777,4 @@ final class AirlockDecisionOnAction<P> {
   /// The [ActionProposedByAgentLoop] logbook entry that asked for the
   /// action.
   final EntryId proposed;
-}
-
-/// What a driver reported, [progress], while the action doing [reach] was
-/// underway at [place] on the trajectory named [trajectoryId].
-final class Underway<P> {
-  const Underway(this.trajectoryId, this.place, this.reach, this.progress);
-
-  final TrajectoryId trajectoryId;
-  final P place;
-  final Reach reach;
-  final Progress progress;
 }

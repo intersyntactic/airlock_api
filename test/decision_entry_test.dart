@@ -6,7 +6,7 @@ import 'package:is_reply_vocabulary/is_reply_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:test/test.dart';
 
-import 'contract_test.dart' show hart, idOf, teams, teamsMessageOf;
+import 'fixtures.dart' show hart, idOf, teams, teamsMessageOf;
 
 /// [json] as the logbook would hold it and give it back: JSON text.
 JsonObject throughText(Object? json) => JsonObject.decode(jsonEncode(json));
