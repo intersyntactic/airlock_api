@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.20.0
+
+Breaking, through is_effects ^0.17.0, which drops the reply drivers: a
+reply is now drawn by the module that owns its system and sent through the
+ordinary web driver, which knows nothing of Slack or Teams.
+
+- `ReplyToOwnConversation` takes a `ReplyContent` (text and an optional
+  footer, is_reply_vocabulary ^0.2.1), and `RepliesToOwnConversation` holds
+  it.
+- `Allow.toReplyTo(endpoint, asSignIn:)` grants the sign-in a reply goes
+  as, chosen by the airlock, along with the endpoint. `Allow.grantedReply`
+  replaces `grantedReplyEndpoint`, and the decision entry writes
+  `grantedReply: {"to", "asSignIn"}`.
+- `Trajectory` takes the modules' writers, `slackReplies` and
+  `webAddressReplies` (is_reply_requests_api ^0.1.0). The reply draws with
+  the writer, refuses before sending if any request leaves the endpoint's
+  address or names a sign-in, sends each as the granted sign-in through
+  `CarriesOutWebRequests`, and reads what posted with the writer.
+
 ## 0.19.0
 
 Breaking, through is_effects ^0.16.0: `Reach` has a new case, so an

@@ -45,6 +45,7 @@ bool _allowed(String target) {
       'is_content_id',
       'is_effects',
       'is_model_vocabulary',
+      'is_reply_requests_api',
       'is_reply_vocabulary',
       'is_shapes',
       'is_sign_in_vocabulary',

@@ -113,21 +113,30 @@ A reply goes to the conversation the trajectory was started from, and
 nowhere else, whatever system that conversation is in.
 
 - `ReplyToOwnConversation` (proposed as `reply-to-own-conversation`) takes
-  a `ReplyText` alone, never blank: the model names no conversation. Its
-  reach, `RepliesToOwnConversation(text)`, holds the exact text, so the
-  decision is about what will be sent.
-- The airlock allows it with `Allow.toReplyTo(endpoint)`, the
+  a `ReplyContent` alone, a never-blank text and an optional footer: the
+  model names no conversation and no sign-in. Its reach,
+  `RepliesToOwnConversation(content)`, holds both exactly, so the decision
+  is about what will be sent.
+- The airlock allows it with `Allow.toReplyTo(endpoint, asSignIn:)`: the
   `ReplyEndpoint` the docking station recorded when it admitted the event
-  that started the trajectory, and the decision entry keeps it as
-  `grantedReplyEndpoint`. A reply allowed without one is refused before a
-  driver is reached.
-- Each kind of endpoint has its own driver (is_effects's
-  `PostsRepliesInSlackConversations`, `PostsRepliesUnderWebAddresses`),
-  which splits a long text however its server needs and returns only the
-  id its server gave each message. Each `PostedMessage` is made here with
-  `answering` from the granted endpoint, so the conversation the logbook
-  records is the grant's, never the driver's. Stopping partway keeps the
-  messages that posted in `done`.
+  that started the trajectory, and the sign-in the rules let a reply to it
+  go as. The decision entry keeps both as `grantedReply`. A reply allowed
+  without one is refused before anything is sent.
+- The module that owns the endpoint's system writes the requests: a
+  trajectory is given a `WritesSlackReplyRequests` or a
+  `WritesWebAddressReplyRequests` (is_reply_requests_api), pure code that
+  holds no secret and sends nothing. Every request it draws must go to an
+  address the endpoint admits and name no sign-in, or nothing is sent.
+  Each is then sent as the granted sign-in, under the endpoint's redirect
+  bound, through the ordinary web driver, which knows nothing of Slack or
+  Teams and holds the secrets.
+- The writer reads what each response posted. Each `PostedMessage` is
+  made here with `answering` from the granted endpoint, so the
+  conversation the logbook records is the grant's. The reply stops at the
+  first message that did not post: nothing ran only when that was the
+  first and the server said so; otherwise it stopped partway, with the
+  messages that posted in `done`, and its `why` names any message whose
+  fate is unknown. Nothing retries.
 
 ## A model call
 

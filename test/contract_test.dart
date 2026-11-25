@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
+import 'package:is_reply_requests_api/is_reply_requests_api.dart';
 import 'package:is_reply_vocabulary/is_reply_vocabulary.dart';
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
@@ -127,7 +128,7 @@ String reachOf(Reach reach) => switch (reach) {
   FetchesFromWeb(:final origin, :final path, :final signIn) =>
     'fetch $origin${path.value} as $signIn',
   CallsTheModel(:final model, :final signIn) => 'ask $model as $signIn',
-  RepliesToOwnConversation(:final text) => 'reply ${text.value}',
+  RepliesToOwnConversation(:final content) => 'reply ${content.text.value}',
 };
 
 /// Rules: what a trajectory may do, by name, and the sites it may make requests to
@@ -147,9 +148,12 @@ final class LogAirlock
   final FailWriting? failWriting;
 
   /// The reply endpoint the docking station recorded for the trajectory,
-  /// which a reply is granted; null allows a reply with none, as a faulty
-  /// airlock would.
+  /// which a reply is granted as [replyBot]; null allows a reply with none,
+  /// as a faulty airlock would.
   final ReplyEndpoint? ownReplyEndpoint;
+
+  /// The sign-in a reply is granted to go as.
+  static final replyBot = SignIn.parse('reply-bot')!;
 
   /// The prefixes it allows web requests under in place of those its rules
   /// grant, as a faulty airlock would; null for its rules' own.
@@ -227,7 +231,11 @@ final class LogAirlock
       ),
       RepliesToOwnConversation() when !rules.contains('reply') => deny,
       RepliesToOwnConversation() => switch (ownReplyEndpoint) {
-        final endpoint? => Allow.toReplyTo(endpoint, by: DecidedBy.rules),
+        final endpoint? => Allow.toReplyTo(
+          endpoint,
+          asSignIn: replyBot,
+          by: DecidedBy.rules,
+        ),
         null => const Allow.withNoPaths(by: DecidedBy.rules),
       },
     };
@@ -322,12 +330,16 @@ Trajectory<Set<String>, int> start(
   LogAirlock airlock,
   List<CarriesOutActions> drivers, {
   Set<String> rules = const {'read', 'write', 'dart'},
+  WritesSlackReplyRequests? slackReplies,
+  WritesWebAddressReplyRequests? webAddressReplies,
 }) => Trajectory(
   id: idOf('started root'),
   drivers: drivers,
   airlock: airlock,
   rules: rules,
   suit: suit1,
+  slackReplies: slackReplies,
+  webAddressReplies: webAddressReplies,
 );
 
 /// A trajectory's chain and the airlock's, in memory: each proposal the
