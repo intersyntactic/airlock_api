@@ -7,22 +7,6 @@ part of 'action.dart';
 // what the action came to. loop_launcher hands that entry to the path's
 // loop. The airlock has no door of its own.
 
-/// Writes an [ActionProposedByAgentLoop] logbook entry and waits for what the
-/// airlock wrote it came to: the transport, which this package does not
-/// have. This package joins the two, so a loop never works out an id.
-abstract interface class ProposesActionsThroughTheLogbook {
-  /// Writes [body] as an [ActionProposedByAgentLoop.kind] logbook entry on
-  /// the loop's trajectory's chain, and gives the id the logbook gave it:
-  /// the hash of the whole entry as the logbook keeps it, which covers the
-  /// entry before it
-  /// on the chain. Never a hash of [body] alone.
-  Future<EntryId> writeProposal(String body);
-
-  /// The body of the [outcomeOfProposedActionKind] logbook entry that names
-  /// [proposed], once the airlock has kept it.
-  Future<String> outcomeNaming(EntryId proposed);
-}
-
 /// Where in its trajectory a loop proposed an action: in a [turn], one model
 /// call and what it caused, either the model call, an action of one of the
 /// intents the model's reply holds, or an action of the reply the loop
@@ -174,85 +158,6 @@ final class ProposedForAnIntent extends PlaceInTrajectory {
   String toString() => '$turn.$intent.$action';
 }
 
-/// A crux in the agent loop for one turn's model call, one of its intents,
-/// or its reply: proposes each action's program and input through
-/// the logbook at its next place, and keeps the continuation.
-final class _ThroughLogbook extends Crux {
-  /// Every action of [intent] in [turn], numbered from 0.
-  factory _ThroughLogbook.forIntent(
-    ProposesActionsThroughTheLogbook link, {
-    required int turn,
-    required int intent,
-  }) {
-    final first = ProposedForAnIntent.at(turn, intent, 0);
-    return _ThroughLogbook._(
-      link,
-      (n) => n == 0 ? first : ProposedForAnIntent._(turn, intent, n),
-    );
-  }
-
-  /// The one action of [turn]'s model call.
-  factory _ThroughLogbook.forTheModelCall(
-    ProposesActionsThroughTheLogbook link, {
-    required int turn,
-  }) {
-    final only = ProposedForTheModelCall.at(turn);
-    return _ThroughLogbook._(link, (n) => n == 0 ? only : null);
-  }
-
-  /// Every action of [turn]'s reply, numbered from 0.
-  factory _ThroughLogbook.forTheReply(
-    ProposesActionsThroughTheLogbook link, {
-    required int turn,
-  }) {
-    final first = ProposedForTheReply.at(turn, 0);
-    return _ThroughLogbook._(
-      link,
-      (n) => n == 0 ? first : ProposedForTheReply._(turn, n),
-    );
-  }
-
-  _ThroughLogbook._(this._link, this._placeOf);
-
-  final ProposesActionsThroughTheLogbook _link;
-
-  /// The place of the [n]th action proposed through this crux, or null when
-  /// it has none.
-  final PlaceInTrajectory? Function(int n) _placeOf;
-  int _proposed = 0;
-
-  /// The outcome the airlock wrote to the logbook. An answer that is not
-  /// one, or that names another proposal, throws a [FormatException],
-  /// ending the call: whether the action reached the world is then not
-  /// known here, and the airlock's entries in the logbook say.
-  @override
-  Future<Outcome<O>> _propose<I, O>(Program<I, O> program, I input) async {
-    final place =
-        _placeOf(_proposed++) ??
-        (throw StateError(
-          'a crux for the model call carries one action, not '
-          '${program.name} as well',
-        ));
-    final proposed = await _link.writeProposal(
-      jsonEncode({
-        'place': place.toJson(),
-        ...program._wire.program,
-        'input': program._wire.inputToJson(input),
-      }),
-    );
-    return switch (readOutcomeOfProposedAction(
-      await _link.outcomeNaming(proposed),
-    )) {
-      (proposed: final named, :final result) when named == proposed =>
-        decodeOutcome(result, program._wire.outputFromJson),
-      (proposed: final named, result: _) => throw FormatException(
-        'the outcome for $proposed names $named',
-      ),
-      null => throw FormatException('no outcome for $proposed'),
-    };
-  }
-}
-
 /// How a program, its input and its output travel in an
 /// [ActionProposedByAgentLoop] and its result, by is_effects's codecs. A
 /// decoder throws a [FormatException] naming the field, as a dotted path
@@ -358,6 +263,11 @@ final class ActionProposedByAgentLoop implements Received {
   /// [MakesWebRequests], the exact requests the decision will hold.
   Reach get reach => _work.reach;
 
+  /// [f] given the program and its input, each with its own type: how the
+  /// airlock carries out what was proposed without a cast.
+  T open<T>(T Function<I, O>(Program<I, O> program, I input) f) =>
+      _work.open(f);
+
   final _Work<Object?, Object?> _work;
 }
 
@@ -370,13 +280,10 @@ final class _Work<I, O> {
   final I input;
 
   /// What [input] would do to the world.
-  Reach get reach => program._reach(input);
+  Reach get reach => program.reachOf(input);
 
-  Future<void> on<P>(
-    Trajectory<Object?, P> trajectory,
-    P place,
-    EntryId proposed,
-  ) => trajectory._consider(program, input, place, proposed: proposed);
+  T open<T>(T Function<I2, O2>(Program<I2, O2> program, I2 input) f) =>
+      f<I, O>(program, input);
 }
 
 /// The program [name] names, with [executable] the program's name when it

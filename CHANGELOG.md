@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.21.0
+
+Breaking: the package holds types and their JSON only. Carrying an action
+out moves to the packages that do it.
+
+- To `is_airlock`: `Trajectory` (deciding, writing to the logbook, running
+  the driver, writing the result), each program's dispatch to its driver,
+  the web request and reply checks, the model request read from the
+  logbook, `DecidesActionsAndWritesToTheLogbook` and `Underway`.
+- To the agent loop: the logbook proposer (`Crux.forIntent`,
+  `forTheModelCall`, `forTheReply`) and `ProposesActionsThroughTheLogbook`.
+- `Crux` is now the interface `ProposesActions`, with one method,
+  `propose(program, input)`; `action.next` takes one.
+- New: `CarriesOutEachProgram`, one method per program, and
+  `program.carriedOutBy(by, input)`, so the airlock carries a program out
+  with its own input type and no cast.
+- New: `program.reachOf(input)`, `program.proposal(input, at:)`,
+  `program.outcomeToJson` / `outcomeFromJson`, and
+  `ActionProposedByAgentLoop.open`.
+- No longer depends on `is_reply_requests_api`.
+- A test fails on any `async` function in `lib`.
+
 ## 0.20.0
 
 Breaking, through is_effects ^0.17.0, which drops the reply drivers: a

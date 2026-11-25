@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:test/test.dart';
 
 /// Every URI a source's directives name, in every branch, as written.
@@ -45,7 +46,6 @@ bool _allowed(String target) {
       'is_content_id',
       'is_effects',
       'is_model_vocabulary',
-      'is_reply_requests_api',
       'is_reply_vocabulary',
       'is_shapes',
       'is_sign_in_vocabulary',
@@ -56,7 +56,53 @@ bool _allowed(String target) {
   };
 }
 
+/// Every function body in [source] that is `async` or `async*`.
+Iterable<FunctionBody> asyncBodies(String source) {
+  final bodies = <FunctionBody>[];
+  parseString(
+    content: source,
+    throwIfDiagnostics: false,
+  ).unit.accept(_AsyncBodies(bodies));
+  return bodies;
+}
+
+final class _AsyncBodies extends RecursiveAstVisitor<void> {
+  _AsyncBodies(this.found);
+
+  final List<FunctionBody> found;
+
+  @override
+  void visitBlockFunctionBody(BlockFunctionBody node) {
+    if (node.isAsynchronous) found.add(node);
+    super.visitBlockFunctionBody(node);
+  }
+
+  @override
+  void visitExpressionFunctionBody(ExpressionFunctionBody node) {
+    if (node.isAsynchronous) found.add(node);
+    super.visitExpressionFunctionBody(node);
+  }
+}
+
 void main() {
+  test('the contract carries nothing out: no function in it is async', () {
+    final violations = <String>[
+      for (final file in Directory(
+        'lib',
+      ).listSync(recursive: true).whereType<File>())
+        if (file.path.endsWith('.dart'))
+          for (final body in asyncBodies(file.readAsStringSync()))
+            '${file.path}: ${body.parent?.toSource().split('\n').first}',
+    ];
+    expect(
+      violations,
+      isEmpty,
+      reason:
+          'waiting on something is carrying an action out, which is the '
+          "airlock's or the agent loop's, not the contract's",
+    );
+  });
+
   test('the contract imports no runner, tool, client or driver', () {
     final violations = <String>[];
     for (final file in Directory(
