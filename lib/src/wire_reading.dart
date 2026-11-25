@@ -76,7 +76,19 @@ Decision _decisionFromJson(JsonObject json, String field) => _at(field, () {
             '$field.grantedPathPrefixes[$i]: not a path prefix',
           )),
   ];
-  return Allow(by: by, reliedOn: reliedOn, grantedPathPrefixes: prefixes);
+  final endpoint = switch (json.raw('grantedReplyEndpoint')) {
+    null => null,
+    final raw => decodeReplyEndpoint(raw, '$field.grantedReplyEndpoint'),
+  };
+  if (endpoint == null) {
+    return Allow(by: by, reliedOn: reliedOn, grantedPathPrefixes: prefixes);
+  }
+  if (prefixes.isNotEmpty) {
+    throw FormatException(
+      '$field: grants both path prefixes and a reply endpoint',
+    );
+  }
+  return Allow.toReplyTo(endpoint, by: by, reliedOn: reliedOn);
 });
 
 /// What [read] reads from an object at [field], a field of the wrong shape

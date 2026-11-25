@@ -5,6 +5,10 @@ import 'package:checked_json/checked_json.dart';
 
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_effects/is_effects.dart';
+import 'package:is_model_vocabulary/is_model_vocabulary.dart';
+import 'package:is_reply_vocabulary/is_reply_vocabulary.dart';
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:is_shapes/is_shapes.dart' show DecidedBy, EntryId, TrajectoryId;
 
 part 'pool_user.dart';
@@ -148,6 +152,7 @@ sealed class Program<I, O> {
   static const makeWebRequests = MakeWebRequests();
   static const fetch = FetchFromWeb();
   static const askTheModel = AskTheModel();
+  static const replyToOwnConversation = ReplyToOwnConversation();
 
   /// For the model and the logbook; an [Executable] is compared by it.
   String get name;
@@ -492,6 +497,79 @@ final class FetchFromWeb extends Program<WebFetch, WebResponse> {
   };
 }
 
+/// Replies to the conversation the trajectory was started from: posts the
+/// [ReplyText] there and nowhere else.
+///
+/// The model gives the text alone. Where it goes is
+/// [Allow.grantedReplyEndpoint], the endpoint the docking station recorded
+/// when it admitted the event that started the trajectory, so no proposal
+/// can name another conversation. A driver returns only the id its server
+/// gave each message it posted; each [PostedMessage] is made here with
+/// `answering` from the granted endpoint, so the conversation the logbook
+/// records is the grant's, never the driver's.
+final class ReplyToOwnConversation
+    extends Program<ReplyText, List<PostedMessage>> {
+  const ReplyToOwnConversation();
+
+  @override
+  String get name => 'reply-to-own-conversation';
+
+  @override
+  Reach _reach(ReplyText text) => RepliesToOwnConversation(text);
+
+  @override
+  _Wire<ReplyText, List<PostedMessage>> get _wire => const _Wire(
+    {'program': 'reply-to-own-conversation'},
+    inputToJson: encodeReplyText,
+    inputFromJson: decodeReplyText,
+    outputToJson: _postedMessagesToJson,
+    outputFromJson: _postedMessagesFromJson,
+  );
+
+  @override
+  Future<Outcome<List<PostedMessage>>>? _on(
+    Trajectory<Object?, Object?> trajectory,
+    ReplyText text,
+    Reach reach,
+    Allow allowed,
+    Report report,
+  ) => switch (allowed.grantedReplyEndpoint) {
+    null => Future.value(
+      const NothingRan('allowed with no reply endpoint granted'),
+    ),
+    final RepliesInSlackConversation to => switch (trajectory
+        ._driver<PostsRepliesInSlackConversations>()) {
+      null => null,
+      final slack => _answering(
+        slack.reply(to, text),
+        (timestamp) => PostedInSlackConversation.answering(to, timestamp),
+      ),
+    },
+    final RepliesUnderWebAddress to => switch (trajectory
+        ._driver<PostsRepliesUnderWebAddresses>()) {
+      null => null,
+      final web => _answering(
+        web.reply(to, text),
+        (id) => PostedUnderWebAddress.answering(to, id),
+      ),
+    },
+  };
+}
+
+/// What a reply driver [posted], each id it returned made a [PostedMessage]
+/// by [answer], in `done` too.
+Future<Outcome<List<PostedMessage>>> _answering<Id>(
+  Future<Outcome<List<Id>>> posted,
+  PostedMessage Function(Id id) answer,
+) async => switch (await posted) {
+  Ran(:final output) => Ran([for (final id in output) answer(id)]),
+  final NothingRan nothing => nothing,
+  StoppedPartway(:final why, :final done) => StoppedPartway(
+    why: why,
+    done: done == null ? null : [for (final id in done) answer(id)],
+  ),
+};
+
 /// Each of [requests] granted under its prefix in [allowed], in order; or
 /// refused when [allowed] has not exactly one prefix per request, or one
 /// doesn't cover its request's path, so nothing is sent unbounded.
@@ -747,6 +825,17 @@ final class FetchesFromWeb extends Reach {
   Origin get origin => fetch.origin;
   SignIn? get signIn => fetch.signIn;
   WebPath get path => fetch.path;
+}
+
+/// Reaches the world: posts [text] to the conversation the trajectory was
+/// started from, and only there. It names no conversation, since the
+/// airlock grants the trajectory's own endpoint with it, so a grant to
+/// reply is never a grant to post anywhere else. Holds the exact text, so
+/// the decision is about what will be sent.
+final class RepliesToOwnConversation extends Reach {
+  const RepliesToOwnConversation(this.text);
+
+  final ReplyText text;
 }
 
 /// Reaches the model: [call] goes out as its sign-in, to its model, with the
@@ -1056,11 +1145,27 @@ final class Allow extends Decision {
     required this.by,
     super.reliedOn,
     required List<PathPrefix> grantedPathPrefixes,
-  }) : grantedPathPrefixes = List.unmodifiable(grantedPathPrefixes);
+  }) : grantedPathPrefixes = List.unmodifiable(grantedPathPrefixes),
+       grantedReplyEndpoint = null;
 
   /// An allowed action that makes no web request, so is granted no path.
   const Allow.withNoPaths({required this.by, super.reliedOn})
-    : grantedPathPrefixes = const [];
+    : grantedPathPrefixes = const [],
+      grantedReplyEndpoint = null;
+
+  /// An allowed [RepliesToOwnConversation], granted the trajectory's own
+  /// [grantedReplyEndpoint] to post to.
+  const Allow.toReplyTo(
+    ReplyEndpoint this.grantedReplyEndpoint, {
+    required this.by,
+    super.reliedOn,
+  }) : grantedPathPrefixes = const [];
+
+  /// Where an allowed [RepliesToOwnConversation] posts: the endpoint the
+  /// docking station recorded for the trajectory, never one the proposal
+  /// names. Null for every other reach, and a reply allowed without one is
+  /// refused before a driver is reached.
+  final ReplyEndpoint? grantedReplyEndpoint;
 
   /// Whom it was allowed by, so the logbook tells "the rules let it
   /// through" from "the person said yes"; null when no rule governs this

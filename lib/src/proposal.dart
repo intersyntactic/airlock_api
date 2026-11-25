@@ -389,6 +389,7 @@ Program<Object?, Object?>? _programNamed(String name, Object? executable) =>
       ('make-web-requests', null) => Program.makeWebRequests,
       ('fetch', null) => Program.fetch,
       ('model', null) => Program.askTheModel,
+      ('reply-to-own-conversation', null) => Program.replyToOwnConversation,
       ('start', final String program) => Executable.parse(program),
       _ => null,
     };
@@ -450,3 +451,16 @@ Object? proposalRejectedToJson(EntryId proposed, String why) =>
     _ => null,
   };
 }
+
+Object? _postedMessagesToJson(List<PostedMessage> posted) => [
+  for (final message in posted) encodePostedMessage(message),
+];
+
+List<PostedMessage> _postedMessagesFromJson(Object? json, String field) =>
+    switch (json) {
+      final List<Object?> list => [
+        for (final (i, message) in list.indexed)
+          decodePostedMessage(message, '$field[$i]'),
+      ],
+      _ => throw FormatException('$field: not a list'),
+    };

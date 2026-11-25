@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
+import 'package:is_reply_vocabulary/is_reply_vocabulary.dart';
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:test/test.dart';
 
 import 'contract_test.dart' show hart, idOf, teams, teamsMessageOf;
@@ -40,7 +42,14 @@ final reaches = <Reach>[
       keep: BodyToKeep.bytes,
     ),
   ),
+  RepliesToOwnConversation(ReplyText.parse(' hello ')!),
 ];
+
+final ownSlack = RepliesInSlackConversation(
+  origin: Origin.parse('https://slack.com')!,
+  channel: SlackChannelId.parse('C123')!,
+  thread: SlackMessageTimestamp.parse('1700000000.000100'),
+);
 
 final PlaceInTrajectory place = ProposedForAnIntent.at(3, 0, 1);
 final proposed = EntryId.of(utf8.encode('a proposal'));
@@ -79,6 +88,7 @@ void main() {
         ),
         Deny('leased elsewhere', by: DecidedBy.rules, reliedOn: [lease]),
         const Deny('stopped', by: DecidedBy.person),
+        Allow.toReplyTo(ownSlack, by: DecidedBy.rules),
       ]) {
         final d = decided(reach, decision);
         final back = readBack(written(d));
@@ -94,6 +104,12 @@ void main() {
             (back.decision as Allow)
                 .grantedPathPrefixes, // cast-ok: same type checked above
             grantedPathPrefixes,
+            reason: why,
+          );
+          expect(
+            (back.decision as Allow) // cast-ok: same type checked above
+                .grantedReplyEndpoint,
+            decision.grantedReplyEndpoint,
             reason: why,
           );
         }
@@ -222,6 +238,19 @@ void main() {
         'decision',
         {'allow': false, 'why': 'no'},
         'decided.decision.by: missing on a denial',
+      ),
+      (
+        'decision',
+        {
+          'allow': true,
+          'grantedPathPrefixes': ['/v3/'],
+          'grantedReplyEndpoint': {
+            'case': 'in-slack-conversation',
+            'origin': 'https://slack.com',
+            'channel': 'C123',
+          },
+        },
+        'decided.decision: grants both path prefixes and a reply endpoint',
       ),
       (
         'decision',
