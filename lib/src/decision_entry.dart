@@ -20,6 +20,10 @@ Object? _reachToJson(Reach reach) {
     MakesWebRequests(:final requests) => as(Program.makeWebRequests, requests),
     FetchesFromWeb(:final fetch) => as(Program.fetch, fetch),
     CallsTheModel(:final call) => as(Program.askTheModel, call),
+    RepliesToOwnConversation(:final text) => as(
+      Program.replyToOwnConversation,
+      text,
+    ),
   };
 }
 
@@ -35,13 +39,17 @@ Reach _reachFromJson(JsonObject json, String field) {
 
 Object? _decisionToJson(Decision decision) => {
   ...switch (decision) {
-    Allow(:final by, :final grantedPathPrefixes) => {
-      'allow': true,
-      // Absent when no rule governs the reach, and when empty, as reliedOn is.
-      if (by != null) 'by': by.name,
-      if (grantedPathPrefixes.isNotEmpty)
-        'grantedPathPrefixes': [for (final p in grantedPathPrefixes) p.value],
-    },
+    Allow(:final by, :final grantedPathPrefixes, :final grantedReplyEndpoint) =>
+      {
+        'allow': true,
+        // Each absent when no rule governs the reach, or when empty or not
+        // granted, as reliedOn is.
+        if (by != null) 'by': by.name,
+        if (grantedPathPrefixes.isNotEmpty)
+          'grantedPathPrefixes': [for (final p in grantedPathPrefixes) p.value],
+        if (grantedReplyEndpoint != null)
+          'grantedReplyEndpoint': encodeReplyEndpoint(grantedReplyEndpoint),
+      },
     Deny(:final why, :final by) => {'allow': false, 'why': why, 'by': by.name},
   },
   // Absent when empty, so a decision kept before it existed reads back to

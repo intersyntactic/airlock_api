@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:is_airlock_api/is_airlock_api.dart';
 import 'package:is_effects/is_effects.dart';
+import 'package:is_reply_vocabulary/is_reply_vocabulary.dart';
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:test/test.dart';
 
 /// Files in memory. Refuses to write under `.git/`, in its own words.
@@ -124,6 +127,7 @@ String reachOf(Reach reach) => switch (reach) {
   FetchesFromWeb(:final origin, :final path, :final signIn) =>
     'fetch $origin${path.value} as $signIn',
   CallsTheModel(:final model, :final signIn) => 'ask $model as $signIn',
+  RepliesToOwnConversation(:final text) => 'reply ${text.value}',
 };
 
 /// Rules: what a trajectory may do, by name, and the sites it may make requests to
@@ -138,9 +142,14 @@ enum FailWriting { decision, result }
 
 final class LogAirlock
     implements DecidesActionsAndWritesToTheLogbook<Set<String>, int> {
-  LogAirlock({this.failWriting, this.grantsPrefixes});
+  LogAirlock({this.failWriting, this.grantsPrefixes, this.ownReplyEndpoint});
 
   final FailWriting? failWriting;
+
+  /// The reply endpoint the docking station recorded for the trajectory,
+  /// which a reply is granted; null allows a reply with none, as a faulty
+  /// airlock would.
+  final ReplyEndpoint? ownReplyEndpoint;
 
   /// The prefixes it allows web requests under in place of those its rules
   /// grant, as a faulty airlock would; null for its rules' own.
@@ -216,6 +225,11 @@ final class LogAirlock
       CallsTheModel(:final signIn) => allowIf(
         rules.contains('model as $signIn'),
       ),
+      RepliesToOwnConversation() when !rules.contains('reply') => deny,
+      RepliesToOwnConversation() => switch (ownReplyEndpoint) {
+        final endpoint? => Allow.toReplyTo(endpoint, by: DecidedBy.rules),
+        null => const Allow.withNoPaths(by: DecidedBy.rules),
+      },
     };
   }
 

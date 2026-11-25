@@ -46,7 +46,9 @@ while (result is Action<ExecResult>) {
   (`Program.readBytes`, a file's exact bytes), `WriteFile`
   (`Program.write`), `Executable` (a `ProgramName`, with plain `Args`),
   `FetchFromWeb` (`Program.fetch`, below), `MakeWebRequests`
-  (`Program.makeWebRequests`, below) and `AskTheModel` (`Program.askTheModel`, below). Programs reach
+  (`Program.makeWebRequests`, below), `AskTheModel` (`Program.askTheModel`,
+  below) and `ReplyToOwnConversation` (`Program.replyToOwnConversation`,
+  below). Programs reach
   drivers, so they belong with the drivers and the airlock to what is
   trusted; a new kind of action is a new driver and
   program.
@@ -56,7 +58,8 @@ while (result is Action<ExecResult>) {
   proposed, what it would do is worked out as its `Reach`, which the
   airlock decides and writes to the logbook: `Reads(path, as:)`, `Writes(file)`,
   `Starts(program, args)`, `FetchesFromWeb(fetch)`,
-  `MakesWebRequests(requests)` or `CallsTheModel(call)`. A rule grants a web
+  `MakesWebRequests(requests)`, `CallsTheModel(call)` or
+  `RepliesToOwnConversation(text)`. A rule grants a web
   request by origin, sign-in and path together, never the origin alone,
   and a model call by its model sign-in.
 - A rule grants `Starts` by the program's name, and the program driver
@@ -103,6 +106,28 @@ may go.
   grants the whole site. A web action allowed with any other number of
   prefixes, or under one that doesn't cover its path, is refused before a
   driver is reached.
+
+## A reply
+
+A reply goes to the conversation the trajectory was started from, and
+nowhere else, whatever system that conversation is in.
+
+- `ReplyToOwnConversation` (proposed as `reply-to-own-conversation`) takes
+  a `ReplyText` alone, never blank: the model names no conversation. Its
+  reach, `RepliesToOwnConversation(text)`, holds the exact text, so the
+  decision is about what will be sent.
+- The airlock allows it with `Allow.toReplyTo(endpoint)`, the
+  `ReplyEndpoint` the docking station recorded when it admitted the event
+  that started the trajectory, and the decision entry keeps it as
+  `grantedReplyEndpoint`. A reply allowed without one is refused before a
+  driver is reached.
+- Each kind of endpoint has its own driver (is_effects's
+  `PostsRepliesInSlackConversations`, `PostsRepliesUnderWebAddresses`),
+  which splits a long text however its server needs and returns only the
+  id its server gave each message. Each `PostedMessage` is made here with
+  `answering` from the granted endpoint, so the conversation the logbook
+  records is the grant's, never the driver's. Stopping partway keeps the
+  messages that posted in `done`.
 
 ## A model call
 

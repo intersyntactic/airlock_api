@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.19.0
+
+Breaking, through is_effects ^0.16.0: `Reach` has a new case, so an
+exhaustive switch over it needs one more arm.
+
+- `ReplyToOwnConversation` (`Program.replyToOwnConversation`, proposed as
+  `reply-to-own-conversation`) posts a `ReplyText` to the conversation the
+  trajectory was started from. Its reach is `RepliesToOwnConversation`.
+- `Allow.toReplyTo(endpoint)` grants it the trajectory's own
+  `ReplyEndpoint`, kept in the decision entry as `grantedReplyEndpoint`;
+  every other `Allow` has none. A decision read back with both path
+  prefixes and a reply endpoint is refused.
+- A reply driver returns its server's ids only; each `PostedMessage` is
+  made from the granted endpoint, so the logbook's conversation is the
+  grant's.
+- Depends on is_model_vocabulary, is_reply_vocabulary,
+  is_sign_in_vocabulary and is_web_address_vocabulary directly, since
+  is_effects 0.16.0 re-exports none of them. Neither does this package: a
+  caller that names their types depends on them itself.
+
 ## 0.18.1
 
 - A driver that throws no longer leaves a decision with no result, which
