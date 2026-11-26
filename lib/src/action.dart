@@ -718,12 +718,12 @@ final class Deny extends Decision {
 }
 
 /// What the airlock decided about an action that would do [reach], on the
-/// trajectory named [trajectoryId], at [place] in a turn, before any driver
+/// trajectory named [trajectoryId], at [place] in a step, before any driver
 /// is reached. With no result written after it, the logbook shows the
 /// action was cut short.
 ///
 /// [place] is of type [P], which the agent loop supplies, since it knows
-/// where in the turn it is, and the airlock writes; nothing here computes
+/// where in its trajectory it is, and the airlock writes; nothing here computes
 /// one.
 final class AirlockDecisionOnAction<P> {
   const AirlockDecisionOnAction(

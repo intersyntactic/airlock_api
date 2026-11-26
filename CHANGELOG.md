@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.22.0
+
+Breaking, in Dart only; nothing changes on the wire.
+
+- `PlaceInTrajectory.turn` is now `step`, and so is the first parameter of
+  `ProposedForTheModelCall.at`, `ProposedForAnIntent.at` and
+  `ProposedForTheReply.at`. A step is one model call and what it caused,
+  counted across the trajectory. A turn, a user's message through to its
+  final reply, may take several steps, and a place never counts turns. A
+  place is still written `[n, "model-call"]`, `[n, intent, action]` or
+  `[n, "reply", action]`.
+- Docs: what `ModelRequestFromPieces.builtFrom` names are messages, not
+  turns; a tool's actions come from its propose expressions.
+
 ## 0.21.0
 
 Breaking: the package holds types and their JSON only. Carrying an action

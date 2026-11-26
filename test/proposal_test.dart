@@ -391,7 +391,7 @@ void main() {
     expect(ProposedForTheModelCall.at(1), isNot(ProposedForTheModelCall.at(2)));
   });
 
-  test('within a turn the model call comes first, then each intent, then the '
+  test('within a step the model call comes first, then each intent, then the '
       "reply's actions", () {
     final inOrder = <PlaceInTrajectory>[
       ProposedForTheModelCall.at(1),

@@ -16,16 +16,16 @@ TextFromPieces piecesOf(List<String> texts) => TextFromPieces(
 
 void main() {
   // A request cut where it won't split mid-message: the history so far,
-  // then the new turn. The system prompt is whole.
+  // then the new message. The system prompt is whole.
   const system = ['You are reviewing a case file. Héllo, naïve café.'];
   const asked = [
-    'Turn 1: what does clause 4 say?\n',
-    'Turn 2: and how does it bear on the lease?\n',
+    'Message 1: what does clause 4 say?\n',
+    'Message 2: and how does it bear on the lease?\n',
   ];
   final request = ModelRequestFromPieces(
     systemPrompt: piecesOf(system),
     request: piecesOf(asked),
-    builtFrom: [EntryId.of(utf8.encode('turn 1'))],
+    builtFrom: [EntryId.of(utf8.encode('message 1'))],
   );
 
   test('each text joins only as its pieces hold it, in order', () {
