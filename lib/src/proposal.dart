@@ -7,46 +7,49 @@ part of 'action.dart';
 // what the action came to. loop_launcher hands that entry to the path's
 // loop. The airlock has no door of its own.
 
-/// Where in its trajectory a loop proposed an action: in a [turn], one model
-/// call and what it caused, either the model call, an action of one of the
-/// intents the model's reply holds, or an action of the reply the loop
-/// makes from the turn's final text. Each is fixed by what the logbook
+/// Where in its trajectory a loop proposed an action. A trajectory is a run
+/// of steps, each one model call and what it caused; a place names the
+/// [step], counted across the whole trajectory, and within it either the
+/// model call, an action of one of the intents the model's reply holds, or
+/// an action of the reply the loop makes from the model's final text. A
+/// turn, a user's message through to its final reply, may take several
+/// steps; a place never counts turns. Each is fixed by what the logbook
 /// already holds, never by the order things ran in, so a loop that restarts
 /// proposes the same actions at the same places, and a place the logbook
 /// already answers is one it need not propose again.
 ///
-/// Written `[turn, "model-call"]`, `[turn, intent, action]` or
-/// `[turn, "reply", action]`, in that order within a turn.
+/// Written `[step, "model-call"]`, `[step, intent, action]` or
+/// `[step, "reply", action]`, in that order within a step.
 sealed class PlaceInTrajectory implements Comparable<PlaceInTrajectory> {
-  const PlaceInTrajectory._(this.turn);
+  const PlaceInTrajectory._(this.step);
 
   /// [json], as [toJson] writes it, read back; null when it is not one.
   static PlaceInTrajectory? parse(Object? json) => switch (json) {
-    [final int turn, ProposedForTheModelCall._wire] when turn >= 0 =>
-      ProposedForTheModelCall._(turn),
-    [final int turn, final int intent, final int action]
-        when turn >= 0 && intent >= 0 && action >= 0 =>
-      ProposedForAnIntent._(turn, intent, action),
-    [final int turn, ProposedForTheReply._wire, final int action]
-        when turn >= 0 && action >= 0 =>
-      ProposedForTheReply._(turn, action),
+    [final int step, ProposedForTheModelCall._wire] when step >= 0 =>
+      ProposedForTheModelCall._(step),
+    [final int step, final int intent, final int action]
+        when step >= 0 && intent >= 0 && action >= 0 =>
+      ProposedForAnIntent._(step, intent, action),
+    [final int step, ProposedForTheReply._wire, final int action]
+        when step >= 0 && action >= 0 =>
+      ProposedForTheReply._(step, action),
     _ => null,
   };
 
   /// Counted from 0.
-  final int turn;
+  final int step;
 
   Object? toJson();
 
-  /// Where this sits within its turn: model call, intents, reply.
-  (int, int, int) get _withinTurn;
+  /// Where this sits within its step: model call, intents, reply.
+  (int, int, int) get _withinStep;
 
   @override
   int compareTo(PlaceInTrajectory other) {
-    final (a1, a2, a3) = _withinTurn;
-    final (b1, b2, b3) = other._withinTurn;
+    final (a1, a2, a3) = _withinStep;
+    final (b1, b2, b3) = other._withinStep;
     for (final c in [
-      turn.compareTo(other.turn),
+      step.compareTo(other.step),
       a1.compareTo(b1),
       a2.compareTo(b2),
       a3.compareTo(b3),
@@ -57,105 +60,106 @@ sealed class PlaceInTrajectory implements Comparable<PlaceInTrajectory> {
   }
 }
 
-/// The place of [turn]'s model call, which no intent draws: one action, the
-/// first of the turn.
+/// The place of [step]'s model call, which no intent draws: one action, the
+/// first of the step.
 final class ProposedForTheModelCall extends PlaceInTrajectory {
-  const ProposedForTheModelCall._(super.turn) : super._();
+  const ProposedForTheModelCall._(super.step) : super._();
 
   /// Counted from 0.
-  factory ProposedForTheModelCall.at(int turn) => turn >= 0
-      ? ProposedForTheModelCall._(turn)
-      : throw ArgumentError('a turn is counted from 0: $turn');
+  factory ProposedForTheModelCall.at(int step) => step >= 0
+      ? ProposedForTheModelCall._(step)
+      : throw ArgumentError('a step is counted from 0: $step');
 
   static const _wire = 'model-call';
 
   @override
-  Object? toJson() => [turn, _wire];
+  Object? toJson() => [step, _wire];
 
   @override
-  (int, int, int) get _withinTurn => (0, 0, 0);
+  (int, int, int) get _withinStep => (0, 0, 0);
 
   @override
   bool operator ==(Object other) =>
-      other is ProposedForTheModelCall && other.turn == turn;
+      other is ProposedForTheModelCall && other.step == step;
 
   @override
-  int get hashCode => Object.hash(turn, _wire);
+  int get hashCode => Object.hash(step, _wire);
 
   @override
-  String toString() => '$turn.$_wire';
+  String toString() => '$step.$_wire';
 }
 
-/// The place of [action] of [turn]'s reply, which the loop makes from the
-/// turn's final text and no intent draws, such as running the program that
-/// builds the message and then sending what it built; the last of the turn.
+/// The place of [action] of [step]'s reply, which the loop makes from the
+/// model's final text and no intent draws, such as running the program that
+/// builds the message and then sending what it built; the last of the step.
 final class ProposedForTheReply extends PlaceInTrajectory {
-  const ProposedForTheReply._(super.turn, this.action) : super._();
+  const ProposedForTheReply._(super.step, this.action) : super._();
 
   /// Both counted from 0.
-  factory ProposedForTheReply.at(int turn, int action) =>
-      turn >= 0 && action >= 0
-      ? ProposedForTheReply._(turn, action)
-      : throw ArgumentError('a place is counted from 0: $turn, $action');
+  factory ProposedForTheReply.at(int step, int action) =>
+      step >= 0 && action >= 0
+      ? ProposedForTheReply._(step, action)
+      : throw ArgumentError('a place is counted from 0: $step, $action');
 
   static const _wire = 'reply';
 
   final int action;
 
   @override
-  Object? toJson() => [turn, _wire, action];
+  Object? toJson() => [step, _wire, action];
 
   @override
-  (int, int, int) get _withinTurn => (2, 0, action);
+  (int, int, int) get _withinStep => (2, 0, action);
 
   @override
   bool operator ==(Object other) =>
       other is ProposedForTheReply &&
-      other.turn == turn &&
+      other.step == step &&
       other.action == action;
 
   @override
-  int get hashCode => Object.hash(turn, _wire, action);
+  int get hashCode => Object.hash(step, _wire, action);
 
   @override
-  String toString() => '$turn.$_wire.$action';
+  String toString() => '$step.$_wire.$action';
 }
 
-/// The place of [action] of [intent] in [turn]: the intent is a tool call
+/// The place of [action] of [intent] in [step]: the intent is a tool call
 /// the model's reply holds, by its place in that reply, and the action is
-/// one the tool's steps propose, in the order they propose them.
+/// one the tool's propose expressions propose, in the order they propose
+/// them.
 final class ProposedForAnIntent extends PlaceInTrajectory {
-  const ProposedForAnIntent._(super.turn, this.intent, this.action) : super._();
+  const ProposedForAnIntent._(super.step, this.intent, this.action) : super._();
 
   /// All three counted from 0.
-  factory ProposedForAnIntent.at(int turn, int intent, int action) =>
-      turn >= 0 && intent >= 0 && action >= 0
-      ? ProposedForAnIntent._(turn, intent, action)
+  factory ProposedForAnIntent.at(int step, int intent, int action) =>
+      step >= 0 && intent >= 0 && action >= 0
+      ? ProposedForAnIntent._(step, intent, action)
       : throw ArgumentError(
-          'a place is counted from 0: $turn, $intent, $action',
+          'a place is counted from 0: $step, $intent, $action',
         );
 
   final int intent;
   final int action;
 
   @override
-  Object? toJson() => [turn, intent, action];
+  Object? toJson() => [step, intent, action];
 
   @override
-  (int, int, int) get _withinTurn => (1, intent, action);
+  (int, int, int) get _withinStep => (1, intent, action);
 
   @override
   bool operator ==(Object other) =>
       other is ProposedForAnIntent &&
-      other.turn == turn &&
+      other.step == step &&
       other.intent == intent &&
       other.action == action;
 
   @override
-  int get hashCode => Object.hash(turn, intent, action);
+  int get hashCode => Object.hash(step, intent, action);
 
   @override
-  String toString() => '$turn.$intent.$action';
+  String toString() => '$step.$intent.$action';
 }
 
 /// How a program, its input and its output travel in an

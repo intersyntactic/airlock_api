@@ -94,7 +94,7 @@ while (result is Action<ExecResult>) {
   `ModelRequestPiece` entry (kind `model-request-piece`, `{"text"}`), then
   a `ModelRequestFromPieces` (kind `model-request`) naming them:
   `systemPrompt` and `request`, each a `TextFromPieces` (its pieces in
-  order and the sha256 of its UTF-8 bytes), and `builtFrom`, the turns they
+  order and the sha256 of its UTF-8 bytes), and `builtFrom`, the messages they
   were drawn from. `TextFromPieces.join` checks the joined text against its
   hash.
 - `AskTheModel` (proposed as `model`) takes a `ModelCall`: the
@@ -126,10 +126,11 @@ its own.
   `ActionProposedByAgentLoop` or `Rejected(why)`, checking every part as
   its type's own `parse` does. `proposal.open(<I, O>(program, input) => …)`
   hands back the program and its input with their types matched.
-- `PlaceInTrajectory`, sealed: `ProposedForTheModelCall(turn)`, written
-  `[turn, "model-call"]`; `ProposedForAnIntent(turn, intent, action)`,
-  written `[turn, intent, action]`; or `ProposedForTheReply(turn, action)`,
-  written `[turn, "reply", action]`, in that order within a turn. `parse`
+- `PlaceInTrajectory`, sealed: `ProposedForTheModelCall(step)`, written
+  `[step, "model-call"]`; `ProposedForAnIntent(step, intent, action)`,
+  written `[step, intent, action]`; or `ProposedForTheReply(step, action)`,
+  written `[step, "reply", action]`, in that order within a step. A step is
+  one model call and what it caused, counted across the trajectory. `parse`
   gives null for anything else.
 - A result (kind `outcome-of-proposed-action`, body
   `{"proposed": <hex>, "result": <outcome>}`): `program.outcomeToJson`
