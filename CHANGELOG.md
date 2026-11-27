@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.23.0
+
+Breaking: new dependency ranges. The types and their JSON are unchanged.
+
+- On `checked_json` ^0.3.0, `is_model_vocabulary` ^0.3.0 and `is_effects`
+  ^0.18.0. Reading a proposal or an outcome now refuses text that names a
+  key twice in one object, or holds an integer past 2^53 - 1, where it used
+  to keep the last value.
+- The reply types come from `is_conversation_vocabulary` ^0.1.0, which
+  replaces `is_conversation_reply_vocabulary`. The types are the same.
+
 ## 0.22.0
 
 Breaking, in Dart only; nothing changes on the wire.
