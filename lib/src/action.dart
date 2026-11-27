@@ -16,6 +16,7 @@ part 'proposal.dart';
 part 'waiting_to_start.dart';
 part 'model_request.dart';
 part 'decision_entry.dart';
+part 'reply_requests.dart';
 
 /// What a tool's code returns for a call: an action whose outcome it needs
 /// before it can answer, its answer, or that it could not answer. [A] is the
