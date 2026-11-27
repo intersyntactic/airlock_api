@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.0
+
+- `WritesSlackReplyRequests` and `WritesWebAddressReplyRequests` move here
+  from `is_reply_requests_api`, unchanged, and that package is retired. The
+  airlock calls them and the Slack and Teams modules implement them, so
+  they are the airlock's interface. Breaking only for a package that
+  imports both: drop `is_reply_requests_api` and import these from here.
+
 ## 0.23.0
 
 Breaking: new dependency ranges. The types and their JSON are unchanged.
