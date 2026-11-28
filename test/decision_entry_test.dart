@@ -50,11 +50,14 @@ final reaches = <Reach>[
   ),
 ];
 
-final ownSlack = RepliesInSlackConversation(
+final ownSlack = RepliesWithPinnedBodyFields.at(
   origin: Origin.parse('https://slack.com')!,
-  channel: SlackChannelId.parse('C123')!,
-  thread: SlackMessageTimestamp.parse('1700000000.000100'),
-);
+  path: WebPath.parse('/api/chat.postMessage')!,
+  pinned: PinnedBodyFields.of({
+    'channel': 'C123',
+    'thread_ts': '1700000000.000100',
+  })!,
+)!;
 
 final PlaceInTrajectory place = ProposedForAnIntent.at(3, 0, 1);
 final proposed = EntryId.of(utf8.encode('a proposal'));

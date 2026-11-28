@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.25.0
+
+Breaking: new dependency ranges, and one reply-writer interface in place of
+two.
+
+- On `checked_json` ^0.4.0, `is_model_vocabulary` ^0.4.0, `is_effects`
+  ^0.19.0 and `is_conversation_vocabulary` ^0.2.0. A `JsonObject` in this
+  API is now checked_json 0.4.0's, which nothing can change.
+- `WritesReplyRequests<E extends ReplyEndpoint>` replaces
+  `WritesSlackReplyRequests` and `WritesWebAddressReplyRequests`, since
+  the vocabulary's endpoints no longer name a chat service. `posted`
+  returns a `ServerAssignedMessageId` for every kind. A Teams writer is a
+  `WritesReplyRequests<RepliesUnderWebAddress>`.
+- `WritesPinnedBodyReplyRequests` is a writer for
+  `RepliesWithPinnedBodyFields`, such as Slack's or WhatsApp's. It names
+  the `addresses` it writes to, so the airlock can pick a writer by the
+  endpoint's address and refuse two writers that claim the same one.
+
 ## 0.24.0
 
 - `WritesSlackReplyRequests` and `WritesWebAddressReplyRequests` move here
