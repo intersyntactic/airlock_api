@@ -1,7 +1,11 @@
 import 'dart:convert';
 
 import 'package:is_airlock_api/is_airlock_api.dart';
-import 'package:is_effects/is_effects.dart';
+import 'package:is_file_request_vocabulary/is_file_request_vocabulary.dart';
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart';
+import 'package:is_program_request_vocabulary/is_program_request_vocabulary.dart';
+import 'package:is_relative_path_vocabulary/is_relative_path_vocabulary.dart';
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart';
 import 'package:is_model_vocabulary/is_model_vocabulary.dart';
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart';
 import 'package:test/test.dart';
@@ -39,8 +43,9 @@ final class _NamesEachMethod implements CarriesOutEachProgram {
       const NothingRan('fetchFromWeb');
 
   @override
-  Future<Outcome<ModelReply>> askTheModel(ModelCall call) async =>
-      const NothingRan('askTheModel');
+  Future<Outcome<ModelReply>> askTheModel(
+    ModelCallNamingRequestEntry call,
+  ) async => const NothingRan('askTheModel');
 
   @override
   Future<Outcome<List<PostedMessage>>> replyToOwnConversation(
@@ -74,7 +79,7 @@ final _each =
       ),
       _one(
         Program.askTheModel,
-        ModelCall(
+        ModelCallNamingRequestEntry(
           signIn: ModelSignInName.parse('nick-claude-team')!,
           model: ModelName.parse('claude-opus-5-5')!,
           request: EntryId.of(utf8.encode('the request')),

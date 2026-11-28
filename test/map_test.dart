@@ -1,5 +1,7 @@
 import 'package:is_airlock_api/is_airlock_api.dart';
-import 'package:is_effects/is_effects.dart';
+import 'package:is_file_request_vocabulary/is_file_request_vocabulary.dart';
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart';
+import 'package:is_relative_path_vocabulary/is_relative_path_vocabulary.dart';
 import 'package:test/test.dart';
 
 /// Answers every write as a new file, and keeps the name of each program

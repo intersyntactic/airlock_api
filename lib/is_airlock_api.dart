@@ -8,8 +8,9 @@
 /// airlock's (`is_airlock`), through [CarriesOutEachProgram]. Writing the
 /// web requests that post a reply is a module's, through
 /// [WritesReplyRequests] and [WritesPinnedBodyReplyRequests]. What an action
-/// takes and gives back, and the drivers that carry it out, are
-/// `is_effects`'s; joining an `is_tools_api` definition to what a tool does
+/// takes and gives back, and the drivers that carry it out, are each
+/// action's own vocabulary's (files, programs, web requests, the model);
+/// joining an `is_tools_api` definition to what a tool does
 /// is `is_tool`'s.
 library;
 
