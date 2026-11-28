@@ -4,18 +4,18 @@ description: >-
   are proposed on, and the airlock that decides and records each one.
 # Between releases main is `<next>-dev`, so whoever builds on it by path or
 # git ref can see it moves; the release commit drops `-dev`.
-version: 0.24.0
+version: 0.25.0
 repository: https://github.com/intersyntactic/airlock_api
 
 environment:
   sdk: ^3.13.0
 
 dependencies:
-  checked_json: ^0.3.0
+  checked_json: ^0.4.0
   is_content_id: ^0.2.0
-  is_effects: ^0.18.0
-  is_model_vocabulary: ^0.3.0
-  is_conversation_vocabulary: ^0.1.0
+  is_effects: ^0.19.0
+  is_model_vocabulary: ^0.4.0
+  is_conversation_vocabulary: ^0.2.0
   is_shapes: ^0.6.0
   is_sign_in_vocabulary: ^0.1.0
   is_web_address_vocabulary: ^0.1.1
