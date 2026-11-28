@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.26.0
+
+Breaking: on `is_effects` ^0.20.0, so a package can sit beside one that
+needs is_effects' newest version. Nothing here used `BotPool`, the one
+thing 0.20.0 moved out (to `is_sign_in_vocabulary` 0.1.1). No code here
+changed.
+
 ## 0.25.0
 
 Breaking: new dependency ranges, and one reply-writer interface in place of
