@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:is_airlock_api/is_airlock_api.dart';
-import 'package:is_effects/is_effects.dart';
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart';
 import 'package:test/test.dart';
 
 /// [texts] as the logbook would keep them, each a piece entry, and the

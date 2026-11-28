@@ -3,7 +3,11 @@ import 'dart:convert' show jsonEncode, utf8;
 import 'package:checked_json/checked_json.dart';
 
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
-import 'package:is_effects/is_effects.dart';
+import 'package:is_file_request_vocabulary/is_file_request_vocabulary.dart';
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart';
+import 'package:is_program_request_vocabulary/is_program_request_vocabulary.dart';
+import 'package:is_relative_path_vocabulary/is_relative_path_vocabulary.dart';
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart';
 import 'package:is_model_vocabulary/is_model_vocabulary.dart';
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart';
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
@@ -227,7 +231,7 @@ abstract interface class CarriesOutEachProgram {
 
   Future<Outcome<WebResponse>>? fetchFromWeb(WebFetch fetch);
 
-  Future<Outcome<ModelReply>>? askTheModel(ModelCall call);
+  Future<Outcome<ModelReply>>? askTheModel(ModelCallNamingRequestEntry call);
 
   /// [content] posted to the endpoint and as the sign-in the airlock
   /// granted, in [Allow.grantedReply].
@@ -483,7 +487,7 @@ final class WebFetch {
   final BodyToKeep keep;
 }
 
-/// Asks the model, through the model driver, as the [ModelCall]'s sign-in,
+/// Asks the model, through the model driver, as the [ModelCallNamingRequestEntry]'s sign-in,
 /// with the system prompt and request its [ModelRequestFromPieces] entry holds.
 ///
 /// The one action the loop proposes for itself rather than drawing from an
@@ -497,36 +501,42 @@ final class WebFetch {
 /// missing, on another chain, or not joining to its hash refuses the call
 /// before the driver is reached. The whole [ModelReply] is the outcome,
 /// written once.
-final class AskTheModel extends Program<ModelCall, ModelReply> {
+final class AskTheModel
+    extends Program<ModelCallNamingRequestEntry, ModelReply> {
   const AskTheModel();
 
   @override
   String get name => 'model';
 
   @override
-  Reach reachOf(ModelCall call) => CallsTheModel(call);
+  Reach reachOf(ModelCallNamingRequestEntry call) => CallsTheModel(call);
 
   @override
   Future<Outcome<ModelReply>>? carriedOutBy(
     CarriesOutEachProgram by,
-    ModelCall call,
+    ModelCallNamingRequestEntry call,
   ) => by.askTheModel(call);
 
   @override
-  _Wire<ModelCall, ModelReply> get _wire => const _Wire(
+  _Wire<ModelCallNamingRequestEntry, ModelReply> get _wire => const _Wire(
     {'program': 'model'},
     inputToJson: _modelCallToJson,
     inputFromJson: _modelCallFromJson,
-    outputToJson: encodeModelReply,
-    outputFromJson: decodeModelReply,
+    outputToJson: _modelReplyToJson,
+    outputFromJson: _modelReplyFromJson,
   );
 }
+
+Object? _modelReplyToJson(ModelReply reply) => reply.toJson();
+
+ModelReply _modelReplyFromJson(Object? json, String field) =>
+    _at(field, () => ModelReply.fromJson(json));
 
 /// A model call a loop proposes: as which of the person's model sign-ins,
 /// to which model, and the [ModelRequestFromPieces] entry, written on its
 /// trajectory's chain before this, that holds exactly what is sent.
-final class ModelCall {
-  const ModelCall({
+final class ModelCallNamingRequestEntry {
+  const ModelCallNamingRequestEntry({
     required this.signIn,
     required this.model,
     required this.request,
@@ -539,19 +549,23 @@ final class ModelCall {
   final EntryId request;
 }
 
-Object? _modelCallToJson(ModelCall call) => {
-  'signIn': encodeModelSignInName(call.signIn),
-  'model': encodeModelName(call.model),
+Object? _modelCallToJson(ModelCallNamingRequestEntry call) => {
+  'signIn': call.signIn.name,
+  'model': call.model.value,
   'request': call.request.hex,
 };
 
-ModelCall _modelCallFromJson(Object? input, String field) {
+ModelCallNamingRequestEntry _modelCallFromJson(Object? input, String field) {
   final json = _object(field, input);
   return _at(field, () {
     _exactly(field, json, const {'signIn', 'model', 'request'});
-    return ModelCall(
-      signIn: decodeModelSignInName(json.raw('signIn'), '$field.signIn'),
-      model: decodeModelName(json.raw('model'), '$field.model'),
+    return ModelCallNamingRequestEntry(
+      signIn:
+          ModelSignInName.parse(json.string('signIn')) ??
+          (throw FormatException('$field.signIn: not a model sign-in name')),
+      model:
+          ModelName.parse(json.string('model')) ??
+          (throw FormatException('$field.model: not a model name')),
       request:
           EntryId.parse(json.string('request')) ??
           (throw FormatException('$field.request: not an entry id')),
@@ -645,7 +659,7 @@ final class RepliesToOwnConversation extends Reach {
 final class CallsTheModel extends Reach {
   const CallsTheModel(this.call);
 
-  final ModelCall call;
+  final ModelCallNamingRequestEntry call;
 
   ModelSignInName get signIn => call.signIn;
   ModelName get model => call.model;

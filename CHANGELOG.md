@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.26.0
+
+Breaking: off `is_effects`, which is broken up, and onto the vocabulary
+of each action. The JSON of every type is unchanged.
+
+- Depends on `is_outcome_vocabulary`, `is_relative_path_vocabulary`,
+  `is_file_request_vocabulary`, `is_program_request_vocabulary` and
+  `is_web_request_vocabulary` ^0.1.0, `is_model_vocabulary` ^0.5.0 and
+  `is_sign_in_vocabulary` ^0.1.2, in place of `is_effects`. The types this
+  API hands over (`Outcome`, `ProposedRequest`, `WebResponse`,
+  `BodyToKeep`, `RelativePath`, `ExecResult` and the rest) now come from
+  those packages, so a dependent imports them from there too.
+- `ModelCall` is now `ModelCallNamingRequestEntry`: is_model_vocabulary
+  0.5.0 has its own `ModelCall`, the envelope sent to a model driver with
+  the request text inline. This one names the request's logbook entry.
+  Its JSON is unchanged.
+
 ## 0.25.0
 
 Breaking: new dependency ranges, and one reply-writer interface in place of

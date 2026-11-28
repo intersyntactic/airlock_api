@@ -6,7 +6,8 @@ through the logbook; the airlock (`is_airlock`) decides it, writes its
 decision to the logbook, and has a driver carry it out.
 
 What an action takes and gives back, and the drivers that carry it out, are
-`is_effects`'s. Joining an `is_tools_api` definition to what a tool does is
+each action's own vocabulary's (files, programs, web requests, the model).
+Joining an `is_tools_api` definition to what a tool does is
 `is_tool`'s.
 
 ```dart
@@ -67,7 +68,7 @@ while (result is Action<ExecResult>) {
 ## The web
 
 - `FetchFromWeb` (proposed as `fetch`) takes a `WebFetch`: an origin, a
-  `WebPath`, a sign-in, and what of the response to keep (is_effects's
+  `WebPath`, a sign-in, and what of the response to keep (is_web_request_vocabulary's
   `BodyToKeep`). A proposal carrying a body or headers is rejected, not
   stripped.
 - `MakeWebRequests` (proposed as `make-web-requests`) takes the exact
@@ -97,7 +98,7 @@ while (result is Action<ExecResult>) {
   order and the sha256 of its UTF-8 bytes), and `builtFrom`, the messages they
   were drawn from. `TextFromPieces.join` checks the joined text against its
   hash.
-- `AskTheModel` (proposed as `model`) takes a `ModelCall`: the
+- `AskTheModel` (proposed as `model`) takes a `ModelCallNamingRequestEntry`: the
   `ModelSignInName` it goes as, the `ModelName`, and the
   `ModelRequestFromPieces` entry. Its reach, `CallsTheModel`, is decided by
   the sign-in.
@@ -148,6 +149,5 @@ its own.
 ## What this package holds
 
 Types and their JSON. Two tests hold it there: one reads every directive's
-URI from Dart's parse tree and allows only the vocabularies and
-`is_effects`; the other finds every `async` function body in `lib` and
+URI from Dart's parse tree and allows only the vocabularies; the other finds every `async` function body in `lib` and
 allows none, since waiting on something is carrying an action out.

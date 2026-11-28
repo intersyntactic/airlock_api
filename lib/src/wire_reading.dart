@@ -8,7 +8,7 @@ Object? _requestsToJson(List<ProposedRequest> requests) => [
 /// credential is added by the driver, never written here.
 const _headersSent = {'content-type'};
 
-/// [input] as the requests to send, each read by is_effects's own codec,
+/// [input] as the requests to send, each read by is_web_request_vocabulary's own codec,
 /// which refuses a granted path prefix, since only a grant gives one; then
 /// refused when it is a GET, which is a [FetchFromWeb], or carries a header
 /// other than `content-type`; and refused when there are none. Throws a
@@ -105,7 +105,7 @@ T _at<T>(String field, T Function() read) {
   }
 }
 
-/// [json] as an object at [field], for a value an is_effects codec hands
+/// [json] as an object at [field], for a value an action vocabulary's codec hands
 /// over undecoded.
 JsonObject _object(String field, Object? json) =>
     JsonObject.parse(json) ?? (throw FormatException('$field: not an object'));

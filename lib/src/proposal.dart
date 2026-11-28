@@ -163,7 +163,7 @@ final class ProposedForAnIntent extends PlaceInTrajectory {
 }
 
 /// How a program, its input and its output travel in an
-/// [ActionProposedByAgentLoop] and its result, by is_effects's codecs. A
+/// [ActionProposedByAgentLoop] and its result, by each action vocabulary's codecs. A
 /// decoder throws a [FormatException] naming the field, as a dotted path
 /// from [field].
 final class _Wire<I, O> {
@@ -328,7 +328,7 @@ const outcomeOfProposedActionKind = 'outcome-of-proposed-action';
 
 /// The body of an [outcomeOfProposedActionKind] logbook entry answering
 /// the [ActionProposedByAgentLoop] logbook entry [proposed]: [resultAsJson],
-/// as is_effects's `encodeOutcome` writes it with that program's codec.
+/// as is_outcome_vocabulary's `encodeOutcome` writes it with that program's codec.
 /// [proposed] is the id the logbook gave that entry, the hash of the whole
 /// entry as the logbook keeps it, never a hash of its body.
 Object? outcomeOfProposedActionToJson(EntryId proposed, Object? resultAsJson) =>
